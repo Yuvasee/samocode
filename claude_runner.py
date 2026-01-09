@@ -1,0 +1,229 @@
+"""Claude CLI execution with proper error handling and retries."""
+
+import logging
+import os
+import re
+import subprocess
+import time
+from dataclasses import dataclass
+from enum import Enum
+from pathlib import Path
+
+from config import SamocodeConfig
+
+logger = logging.getLogger("samocode")
+
+
+def extract_working_dir(session_path: Path) -> Path | None:
+    """Extract Working Dir from session _overview.md."""
+    overview_path = session_path / "_overview.md"
+    if not overview_path.exists():
+        return None
+
+    content = overview_path.read_text()
+    match = re.search(r"^Working Dir:\s*(.+)$", content, re.MULTILINE)
+    if not match:
+        return None
+
+    working_dir_str = match.group(1).strip()
+    working_dir = Path(working_dir_str).expanduser().resolve()
+
+    return working_dir if working_dir.exists() else None
+
+
+class ExecutionStatus(Enum):
+    """Result of Claude CLI execution."""
+
+    SUCCESS = "success"
+    TIMEOUT = "timeout"
+    FAILURE = "failure"
+    RETRY_EXHAUSTED = "retry_exhausted"
+
+
+@dataclass
+class ExecutionResult:
+    """Result of running Claude CLI."""
+
+    status: ExecutionStatus
+    stdout: str
+    stderr: str
+    returncode: int | None
+    attempt: int
+
+
+def build_prompt(
+    workflow_prompt_path: Path,
+    session_path: Path,
+    config: SamocodeConfig,
+    initial_dive: str | None = None,
+    initial_task: str | None = None,
+) -> str:
+    """Build the full prompt with optional initial instructions."""
+    prompt = workflow_prompt_path.read_text()
+    prompt += f"\n\n## Session Path\n\n`{session_path}`\n"
+
+    if config.repo_path:
+        # Repo-based session: create worktree
+        session_name = session_path.name
+        worktree_path = config.worktrees_dir / session_name
+        prompt += "\n## Worktree Configuration\n\n"
+        prompt += f"- Base repo: `{config.repo_path}`\n"
+        prompt += f"- Worktree path: `{worktree_path}`\n"
+        prompt += f"- Branch name: `yuri/{session_name.split('-', 3)[-1]}`\n"
+    else:
+        # Standalone project: create folder
+        project_path = config.default_projects_folder / session_path.name
+        prompt += "\n## Standalone Project Configuration\n\n"
+        prompt += f"- Project folder: `{project_path}`\n"
+        prompt += "- No git worktree (standalone project)\n"
+
+    if initial_dive or initial_task:
+        prompt += "\n## Initial Instructions\n\n"
+        prompt += "This is a NEW session. After initialization:\n\n"
+        if initial_dive:
+            prompt += f"1. Run dive skill with topic: **{initial_dive}**\n"
+        if initial_task:
+            prompt += (
+                f"{'2' if initial_dive else '1'}. Define task: **{initial_task}**\n"
+            )
+
+    return prompt
+
+
+def run_claude_once(
+    workflow_prompt_path: Path,
+    session_path: Path,
+    config: SamocodeConfig,
+    attempt: int,
+    initial_dive: str | None = None,
+    initial_task: str | None = None,
+) -> ExecutionResult:
+    """Execute Claude CLI once with timeout protection."""
+    logger.info(f"Executing Claude CLI (attempt {attempt})...")
+
+    working_dir = extract_working_dir(session_path)
+    if working_dir is None:
+        logger.warning("Working Dir not found in _overview.md, using session path")
+        working_dir = session_path
+    else:
+        logger.info(f"Using Working Dir: {working_dir}")
+
+    prompt = build_prompt(
+        workflow_prompt_path,
+        session_path,
+        config,
+        initial_dive,
+        initial_task,
+    )
+
+    env = os.environ.copy()
+    env["SAMOCODE_SESSION_PATH"] = str(session_path)
+
+    try:
+        result = subprocess.run(
+            [
+                str(config.claude_path),
+                "-p",
+                prompt,
+                "--dangerously-skip-permissions",
+                "--model",
+                config.claude_model,
+                "--max-turns",
+                str(config.claude_max_turns),
+            ],
+            cwd=str(working_dir),
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=config.claude_timeout,
+        )
+
+        if result.returncode == 0:
+            logger.info("Claude CLI completed successfully")
+            return ExecutionResult(
+                status=ExecutionStatus.SUCCESS,
+                stdout=result.stdout,
+                stderr=result.stderr,
+                returncode=result.returncode,
+                attempt=attempt,
+            )
+
+        logger.error(f"Claude CLI failed with code {result.returncode}")
+        logger.error(f"stderr: {result.stderr[:500]}")
+        return ExecutionResult(
+            status=ExecutionStatus.FAILURE,
+            stdout=result.stdout,
+            stderr=result.stderr,
+            returncode=result.returncode,
+            attempt=attempt,
+        )
+
+    except subprocess.TimeoutExpired:
+        logger.error(f"Claude CLI timed out after {config.claude_timeout}s")
+        return ExecutionResult(
+            status=ExecutionStatus.TIMEOUT,
+            stdout="",
+            stderr=f"Timeout after {config.claude_timeout}s",
+            returncode=None,
+            attempt=attempt,
+        )
+
+    except Exception as e:
+        logger.error(f"Claude CLI execution failed: {e}")
+        return ExecutionResult(
+            status=ExecutionStatus.FAILURE,
+            stdout="",
+            stderr=str(e),
+            returncode=None,
+            attempt=attempt,
+        )
+
+
+def run_claude_with_retry(
+    workflow_prompt_path: Path,
+    session_path: Path,
+    config: SamocodeConfig,
+    initial_dive: str | None = None,
+    initial_task: str | None = None,
+) -> ExecutionResult:
+    """Execute Claude CLI with retry logic for transient failures."""
+    result: ExecutionResult | None = None
+
+    for attempt in range(1, config.max_retries + 1):
+        result = run_claude_once(
+            workflow_prompt_path,
+            session_path,
+            config,
+            attempt,
+            initial_dive if attempt == 1 else None,
+            initial_task if attempt == 1 else None,
+        )
+
+        if result.status == ExecutionStatus.SUCCESS:
+            return result
+
+        if attempt < config.max_retries:
+            logger.warning(
+                f"Attempt {attempt}/{config.max_retries} failed, "
+                f"retrying in {config.retry_delay}s..."
+            )
+            time.sleep(config.retry_delay)
+
+    logger.error(f"All {config.max_retries} attempts failed")
+
+    if result is None:
+        return ExecutionResult(
+            status=ExecutionStatus.RETRY_EXHAUSTED,
+            stdout="",
+            stderr="No attempts made",
+            returncode=None,
+            attempt=0,
+        )
+
+    return ExecutionResult(
+        status=ExecutionStatus.RETRY_EXHAUSTED,
+        stdout=result.stdout,
+        stderr=result.stderr,
+        returncode=result.returncode,
+        attempt=config.max_retries,
+    )
