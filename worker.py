@@ -26,7 +26,7 @@ def main() -> None:
     parser.add_argument(
         "--session",
         required=True,
-        help="Session name (e.g., 'my-task') - creates YY-MM-DD-{name} in _sessions/",
+        help="Session name (e.g., 'my-task') or full path (e.g., '~/project/_samocode')",
     )
     parser.add_argument(
         "--repo",
@@ -61,17 +61,28 @@ def main() -> None:
             sys.exit(1)
         config = dataclass_replace(config, repo_path=repo_path)
 
-    # Build session path: {SESSIONS_DIR}/YY-MM-DD-{session_name}
-    # First check for existing session with any date prefix
-    session_name = args.session.lower().replace(" ", "-")
-    existing = list(config.sessions_dir.glob(f"*-{session_name}"))
-    if existing:
-        # Use most recent existing session
-        session_path = sorted(existing)[-1]
+    # Build session path
+    # If --session contains '/' or '~', treat as full path
+    # Otherwise, use SESSIONS_DIR with date prefix
+    if "/" in args.session or args.session.startswith("~"):
+        # Full path mode: use directly
+        session_path = Path(args.session).expanduser().resolve()
+        # Display name is parent folder name (e.g., ~/code/project/_samocode -> "project")
+        session_display_name = session_path.parent.name
+        is_path_based_session = True
     else:
-        # Create new session with today's date
-        date_prefix = datetime.now().strftime("%y-%m-%d")
-        session_path = config.sessions_dir / f"{date_prefix}-{session_name}"
+        # Name mode: {SESSIONS_DIR}/YY-MM-DD-{session_name}
+        session_name = args.session.lower().replace(" ", "-")
+        existing = list(config.sessions_dir.glob(f"*-{session_name}"))
+        if existing:
+            # Use most recent existing session
+            session_path = sorted(existing)[-1]
+        else:
+            # Create new session with today's date
+            date_prefix = datetime.now().strftime("%y-%m-%d")
+            session_path = config.sessions_dir / f"{date_prefix}-{session_name}"
+        session_display_name = session_path.name
+        is_path_based_session = False
 
     samocode_dir = Path(__file__).parent
     log_dir = samocode_dir / "logs"
@@ -138,6 +149,7 @@ def main() -> None:
                 config,
                 initial_dive if iteration == 1 else None,
                 initial_task if iteration == 1 else None,
+                is_path_based_session,
             )
 
             if result.status != ExecutionStatus.SUCCESS:
@@ -146,7 +158,7 @@ def main() -> None:
                 logger.error(f"Last stderr: {result.stderr[:500]}")
                 notify_error(
                     f"Claude execution failed: {result.status.value}",
-                    session_path.name,
+                    session_display_name,
                     iteration,
                     config.telegram_bot_token,
                     config.telegram_chat_id,
@@ -160,7 +172,7 @@ def main() -> None:
                 logger.info(f"Workflow complete: {signal.summary}")
                 notify_complete(
                     signal.summary or "No summary provided",
-                    session_path.name,
+                    session_display_name,
                     iteration,
                     config.telegram_bot_token,
                     config.telegram_chat_id,
@@ -172,7 +184,7 @@ def main() -> None:
                 logger.warning(f"Needs: {signal.needs}")
                 notify_blocked(
                     signal.reason or "Unknown reason",
-                    session_path.name,
+                    session_display_name,
                     signal.needs,
                     config.telegram_bot_token,
                     config.telegram_chat_id,
@@ -183,7 +195,7 @@ def main() -> None:
                 logger.info(f"Waiting for: {signal.waiting_for}")
                 notify_waiting(
                     signal.waiting_for or "Unknown input",
-                    session_path.name,
+                    session_display_name,
                     config.telegram_bot_token,
                     config.telegram_chat_id,
                 )
@@ -211,7 +223,7 @@ def main() -> None:
         try:
             notify_error(
                 f"Orchestrator crashed: {e}",
-                session_path.name if "session_path" in dir() else "unknown",
+                session_display_name if "session_display_name" in dir() else "unknown",
                 iteration if "iteration" in dir() else 0,
                 config.telegram_bot_token if "config" in dir() else "",
                 config.telegram_chat_id if "config" in dir() else "",

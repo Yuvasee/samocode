@@ -57,6 +57,7 @@ def build_prompt(
     config: SamocodeConfig,
     initial_dive: str | None = None,
     initial_task: str | None = None,
+    is_path_based_session: bool = False,
 ) -> str:
     """Build the full prompt with optional initial instructions."""
     prompt = workflow_prompt_path.read_text()
@@ -70,8 +71,14 @@ def build_prompt(
         prompt += f"- Base repo: `{config.repo_path}`\n"
         prompt += f"- Worktree path: `{worktree_path}`\n"
         prompt += f"- Branch name: `yuri/{session_name.split('-', 3)[-1]}`\n"
+    elif is_path_based_session:
+        # Path-based session: project folder is parent of session path
+        project_path = session_path.parent
+        prompt += "\n## Standalone Project Configuration\n\n"
+        prompt += f"- Project folder: `{project_path}`\n"
+        prompt += "- No git worktree (standalone project)\n"
     else:
-        # Standalone project: create folder
+        # Name-based session: create folder in default projects
         project_path = config.default_projects_folder / session_path.name
         prompt += "\n## Standalone Project Configuration\n\n"
         prompt += f"- Project folder: `{project_path}`\n"
@@ -97,6 +104,7 @@ def run_claude_once(
     attempt: int,
     initial_dive: str | None = None,
     initial_task: str | None = None,
+    is_path_based_session: bool = False,
 ) -> ExecutionResult:
     """Execute Claude CLI once with timeout protection."""
     logger.info(f"Executing Claude CLI (attempt {attempt})...")
@@ -114,6 +122,7 @@ def run_claude_once(
         config,
         initial_dive,
         initial_task,
+        is_path_based_session,
     )
 
     env = os.environ.copy()
@@ -185,6 +194,7 @@ def run_claude_with_retry(
     config: SamocodeConfig,
     initial_dive: str | None = None,
     initial_task: str | None = None,
+    is_path_based_session: bool = False,
 ) -> ExecutionResult:
     """Execute Claude CLI with retry logic for transient failures."""
     result: ExecutionResult | None = None
@@ -197,6 +207,7 @@ def run_claude_with_retry(
             attempt,
             initial_dive if attempt == 1 else None,
             initial_task if attempt == 1 else None,
+            is_path_based_session,
         )
 
         if result.status == ExecutionStatus.SUCCESS:

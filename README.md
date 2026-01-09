@@ -53,6 +53,15 @@ python worker.py --session prototyping \
   --task "Build prototype of new feature"
 ```
 
+**Path-based session** (session in project folder):
+
+```bash
+# Full path: session in ~/code/my-project/_samocode, working dir is ~/code/my-project
+python worker.py --session ~/code/my-project/_samocode \
+  --dive "understand existing code" \
+  --task "Add new feature"
+```
+
 **Dry run** (show config without executing):
 
 ```bash
