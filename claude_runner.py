@@ -111,8 +111,12 @@ def run_claude_once(
 
     working_dir = extract_working_dir(session_path)
     if working_dir is None:
-        logger.warning("Working Dir not found in _overview.md, using session path")
-        working_dir = session_path
+        if is_path_based_session:
+            working_dir = session_path.parent
+            logger.info(f"Using parent as Working Dir (path-based): {working_dir}")
+        else:
+            logger.warning("Working Dir not found in _overview.md, using session path")
+            working_dir = session_path
     else:
         logger.info(f"Using Working Dir: {working_dir}")
 

@@ -92,6 +92,31 @@ Next: [what should happen next]
 Update after each action. Increment `Iteration` when staying in same phase.
 Note: `testing` phase appears twice - first after implementation, second after quality.
 
+## Flow Log Format
+
+All Flow Log entries MUST use this format:
+```
+- [MM-DD HH:MM] Event description → optional-file.md
+```
+
+Examples:
+- [01-09 21:30] Session created
+- [01-09 21:35] Deep dive: authentication flow → 01-09-21:35-dive-auth.md
+- [01-10 08:15] Session resumed
+- [01-10 08:20] Plan created → 01-10-08:20-plan-feature.md
+
+**Timestamp generation:**
+```bash
+# At start of skill execution, capture all timestamps atomically:
+TIMESTAMP_FILE=$(date '+%m-%d-%H:%M')    # For filenames: 01-09-21:30
+TIMESTAMP_LOG=$(date '+%m-%d %H:%M')     # For flow logs: 01-09 21:30
+```
+
+**IMPORTANT:**
+- Always include date (MM-DD) even for same-day entries
+- Capture timestamp ONCE at start of skill, reuse throughout
+- Do NOT call `date` multiple times during execution (causes drift)
+
 ## Workflow Phases
 
 ### investigation
@@ -165,7 +190,15 @@ C) [option]
 4. Execute phase:
    - **DEFAULT: Use `dop2`** for most phases (dual-agent comparison)
    - Only use `dop` for trivially simple 1-2 line changes
-5. Mark phase done in plan
+5. **Update plan progress** (MANDATORY after each phase):
+   - Read session `_overview.md` → Files section → find plan filename
+   - Read plan file from session folder
+   - Use Edit tool to mark completed items: `- [ ]` → `- [x]`
+   - Add phase completion note if significant:
+     ```markdown
+     **✓ Phase N completed** ([MM-DD HH:MM])
+     ```
+   - Verify edits by reading plan file again
 6. If phase requires human action (account creation, manual steps):
    - Set `Blocked: waiting_human` in Status
    - Document what human needs to do
