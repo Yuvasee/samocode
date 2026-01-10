@@ -292,6 +292,7 @@ C) [option]
 
 3. **Fix Loop** (max 3 iterations):
    - For each blocking issue, use `implementation` skill with `do` action to fix
+   - **Commit fixes:** `cd [WORKING_DIR] && git add -A && git commit -m "fix: quality review - [brief description]"`
    - Re-run `quality` skill with `multi-review` action
    - Increment `Quality Iteration` in Status
    - If Quality Iteration > 3 → signal `blocked` with "Quality issues remain after 3 iterations"
