@@ -199,11 +199,15 @@ C) [option]
      **✓ Phase N completed** ([MM-DD HH:MM])
      ```
    - Verify edits by reading plan file again
-6. If phase requires human action (account creation, manual steps):
+6. **Commit code changes** (MANDATORY after implementation work):
+   - Run: `cd [WORKING_DIR] && git add -A && git commit -m "Phase N: [phase-name]"`
+   - Only skip if this phase was pure planning/research with no code changes
+   - This ensures atomic, recoverable progress
+7. If phase requires human action (account creation, manual steps):
    - Set `Blocked: waiting_human` in Status
    - Document what human needs to do
    - Signal `waiting` with `"for": "human_action"`
-7. Otherwise: Increment Iteration, signal continue for next phase
+8. Otherwise: Increment Iteration, signal continue for next phase
 
 **dop2 Auto-Selection**:
 - Default: Choose "clean" approach
