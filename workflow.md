@@ -167,7 +167,22 @@ C) [option]
 
 **Goal**: Create implementation plan.
 
-**Action**: Use `planning` skill to create phased plan.
+**Actions**:
+1. Use `planning` skill to create phased plan
+2. **Setup browser MCP for testing** (if frontend work involved):
+   - Check if `.mcp.json` exists in Working Dir
+   - If not, create it with chrome-devtools MCP:
+     ```json
+     {
+       "mcpServers": {
+         "chrome-devtools": {
+           "command": "npx",
+           "args": ["chrome-devtools-mcp@latest", "--headless=true"]
+         }
+       }
+     }
+     ```
+   - If MCP was added, signal `continue` to restart Claude for MCP pickup
 
 **Output**: Plan in session folder (`[MM-DD-HH:mm]-plan-[slug].md`).
 
