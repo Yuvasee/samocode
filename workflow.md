@@ -169,19 +169,31 @@ C) [option]
 
 **Actions**:
 1. Use `planning` skill to create phased plan
-2. **Setup browser MCP for testing** (if frontend work involved):
+2. **Setup MCPs for the session**:
    - Check if `.mcp.json` exists in Working Dir
-   - If not, create it with chrome-devtools MCP:
+   - If not, create it with useful MCPs:
      ```json
      {
        "mcpServers": {
          "chrome-devtools": {
            "command": "npx",
-           "args": ["chrome-devtools-mcp@latest", "--headless=true"]
+           "args": ["-y", "chrome-devtools-mcp@latest", "--headless=true"]
+         },
+         "context7": {
+           "command": "npx",
+           "args": ["-y", "@upstash/context7-mcp@latest"]
+         },
+         "serena": {
+           "command": "uvx",
+           "args": ["serena"]
          }
        }
      }
      ```
+   - **MCPs:**
+     - `chrome-devtools` - Browser testing and UI inspection
+     - `context7` - Library documentation lookup
+     - `serena` - Code intelligence (go-to-definition, find-references)
    - If MCP was added, signal `continue` to restart Claude for MCP pickup
 
 **Output**: Plan in session folder (`[MM-DD-HH:mm]-plan-[slug].md`).
