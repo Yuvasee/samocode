@@ -51,7 +51,7 @@ class SamocodeConfig:
             claude_path=Path(
                 os.getenv(
                     "CLAUDE_PATH",
-                    "/home/dev/.nvm/versions/node/v24.12.0/bin/claude",
+                    "claude",  # Assumes claude is in PATH
                 )
             ),
             claude_model=os.getenv("CLAUDE_MODEL", "opus"),
