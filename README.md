@@ -2,6 +2,59 @@
 
 A "dumb" Python orchestrator that runs Claude Code CLI in a loop. Claude reads session state, decides actions via skills, updates state, and signals flow control. Human intervention only via `_qa.md` files and Telegram notifications.
 
+## Installation
+
+### 1. Install Skills & Commands
+
+```bash
+# Run the install script (creates symlinks to ~/.claude/)
+cd ~/samocode
+./install.sh
+
+# Restart Claude Code to apply changes
+```
+
+This installs:
+- **9 skills**: session-management, investigation, planning, implementation, quality, testing, summary, task-definition, samocode-run
+- **14 commands**: /dive, /task, /create-plan, /do, /dop, /dop2, /do2, /cleanup, /multi-review, /summary, /session-start, /session-continue, /session-sync, /session-archive
+
+To uninstall: `./uninstall.sh`
+
+### 2. Install Python Dependencies
+
+```bash
+cd ~/samocode
+pip install -r requirements.txt
+```
+
+### 3. Configure Environment
+
+```bash
+cp .env.example .env
+# Edit .env with your settings:
+# - TELEGRAM_BOT_TOKEN
+# - TELEGRAM_CHAT_ID
+# - CLAUDE_PATH (path to claude CLI)
+```
+
+## Quick Start
+
+```bash
+# Start a new session with dive and task
+python worker.py --session my-feature \
+  --dive "understand existing code structure" \
+  --task "Add user authentication"
+
+# Continue after answering Q&A
+python worker.py --session my-feature
+
+# Run on a specific repo (creates worktree)
+python worker.py --session api-redesign \
+  --repo ~/my-repo \
+  --dive "current API structure" \
+  --task "Redesign REST API"
+```
+
 ## Architecture
 
 ```
@@ -194,18 +247,6 @@ Notifications sent for:
 - **Complete**: Workflow finished successfully
 - **Error**: Orchestrator crashed or Claude failed
 
-## Files
-
-| File | Purpose |
-|------|---------|
-| `worker.py` | Main orchestrator loop |
-| `workflow.md` | Master prompt for Claude |
-| `config.py` | Configuration from environment |
-| `signals.py` | Signal file operations |
-| `claude_runner.py` | Claude CLI execution with retry |
-| `telegram.py` | Telegram notifications |
-| `logging_setup.py` | Logging configuration |
-
 ## Logging
 
 Logs written to `logs/samocode.log`:
@@ -215,7 +256,7 @@ Logs written to `logs/samocode.log`:
 
 ## Skills Reference
 
-Skills are in `~/.claude/skills/`:
+Skills are in `./skills/` (installed via plugin):
 
 | Skill | Actions | Description |
 |-------|---------|-------------|
@@ -227,3 +268,46 @@ Skills are in `~/.claude/skills/`:
 | `quality` | `cleanup`, `multi-review` | Code cleanup and review |
 | `summary` | - | Generate PR descriptions |
 | `testing` | - | Test implemented features |
+| `samocode-run` | - | Run samocode orchestrator |
+
+## Commands Reference
+
+Commands are in `./commands/` (installed via plugin):
+
+| Command | Description |
+|---------|-------------|
+| `/dive` | Start investigation on a topic |
+| `/task` | Define task with Q&A |
+| `/create-plan` | Create implementation plan |
+| `/do` | Execute single task |
+| `/do2` | Execute with dual-agent comparison |
+| `/dop` | Execute plan phase |
+| `/dop2` | Execute plan phase with dual-agent |
+| `/cleanup` | Run code cleanup |
+| `/multi-review` | Run multi-perspective code review |
+| `/summary` | Generate PR summary |
+| `/session-start` | Start new session |
+| `/session-continue` | Continue existing session |
+| `/session-sync` | Sync session state |
+| `/session-archive` | Archive completed session |
+
+## Project Structure
+
+```
+~/samocode/
+├── install.sh            # Install skills/commands to ~/.claude/
+├── uninstall.sh          # Remove installed skills/commands
+├── .claude-plugin/       # Plugin manifest (for validation)
+│   └── plugin.json
+├── worker.py             # Main orchestrator loop
+├── workflow.md           # Master prompt for Claude
+├── config.py             # Configuration from environment
+├── signals.py            # Signal file operations
+├── claude_runner.py      # Claude CLI execution with retry
+├── telegram.py           # Telegram notifications
+├── logging_setup.py      # Logging configuration
+├── skills/               # Claude Code skills (9 skills)
+├── commands/             # Claude Code commands (14 commands)
+├── _samocode/            # This repo's own session
+└── _sessions/            # Other sessions (gitignored)
+```

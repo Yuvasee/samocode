@@ -1,0 +1,8 @@
+{
+  "name": "samocode",
+  "version": "1.0.0",
+  "description": "Autonomous session orchestrator for Claude Code - manages multi-phase development workflows",
+  "author": {
+    "name": "yuri"
+  }
+}
