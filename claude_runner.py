@@ -70,7 +70,12 @@ def build_prompt(
         prompt += "\n## Worktree Configuration\n\n"
         prompt += f"- Base repo: `{config.repo_path}`\n"
         prompt += f"- Worktree path: `{worktree_path}`\n"
-        prompt += f"- Branch name: `yuri/{session_name.split('-', 3)[-1]}`\n"
+        branch_prefix = os.getenv("GIT_BRANCH_PREFIX", "")
+        branch_name = session_name.split('-', 3)[-1]
+        if branch_prefix:
+            prompt += f"- Branch name: `{branch_prefix}/{branch_name}`\n"
+        else:
+            prompt += f"- Branch name: `{branch_name}`\n"
     elif is_path_based_session:
         # Path-based session: project folder is parent of session path
         project_path = session_path.parent
