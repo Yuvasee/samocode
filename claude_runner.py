@@ -71,7 +71,7 @@ def build_prompt(
         prompt += f"- Base repo: `{config.repo_path}`\n"
         prompt += f"- Worktree path: `{worktree_path}`\n"
         branch_prefix = os.getenv("GIT_BRANCH_PREFIX", "")
-        branch_name = session_name.split('-', 3)[-1]
+        branch_name = session_name.split("-", 3)[-1]
         if branch_prefix:
             prompt += f"- Branch name: `{branch_prefix}/{branch_name}`\n"
         else:
@@ -115,9 +115,17 @@ def run_claude_once(
     initial_dive: str | None = None,
     initial_task: str | None = None,
     is_path_based_session: bool = False,
+    model_override: str | None = None,
 ) -> ExecutionResult:
-    """Execute Claude CLI once with timeout protection."""
-    logger.info(f"Executing Claude CLI (attempt {attempt})...")
+    """Execute Claude CLI once with timeout protection.
+
+    Args:
+        model_override: If provided, use this model instead of config.claude_model
+    """
+    effective_model = model_override or config.claude_model
+    logger.info(
+        f"Executing Claude CLI (attempt {attempt}, model: {effective_model})..."
+    )
 
     working_dir = extract_working_dir(session_path)
     if working_dir is None:
@@ -150,7 +158,7 @@ def run_claude_once(
                 prompt,
                 "--dangerously-skip-permissions",
                 "--model",
-                config.claude_model,
+                effective_model,
                 "--max-turns",
                 str(config.claude_max_turns),
             ],
@@ -209,8 +217,13 @@ def run_claude_with_retry(
     initial_dive: str | None = None,
     initial_task: str | None = None,
     is_path_based_session: bool = False,
+    model_override: str | None = None,
 ) -> ExecutionResult:
-    """Execute Claude CLI with retry logic for transient failures."""
+    """Execute Claude CLI with retry logic for transient failures.
+
+    Args:
+        model_override: If provided, use this model instead of config.claude_model
+    """
     result: ExecutionResult | None = None
 
     for attempt in range(1, config.max_retries + 1):
@@ -222,6 +235,7 @@ def run_claude_with_retry(
             initial_dive if attempt == 1 else None,
             initial_task if attempt == 1 else None,
             is_path_based_session,
+            model_override,
         )
 
         if result.status == ExecutionStatus.SUCCESS:

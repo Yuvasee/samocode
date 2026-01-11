@@ -6,10 +6,12 @@ Claude reads session state, decides actions via skills, updates state, signals n
 """
 
 import argparse
+import logging
 import sys
 from dataclasses import replace as dataclass_replace
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 from claude_runner import ExecutionStatus, run_claude_with_retry
 from config import SamocodeConfig
@@ -133,15 +135,36 @@ def main() -> None:
     initial_dive = args.dive
     initial_task = args.task
 
+    # State graph and state tracking
+    state_graph = load_state_graph(samocode_dir)
+    current_state = get_initial_state(state_graph)
+    context: dict[str, str | int | bool] = {}
+
+    if state_graph:
+        logger.info(f"State graph loaded, initial state: {current_state}")
+    else:
+        logger.info("No state graph found, using default behavior")
+
     try:
         while True:
             iteration += 1
             logger.info(f"\n{'=' * 70}")
-            logger.info(f"Iteration {iteration}")
+            logger.info(f"Iteration {iteration} | State: {current_state}")
             logger.info("=" * 70)
 
             clear_signal_file(session_path)
             logger.info("Cleared signal file")
+
+            # Resolve model for current state
+            state_model = get_model_for_state(state_graph, current_state)
+            if state_model:
+                logger.info(
+                    f"Using state-based model: {state_model} (state: {current_state})"
+                )
+            else:
+                logger.info(
+                    f"Using default model: {config.claude_model} (no state override)"
+                )
 
             result = run_claude_with_retry(
                 workflow_prompt_path,
@@ -150,6 +173,7 @@ def main() -> None:
                 initial_dive if iteration == 1 else None,
                 initial_task if iteration == 1 else None,
                 is_path_based_session,
+                model_override=state_model,
             )
 
             if result.status != ExecutionStatus.SUCCESS:
@@ -203,6 +227,32 @@ def main() -> None:
                 break
 
             if signal.status == SignalStatus.CONTINUE:
+                # Update state from signal
+                if signal.next_state:
+                    if is_valid_state(state_graph, signal.next_state):
+                        logger.info(
+                            f"State transition: {current_state} -> {signal.next_state}"
+                        )
+                        current_state = signal.next_state
+                    else:
+                        fallback = get_default_transition(state_graph, current_state)
+                        if fallback:
+                            logger.warning(
+                                f"Invalid next_state '{signal.next_state}', "
+                                f"using fallback: {fallback}"
+                            )
+                            current_state = fallback
+                        else:
+                            logger.warning(
+                                f"Invalid next_state '{signal.next_state}', "
+                                "no fallback available"
+                            )
+
+                # Merge context from signal
+                if signal.context:
+                    context.update(signal.context)
+                    logger.info(f"Context updated: {context}")
+
                 logger.info("Continuing to next iteration...")
                 continue
 
@@ -235,3 +285,106 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+
+# State graph utilities (loaded lazily, cached globally)
+_state_graph_cache: dict[str, Any] | None = None
+
+
+def load_state_graph(samocode_dir: Path) -> dict[str, Any] | None:
+    """Load state graph from YAML. Returns None if file doesn't exist.
+
+    Caches the result for subsequent calls.
+    """
+    global _state_graph_cache
+    if _state_graph_cache is not None:
+        return _state_graph_cache
+
+    graph_path = samocode_dir / "state_graph.yaml"
+    if not graph_path.exists():
+        return None
+
+    try:
+        import yaml
+
+        data = yaml.safe_load(graph_path.read_text())
+        _state_graph_cache = data
+        return data
+    except Exception as e:
+        graph_logger = logging.getLogger("samocode")
+        graph_logger.warning(f"Failed to load state graph: {e}")
+        return None
+
+
+def get_model_for_state(graph: dict[str, Any] | None, state: str) -> str | None:
+    """Get the model for a given state. Returns None if not found."""
+    if graph is None:
+        return None
+
+    states = graph.get("states")
+    if not isinstance(states, dict):
+        return None
+
+    state_config = states.get(state)
+    if not isinstance(state_config, dict):
+        return None
+
+    model = state_config.get("model")
+    if isinstance(model, str):
+        return model
+
+    default_model = graph.get("default_model")
+    return default_model if isinstance(default_model, str) else None
+
+
+def get_default_transition(graph: dict[str, Any] | None, state: str) -> str | None:
+    """Get the default transition for a state (fallback when next_state invalid)."""
+    if graph is None:
+        return None
+
+    states = graph.get("states")
+    if not isinstance(states, dict):
+        return None
+
+    state_config = states.get(state)
+    if not isinstance(state_config, dict):
+        return None
+
+    transitions = state_config.get("transitions")
+    if not isinstance(transitions, list):
+        return None
+
+    # Find transition with condition "default"
+    for transition in transitions:
+        if isinstance(transition, dict) and transition.get("condition") == "default":
+            to_state = transition.get("to")
+            return to_state if isinstance(to_state, str) else None
+
+    # If no default, return first transition's target
+    first_transition = transitions[0] if transitions else None
+    if isinstance(first_transition, dict):
+        to_state = first_transition.get("to")
+        return to_state if isinstance(to_state, str) else None
+
+    return None
+
+
+def get_initial_state(graph: dict[str, Any] | None) -> str:
+    """Get the initial state from graph, defaults to 'investigation'."""
+    if graph is None:
+        return "investigation"
+
+    initial = graph.get("initial_state")
+    return initial if isinstance(initial, str) else "investigation"
+
+
+def is_valid_state(graph: dict[str, Any] | None, state: str) -> bool:
+    """Check if a state exists in the graph."""
+    if graph is None:
+        return False
+
+    states = graph.get("states")
+    if not isinstance(states, dict):
+        return False
+
+    return state in states
