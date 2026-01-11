@@ -186,22 +186,31 @@ Ensure all work from this conversation is recorded in the active session.
 
 ## Action: archive
 
-Archive a session.
+Archive a session (full) or archive work within a session (partial).
 
-### Session Resolution
+### Usage Patterns
+
+1. `archive` - Archive entire active session (moves folder to archive/)
+2. `archive [session-name]` - Archive entire named session
+3. `archive keep file1.md file2.md` - Archive work files within session, keep specified files
+4. `archive [session-path] keep file1.md` - Archive work in specific session, keep files
+
+### Full Archive (no "keep" keyword)
+
+#### Session Resolution
 
 1. **If arguments after "archive" are empty:**
    - Check for active session in working memory
    - If no active session: ERROR: "No active session and no session name provided."
    - Use active session path
 
-2. **If arguments provided:**
+2. **If arguments provided (no "keep"):**
    - Search sessions directory for folders matching `*$ARGUMENTS*` (exclude archive/)
    - **No matches:** ERROR: "No sessions found matching '$ARGUMENTS'"
    - **One match:** Confirm with user: "Archive session [name]? (y/n)"
    - **Multiple matches:** List and ask user to specify
 
-### Archive Process
+#### Full Archive Process
 
 1. **Get session info:**
    - Read `[SESSION_PATH]/_overview.md`
@@ -238,4 +247,62 @@ Archive a session.
    Worktree removed: [path] (branch preserved)
 
    Session closed.
+   ```
+
+### Partial Archive (with "keep" keyword)
+
+Archives completed work within a session while keeping important deliverables accessible.
+
+#### Argument Parsing
+
+1. Split arguments on "keep" keyword
+2. Before "keep": session path (optional, defaults to active session)
+3. After "keep": list of files to keep in place (space-separated)
+
+Example: `archive keep competitor-analysis.md` → archive active session, keep competitor-analysis.md
+
+#### Partial Archive Process
+
+1. **Resolve session:**
+   - If path before "keep": use it
+   - Otherwise: use active session from working memory
+   - ERROR if no session found
+
+2. **Get timestamp and slug:**
+   ```bash
+   TIMESTAMP_FOLDER=$(date '+%y-%m-%d')
+   ```
+   - Extract slug from session folder name or task name from _overview.md
+   - Archive folder: `[SESSION_PATH]/archive/[YY-MM-DD]-[slug]/`
+
+3. **Create archive subfolder:**
+   ```bash
+   mkdir -p [SESSION_PATH]/archive/[YY-MM-DD]-[slug]
+   ```
+
+4. **Identify files to archive:**
+   - All `.md` files in session root EXCEPT:
+     - `_overview.md` (always kept - session state)
+     - `_qa.md` (always kept if exists)
+     - `_signal.json` (always kept)
+     - Files listed after "keep" keyword
+   - All timestamped files (pattern: `[MM-DD-HH:mm]-*.md`)
+
+5. **Move files to archive:**
+   ```bash
+   for file in [files_to_archive]; do
+     mv "$file" [SESSION_PATH]/archive/[YY-MM-DD]-[slug]/
+   done
+   ```
+
+6. **Update _overview.md:**
+   - Add Flow Log entry: `- [TIMESTAMP_LOG] Archived work to archive/[YY-MM-DD]-[slug]/, kept: [kept_files]`
+   - Reset Status section for next task
+
+7. **Report to user:**
+   ```
+   Work archived within session.
+   Archived to: [SESSION_PATH]/archive/[YY-MM-DD]-[slug]/
+   Files moved: [count] files
+   Kept in place: [kept_files]
    ```
