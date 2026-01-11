@@ -24,8 +24,10 @@ class Signal:
     reason: str | None = None
     needs: str | None = None
     waiting_for: str | None = None
+    next_state: str | None = None
+    context: dict[str, str | int | bool] | None = None
 
-    def to_dict(self) -> dict[str, str | None]:
+    def to_dict(self) -> dict[str, str | dict[str, str | int | bool] | None]:
         """Convert to JSON-serializable dict."""
         return {
             "status": self.status.value,
@@ -33,6 +35,8 @@ class Signal:
             "reason": self.reason,
             "needs": self.needs,
             "for": self.waiting_for,
+            "next_state": self.next_state,
+            "context": self.context,
         }
 
 
@@ -77,6 +81,8 @@ def read_signal_file(session_path: Path) -> Signal:
             reason=data.get("reason"),
             needs=data.get("needs"),
             waiting_for=data.get("for"),
+            next_state=data.get("next_state"),
+            context=data.get("context"),
         )
 
     except json.JSONDecodeError as e:
