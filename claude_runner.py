@@ -93,6 +93,11 @@ def build_prompt(
             prompt += (
                 f"{'2' if initial_dive else '1'}. Define task: **{initial_task}**\n"
             )
+        prompt += (
+            "\n**MANDATORY**: After these steps, continue through ALL workflow phases "
+            "(requirements → planning → implementation → testing → quality → done). "
+            "Do NOT signal `done` after just the dive - that's only phase 1 of 7.\n"
+        )
 
     return prompt
 
