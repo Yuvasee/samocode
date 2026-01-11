@@ -1,0 +1,248 @@
+# Adaptive State Graph
+# Defines workflow states, transitions, conditions, and model selection
+#
+# States define the workflow phases
+# Transitions specify next_state and conditions for routing
+# Models are selected per-state (haiku/sonnet/opus)
+
+version: "1.0"
+
+# Initial state when starting a new session
+initial_state: investigation
+
+# Default model when state lookup fails
+default_model: sonnet
+
+# Complexity levels:
+#   0 = trivial (quick fix, haiku)
+#   1-2 = standard (normal workflow, sonnet)
+#   3-4 = complex (thorough approach, opus)
+
+states:
+  investigation:
+    description: "Understand the problem space through codebase exploration"
+    model: sonnet
+    skill: dive
+    transitions:
+      - to: quick_fix
+        condition: complexity == 0
+        description: "Trivial task - skip to quick fix"
+      - to: requirements
+        condition: complexity >= 1
+        description: "Non-trivial - gather requirements"
+      - to: requirements
+        condition: default
+        description: "Default if complexity not set"
+
+  quick_fix:
+    description: "Fast path for trivial changes (complexity 0)"
+    model: haiku
+    skill: do
+    transitions:
+      - to: testing
+        condition: default
+        description: "Verify the fix works"
+
+  requirements:
+    description: "Gather requirements via Q&A with human"
+    model: sonnet
+    skill: task
+    transitions:
+      - to: waiting_qa
+        condition: qa_pending
+        description: "Wait for human to answer questions"
+      - to: planning
+        condition: qa_ready
+        description: "Proceed to planning"
+      - to: planning
+        condition: default
+        description: "No questions needed"
+
+  waiting_qa:
+    description: "Paused waiting for human Q&A answers"
+    model: haiku
+    skill: null
+    transitions:
+      - to: requirements
+        condition: qa_ready
+        description: "Answers received, continue"
+      - to: blocked
+        condition: qa_timeout
+        description: "Waited too long"
+
+  planning:
+    description: "Create implementation plan"
+    model: sonnet
+    skill: planning
+    transitions:
+      - to: implementation_simple
+        condition: complexity <= 2
+        description: "Standard implementation path"
+      - to: implementation_complex
+        condition: complexity >= 3
+        description: "Complex implementation with dual-agent"
+      - to: implementation_simple
+        condition: default
+        description: "Default to standard path"
+
+  implementation_simple:
+    description: "Execute plan phases (complexity 1-2)"
+    model: sonnet
+    skill: dop
+    transitions:
+      - to: testing
+        condition: phases_complete
+        description: "All phases done"
+      - to: implementation_simple
+        condition: phases_remaining
+        description: "Continue with next phase"
+      - to: blocked
+        condition: blocked
+        description: "Hit blocker"
+
+  implementation_complex:
+    description: "Execute plan phases with dual-agent comparison (complexity 3-4)"
+    model: opus
+    skill: dop2
+    transitions:
+      - to: testing
+        condition: phases_complete
+        description: "All phases done"
+      - to: implementation_complex
+        condition: phases_remaining
+        description: "Continue with next phase"
+      - to: blocked
+        condition: blocked
+        description: "Hit blocker"
+
+  testing:
+    description: "Test the implemented feature/fix"
+    model: sonnet
+    skill: testing
+    transitions:
+      - to: quality
+        condition: tests_pass
+        description: "Tests passed, proceed to quality review"
+      - to: implementation_simple
+        condition: tests_fail and complexity <= 2
+        description: "Fix failing tests (simple)"
+      - to: implementation_complex
+        condition: tests_fail and complexity >= 3
+        description: "Fix failing tests (complex)"
+      - to: quality
+        condition: default
+        description: "Default to quality phase"
+
+  quality:
+    description: "Code review and cleanup"
+    model: sonnet
+    skill: quality
+    transitions:
+      - to: testing_regression
+        condition: review_clean
+        description: "No blocking issues, run regression"
+      - to: quality_fix
+        condition: review_blocking
+        description: "Fix blocking issues"
+      - to: testing_regression
+        condition: quality_iteration >= 3
+        description: "Max iterations reached"
+
+  quality_fix:
+    description: "Fix blocking quality issues"
+    model: sonnet
+    skill: do
+    transitions:
+      - to: quality
+        condition: default
+        description: "Re-run quality review"
+
+  testing_regression:
+    description: "Regression testing after quality fixes"
+    model: sonnet
+    skill: testing
+    transitions:
+      - to: done
+        condition: tests_pass
+        description: "All tests pass"
+      - to: quality_fix
+        condition: tests_fail
+        description: "Quality fixes broke something"
+      - to: done
+        condition: default
+        description: "Default to done"
+
+  done:
+    description: "Session complete"
+    model: haiku
+    skill: summary
+    transitions: []
+
+  blocked:
+    description: "Session blocked, needs human intervention"
+    model: haiku
+    skill: null
+    transitions:
+      - to: investigation
+        condition: unblocked
+        description: "Human resolved blocker"
+
+# Predefined conditions (evaluated by Claude based on context)
+conditions:
+  complexity:
+    description: "Task complexity level 0-4"
+    type: integer
+    range: [0, 4]
+
+  tests_pass:
+    description: "All tests passed"
+    type: boolean
+
+  tests_fail:
+    description: "One or more tests failed"
+    type: boolean
+
+  qa_ready:
+    description: "All Q&A questions have been answered"
+    type: boolean
+
+  qa_pending:
+    description: "Waiting for Q&A answers"
+    type: boolean
+
+  qa_timeout:
+    description: "Waited too long for answers (3+ iterations)"
+    type: boolean
+
+  review_clean:
+    description: "No blocking issues in quality review"
+    type: boolean
+
+  review_blocking:
+    description: "Blocking issues found in quality review"
+    type: boolean
+
+  phases_complete:
+    description: "All plan phases are complete"
+    type: boolean
+
+  phases_remaining:
+    description: "More plan phases to execute"
+    type: boolean
+
+  blocked:
+    description: "Hit a blocker requiring human intervention"
+    type: boolean
+
+  unblocked:
+    description: "Previous blocker was resolved"
+    type: boolean
+
+  quality_iteration:
+    description: "Current quality fix iteration count"
+    type: integer
+    range: [0, 10]
+
+  default:
+    description: "Fallback condition, always true"
+    type: boolean
