@@ -47,6 +47,12 @@ def main() -> None:
         action="store_true",
         help="Show what would execute without running Claude",
     )
+    parser.add_argument(
+        "--complexity",
+        type=int,
+        choices=[0, 1, 2, 3, 4],
+        help="Complexity level (0-4): 0=quick-fix, 1-2=standard, 3-4=complex. Skips auto-detection.",
+    )
 
     args = parser.parse_args()
 
@@ -118,6 +124,8 @@ def main() -> None:
     logger.info(f"Max turns: {config.claude_max_turns}")
     logger.info(f"Timeout: {config.claude_timeout}s")
     logger.info(f"Dry run: {args.dry_run}")
+    if args.complexity is not None:
+        logger.info(f"Complexity override: {args.complexity}")
     if args.dive:
         logger.info(f"Initial dive: {args.dive}")
     if args.task:
@@ -139,6 +147,11 @@ def main() -> None:
     state_graph = load_state_graph(samocode_dir)
     current_state = get_initial_state(state_graph)
     context: dict[str, str | int | bool] = {}
+
+    # Initialize context with complexity if provided via CLI
+    if args.complexity is not None:
+        context["complexity"] = args.complexity
+        logger.info(f"Initial context set: complexity={args.complexity}")
 
     if state_graph:
         logger.info(f"State graph loaded, initial state: {current_state}")
