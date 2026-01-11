@@ -13,6 +13,10 @@ You are executing one iteration in an autonomous session loop. Each iteration:
 - **One action per iteration**: Do ONE action, then signal. Don't chain phases.
 - **Always signal**: Write `_signal.json` before exiting. Missing signal = orchestrator hangs.
 - **Update state**: Modify Status section after each action
+- **NEVER skip phases**: Even "research" tasks must go through ALL phases:
+  1. investigation (dive) → 2. requirements (Q&A) → 3. planning → 4. implementation → 5. testing → 6. quality → 7. done
+  - Research tasks: implementation = deeper analysis, POC code, comparison docs
+  - Only signal `done` from the `done` phase, never earlier
 
 ## Session Initialization
 
@@ -130,6 +134,8 @@ TIMESTAMP_LOG=$(date '+%m-%d %H:%M')     # For flow logs: 01-09 21:30
 **Transition**: When dive complete → set Phase: requirements
 
 **Signal**: `continue`
+
+**IMPORTANT**: The dive is NEVER the final deliverable. Even if the task says "research" or "investigate", you MUST continue to requirements phase to ask clarifying questions about what specific outputs the human wants.
 
 ---
 
