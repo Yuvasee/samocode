@@ -361,6 +361,123 @@ Pause for human input. Orchestrator will poll and resume.
 
 `for` values: `qa_answers`, `file_update`
 
+## State-Based Workflow
+
+The workflow can adapt dynamically based on task complexity using a state graph. This enables optimal model selection (haiku/sonnet/opus) and workflow routing per-step.
+
+### State Graph Location
+
+The state graph is defined in `state_graph.yaml` at the repository root. The orchestrator loads this automatically if present. Without it, the workflow uses default behavior.
+
+### Extended Signal Format
+
+When using state-based workflow, signals include two additional fields:
+
+```json
+{
+  "status": "continue",
+  "next_state": "planning",
+  "context": {
+    "complexity": 2,
+    "tests_pass": true,
+    "qa_ready": true
+  }
+}
+```
+
+**`next_state`** (optional): Name of the next state to transition to. Must match a state defined in `state_graph.yaml`. If invalid or missing, the orchestrator uses the default transition for the current state.
+
+**`context`** (optional): Dictionary of condition values for the orchestrator to evaluate transitions. Persisted between iterations.
+
+### Complexity Assessment
+
+During the **investigation** phase, assess task complexity on a 0-4 scale:
+
+| Level | Name | Description | Model |
+|-------|------|-------------|-------|
+| 0 | Trivial | One-liner fix, typo, obvious change | haiku |
+| 1-2 | Standard | Normal feature or bug fix | sonnet |
+| 3-4 | Complex | Architectural change, multi-system impact | opus |
+
+**Set complexity in your signal:**
+```json
+{
+  "status": "continue",
+  "next_state": "requirements",
+  "context": {"complexity": 2}
+}
+```
+
+**CLI Override**: The orchestrator may provide `--complexity N` to override your assessment. If overridden, use the provided value.
+
+### Available States
+
+States from `state_graph.yaml`:
+
+| State | Model | Skill | Description |
+|-------|-------|-------|-------------|
+| `investigation` | sonnet | dive | Understand the problem space |
+| `quick_fix` | haiku | do | Fast path for trivial changes |
+| `requirements` | sonnet | task | Gather requirements via Q&A |
+| `waiting_qa` | haiku | - | Paused for human Q&A answers |
+| `planning` | sonnet | planning | Create implementation plan |
+| `implementation_simple` | sonnet | dop | Standard implementation |
+| `implementation_complex` | opus | dop2 | Complex implementation with dual-agent |
+| `testing` | sonnet | testing | Test implemented feature |
+| `quality` | sonnet | quality | Code review and cleanup |
+| `quality_fix` | sonnet | do | Fix blocking quality issues |
+| `testing_regression` | sonnet | testing | Regression testing after fixes |
+| `done` | haiku | summary | Session complete |
+| `blocked` | haiku | - | Needs human intervention |
+
+### Transition Conditions
+
+Evaluate these conditions and include relevant ones in your `context`:
+
+| Condition | Type | When to Set |
+|-----------|------|-------------|
+| `complexity` | 0-4 | After investigation, based on task scope |
+| `tests_pass` | bool | All tests pass |
+| `tests_fail` | bool | One or more tests failed |
+| `qa_ready` | bool | All Q&A questions answered |
+| `qa_pending` | bool | Waiting for Q&A answers |
+| `qa_timeout` | bool | 3+ iterations waiting for answers |
+| `review_clean` | bool | No blocking issues in review |
+| `review_blocking` | bool | Blocking issues found |
+| `phases_complete` | bool | All plan phases done |
+| `phases_remaining` | bool | More phases to execute |
+| `quality_iteration` | int | Current fix iteration (max 3) |
+| `blocked` | bool | Hit a blocker |
+| `unblocked` | bool | Previous blocker resolved |
+
+### Example State Transitions
+
+**Investigation → Requirements (standard):**
+```json
+{"status": "continue", "next_state": "requirements", "context": {"complexity": 2}}
+```
+
+**Investigation → Quick Fix (trivial):**
+```json
+{"status": "continue", "next_state": "quick_fix", "context": {"complexity": 0}}
+```
+
+**Testing → Quality (tests pass):**
+```json
+{"status": "continue", "next_state": "quality", "context": {"tests_pass": true}}
+```
+
+**Quality → Testing Regression (clean review):**
+```json
+{"status": "continue", "next_state": "testing_regression", "context": {"review_clean": true}}
+```
+
+### Fallback Behavior
+
+- **Invalid `next_state`**: Orchestrator uses default transition from current state
+- **Missing state graph**: Workflow uses hardcoded phase sequence (investigation → requirements → planning → implementation → testing → quality → done)
+- **Missing context values**: Transitions use `default` condition
+
 ## MCP Management
 
 You can dynamically manage MCP servers in `.mcp.json` (located in Working Dir).
