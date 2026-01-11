@@ -260,6 +260,13 @@ def main() -> None:
                                 f"Invalid next_state '{signal.next_state}', "
                                 "no fallback available"
                             )
+                            notify_error(
+                                f"Invalid state '{signal.next_state}' with no fallback",
+                                session_display_name,
+                                iteration,
+                                config.telegram_bot_token,
+                                config.telegram_chat_id,
+                            )
 
                 # Merge context from signal
                 if signal.context:
@@ -270,6 +277,13 @@ def main() -> None:
                 continue
 
             logger.error(f"Unknown signal status: {signal.status}")
+            notify_error(
+                f"Unknown signal status: {signal.status}",
+                session_display_name,
+                iteration,
+                config.telegram_bot_token,
+                config.telegram_chat_id,
+            )
             break
 
         logger.info("=" * 70)

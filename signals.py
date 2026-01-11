@@ -62,7 +62,13 @@ def read_signal_file(session_path: Path) -> Signal:
         data = json.loads(signal_file.read_text())
 
         if not data:
-            return Signal(status=SignalStatus.CONTINUE)
+            # Empty signal likely means Claude crashed without writing
+            # Default to BLOCKED to prevent infinite loops
+            return Signal(
+                status=SignalStatus.BLOCKED,
+                reason="Empty signal file - Claude may have crashed",
+                needs="investigation",
+            )
 
         status_str = data.get("status", "").lower()
 

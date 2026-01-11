@@ -76,6 +76,17 @@ class TestSignalParsing:
         assert signal.context["complexity"] == 3
         assert signal.context["qa_ready"] is True
 
+    def test_empty_signal_returns_blocked(self, tmp_path: Path) -> None:
+        """Empty signal {} should return BLOCKED (not CONTINUE) to prevent loops."""
+        signal_file = tmp_path / "_signal.json"
+        signal_file.write_text("{}")
+
+        signal = read_signal_file(tmp_path)
+
+        assert signal.status == SignalStatus.BLOCKED
+        assert signal.reason is not None
+        assert "crash" in signal.reason.lower() or "empty" in signal.reason.lower()
+
     def test_signal_without_new_fields(self, tmp_path: Path) -> None:
         """Signal without new fields should parse correctly (backward compat)."""
         signal_file = tmp_path / "_signal.json"
