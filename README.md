@@ -37,6 +37,22 @@ cp .env.example .env
 # - CLAUDE_PATH (path to claude CLI)
 ```
 
+### 4. Configure Project CLAUDE.md
+
+**Every project using samocode must have this in its CLAUDE.md:**
+
+```markdown
+## Project Paths
+
+These paths are used by samocode:
+
+- **MAIN_REPO**: `~/your-project/repo`
+- **WORKTREES**: `~/your-project/worktrees/`
+- **SESSIONS**: `~/your-project/_sessions/`
+```
+
+Samocode-parent (the Claude running your interactive session) reads these paths and passes them to the worker. Without them, samocode will refuse to run.
+
 ## Quick Start
 
 ```bash
@@ -146,21 +162,30 @@ Session name is auto-prefixed with date: `my-task` → `26-01-08-my-task`
 
 ## Configuration
 
-Environment variables (or `.env` file):
+### Project Paths (Required in CLAUDE.md)
+
+These are read from your project's CLAUDE.md by samocode-parent and passed to the worker:
+
+| Path | Description |
+|------|-------------|
+| `SESSIONS` | Where session folders are stored |
+| `WORKTREES` | Where git worktrees are created (repo-based sessions) |
+| `MAIN_REPO` | Main git repository path (optional, for --repo flag) |
+
+### Environment Variables (`.env` file)
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `SESSIONS_DIR` | `~/samocode/_sessions` | Where sessions are stored |
-| `DEFAULT_PROJECTS_FOLDER` | `~/projects` | Where standalone projects are created |
-| `WORKTREES_DIR` | `~/samocode/worktrees` | Where worktrees are created (repo-based) |
 | `TELEGRAM_BOT_TOKEN` | - | Telegram bot token for notifications |
 | `TELEGRAM_CHAT_ID` | - | Telegram chat ID for notifications |
-| `CLAUDE_PATH` | `/home/dev/.nvm/.../claude` | Path to Claude CLI |
+| `CLAUDE_PATH` | `claude` | Path to Claude CLI |
 | `CLAUDE_MODEL` | `opus` | Model to use |
 | `CLAUDE_MAX_TURNS` | `120` | Max turns per iteration |
 | `CLAUDE_TIMEOUT` | `600` | Timeout in seconds |
 | `SAMOCODE_MAX_RETRIES` | `3` | Retry attempts on failure |
 | `SAMOCODE_RETRY_DELAY` | `5` | Delay between retries (seconds) |
+
+**Note:** `SESSIONS_DIR` and `WORKTREES_DIR` are NOT in `.env`. They must be passed by samocode-parent from the project's CLAUDE.md.
 
 ## Signal File Format
 
