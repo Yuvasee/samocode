@@ -18,10 +18,6 @@ cd ~/samocode
 # Restart Claude Code to apply changes
 ```
 
-This installs:
-- **9 skills**: session-management, investigation, planning, implementation, quality, testing, summary, task-definition, samocode-run
-- **14 commands**: /dive, /task, /create-plan, /do, /dop, /dop2, /do2, /cleanup, /multi-review, /summary, /session-start, /session-continue, /session-sync, /session-archive
-
 To uninstall: `./uninstall.sh`
 
 ### 2. Install Python Dependencies
@@ -337,7 +333,7 @@ Logs written to `logs/samocode.log`:
 
 ## Skills Reference
 
-Skills are in `./skills/` (installed via plugin):
+Skills are used internally by samocode during autonomous execution. Located in `./skills/`:
 
 | Skill | Actions | Description |
 |-------|---------|-------------|
@@ -353,7 +349,7 @@ Skills are in `./skills/` (installed via plugin):
 
 ## Commands Reference
 
-Commands are in `./commands/` (installed via plugin):
+Commands are standalone utilities that work independently of samocode. They don't use or require the samocode orchestrator - you can use them directly in any Claude Code session. Located in `./commands/`:
 
 | Command | Description |
 |---------|-------------|
