@@ -39,7 +39,11 @@ cp .env.example .env
 
 ### 4. Configure Project `.samocode` File
 
-**Every project using samocode must have a `.samocode` file in its root:**
+Samocode needs to know where to store its working data for each project:
+- **Sessions**: Folders containing task state, plans, Q&A docs, and artifacts for each autonomous run
+- **Worktrees**: Git worktrees for isolated branch work (optional, for repo-based sessions)
+
+Create a `.samocode` file in your project root:
 
 ```
 MAIN_REPO=~/your-project/repo
@@ -47,7 +51,7 @@ WORKTREES=~/your-project/worktrees/
 SESSIONS=~/your-project/_sessions/
 ```
 
-Samocode-parent reads this file and passes the paths to the worker. Without it, samocode will refuse to run.
+Samocode-parent reads this file and passes paths to the worker. See [Configuration](#configuration) for details.
 
 ## Quick Start
 
