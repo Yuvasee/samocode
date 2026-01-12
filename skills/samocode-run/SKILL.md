@@ -33,26 +33,25 @@ Samocode is an autonomous session orchestrator that runs Claude CLI in a loop to
    - If no argument, check if current working dir has `_samocode/`
    - Derive PROJECT_PATH from session path (parent of `_samocode/`)
 
-2. **Read project paths from CLAUDE.md:**
+2. **Read project paths from `.samocode` file:**
 
-   Look for `CLAUDE.md` in PROJECT_PATH (or its parent if needed). Parse the `## Project Paths` section:
+   Look for `.samocode` in PROJECT_PATH (or its parent if needed). Parse key=value format:
 
-   ```markdown
-   ## Project Paths
-   - **MAIN_REPO**: `~/project/repo`
-   - **WORKTREES**: `~/project/worktrees/`
-   - **SESSIONS**: `~/project/_sessions/`
+   ```
+   MAIN_REPO=~/project/repo
+   WORKTREES=~/project/worktrees/
+   SESSIONS=~/project/_sessions/
    ```
 
-   Extract values (strip backticks and trailing slashes):
+   Extract values:
    - `SESSIONS_DIR` from SESSIONS line
    - `WORKTREES_DIR` from WORKTREES line
    - `MAIN_REPO` from MAIN_REPO line (optional, for --repo flag)
 
-   **If CLAUDE.md or Project Paths section is missing:**
-   - ERROR: Tell user they need to add Project Paths to their CLAUDE.md
+   **If `.samocode` file is missing:**
+   - ERROR: Tell user they need to create `.samocode` file in project root
    - Show them the required format (see below)
-   - Do NOT proceed without these paths
+   - Do NOT proceed without this file
 
 3. **Verify session exists:**
    ```bash
@@ -101,24 +100,20 @@ Samocode is an autonomous session orchestrator that runs Claude CLI in a loop to
    - Summarize what was accomplished
    - If blocked, explain what's needed
 
-## Required CLAUDE.md Format
+## Required `.samocode` File
 
-Every project using samocode MUST have this in its CLAUDE.md:
+Every project using samocode MUST have a `.samocode` file in its root:
 
-```markdown
-## Project Paths
-
-These paths are used by samocode:
-
-- **MAIN_REPO**: `~/path/to/main/repo`
-- **WORKTREES**: `~/path/to/worktrees/`
-- **SESSIONS**: `~/path/to/_sessions/`
+```
+MAIN_REPO=~/path/to/main/repo
+WORKTREES=~/path/to/worktrees/
+SESSIONS=~/path/to/_sessions/
 ```
 
-**Notes:**
-- SESSIONS: Where samocode session folders are stored
-- WORKTREES: Where git worktrees are created for repo-based sessions
-- MAIN_REPO: The main git repository (used with --repo flag)
+**Keys:**
+- `SESSIONS`: Where samocode session folders are stored
+- `WORKTREES`: Where git worktrees are created for repo-based sessions
+- `MAIN_REPO`: The main git repository (optional, used with --repo flag)
 
 ## Session Structure
 
@@ -148,7 +143,7 @@ Next: [what to do next]
 
 ## Common Issues
 
-1. **Missing Project Paths**: Add `## Project Paths` section to project's CLAUDE.md
+1. **Missing .samocode file**: Create `.samocode` file in project root with SESSIONS, WORKTREES, MAIN_REPO
 2. **Telegram errors**: Check `~/samocode/.env` has TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID
 3. **Timeout**: Increase CLAUDE_TIMEOUT if iterations take >15 min
 4. **ngrok needed**: For webhooks (Vapi, Stripe), run `ngrok http [PORT]` first
@@ -188,13 +183,13 @@ If samocode exhibits bugs or weird behavior (loops, wrong decisions, missing ste
 
 ```
 User: "Run samocode on the hvac project"
-→ Read ~/code/hvac-voice-agent/CLAUDE.md for Project Paths
+→ Read ~/code/hvac-voice-agent/.samocode for paths
 → Session: ~/code/hvac-voice-agent/_samocode
-→ Start worker with SESSIONS_DIR and WORKTREES_DIR from CLAUDE.md
+→ Start worker with SESSIONS_DIR and WORKTREES_DIR from .samocode
 → Monitor iterations, report progress
 
 User: "Continue the samocode session"
 → Find session from context or ask user
-→ Read project's CLAUDE.md for paths
+→ Read project's .samocode for paths
 → Start worker, monitor iterations, report progress
 ```
