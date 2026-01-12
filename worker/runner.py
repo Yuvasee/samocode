@@ -51,6 +51,20 @@ def extract_working_dir(session_path: Path) -> Path | None:
     return working_dir if working_dir.exists() else None
 
 
+def extract_phase(session_path: Path) -> str | None:
+    """Extract Phase from session _overview.md Status section."""
+    overview_path = session_path / "_overview.md"
+    if not overview_path.exists():
+        return None
+
+    content = overview_path.read_text()
+    match = re.search(r"^Phase:\s*(.+)$", content, re.MULTILINE)
+    if not match:
+        return None
+
+    return match.group(1).strip()
+
+
 def build_prompt(
     workflow_prompt_path: Path,
     session_path: Path,
