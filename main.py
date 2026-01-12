@@ -15,7 +15,9 @@ from worker import (
     ExecutionStatus,
     SamocodeConfig,
     SignalStatus,
+    add_session_handler,
     clear_signal_file,
+    extract_phase,
     notify_blocked,
     notify_complete,
     notify_error,
@@ -138,12 +140,26 @@ def main() -> None:
     iteration = 0
     initial_dive = args.dive
     initial_task = args.task
+    session_handler = None
 
     try:
         while True:
             iteration += 1
+
+            # Add session handler once session directory exists (created by Claude)
+            if session_handler is None and session_path.exists():
+                try:
+                    session_handler = add_session_handler(logger, session_path)
+                    logger.info(f"Session log: {session_path / 'session.log'}")
+                except ValueError:
+                    pass  # Session path doesn't exist yet, will retry next iteration
+
+            # Get current phase from overview for logging context
+            phase = extract_phase(session_path)
+            phase_str = f"[{phase}]" if phase else ""
+
             logger.info(f"\n{'=' * 70}")
-            logger.info(f"Iteration {iteration}")
+            logger.info(f"Iteration {iteration} {phase_str}")
             logger.info("=" * 70)
 
             clear_signal_file(session_path)
@@ -172,7 +188,10 @@ def main() -> None:
                 break
 
             signal = read_signal_file(session_path)
-            logger.info(f"Signal: {signal.status.value}")
+            # Use phase from signal if available, otherwise use previously extracted phase
+            signal_phase = signal.phase or phase
+            phase_log = f"[{signal_phase}] " if signal_phase else ""
+            logger.info(f"{phase_log}Signal: {signal.status.value}")
 
             if signal.status == SignalStatus.DONE:
                 logger.info(f"Workflow complete: {signal.summary}")
