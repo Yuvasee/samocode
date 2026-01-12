@@ -331,23 +331,25 @@ C) [option]
 
 ## Signal File Format
 
-Write to `_signal.json` before exiting:
+Write to `_signal.json` before exiting.
+
+**IMPORTANT**: Always include the `phase` field with the current workflow phase. This enables the orchestrator to log phase context for debugging and monitoring.
 
 ### continue
 ```json
-{"status": "continue"}
+{"status": "continue", "phase": "implementation"}
 ```
 Keep looping. Use when action complete but more work remains.
 
 ### done
 ```json
-{"status": "done", "summary": "Brief description of what was accomplished"}
+{"status": "done", "phase": "done", "summary": "Brief description of what was accomplished"}
 ```
 Workflow complete. All phases finished.
 
 ### blocked
 ```json
-{"status": "blocked", "reason": "Clear description", "needs": "human_decision"}
+{"status": "blocked", "phase": "implementation", "reason": "Clear description", "needs": "human_decision"}
 ```
 Stop and notify human. Use when genuinely uncertain or hit error.
 
@@ -355,11 +357,22 @@ Stop and notify human. Use when genuinely uncertain or hit error.
 
 ### waiting
 ```json
-{"status": "waiting", "for": "qa_answers"}
+{"status": "waiting", "phase": "requirements", "for": "qa_answers"}
 ```
 Pause for human input. Orchestrator will poll and resume.
 
-`for` values: `qa_answers`, `file_update`
+`for` values: `qa_answers`, `file_update`, `human_action`
+
+### Signal Fields Reference
+
+| Field | Required | Values | Description |
+|-------|----------|--------|-------------|
+| `status` | Yes | `continue`, `done`, `blocked`, `waiting` | Signal type |
+| `phase` | Yes | `investigation`, `requirements`, `planning`, `implementation`, `testing`, `quality`, `done` | Current workflow phase |
+| `summary` | For `done` | string | What was accomplished |
+| `reason` | For `blocked` | string | Why blocked |
+| `needs` | For `blocked` | `human_decision`, `clarification`, `error_resolution` | What's needed to unblock |
+| `for` | For `waiting` | `qa_answers`, `file_update`, `human_action` | What we're waiting for |
 
 ## MCP Management
 
