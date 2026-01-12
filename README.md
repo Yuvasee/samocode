@@ -1,5 +1,9 @@
 # Samocode - Autonomous Session Orchestrator
 
+This is Claude automation as I see it most effective for my personal tasks. Currently it's genuinely a supervised agentic loop. It's good at both research and coding (better as separate tasks) and capable of doing pretty big pieces end-to-end. The emerging behavior to earn money for its owner is still TBD. Reviewing the code it produces for production is highly recommended.
+
+---
+
 A "dumb" Python orchestrator that runs Claude Code CLI in a loop. Claude reads session state, decides actions via skills, updates state, and signals flow control. Human intervention happens via samocode-parent at key decision points (human gates).
 
 ## Installation
