@@ -368,7 +368,7 @@ Pause for human input. Orchestrator will poll and resume.
 | Field | Required | Values | Description |
 |-------|----------|--------|-------------|
 | `status` | Yes | `continue`, `done`, `blocked`, `waiting` | Signal type |
-| `phase` | Yes | `investigation`, `requirements`, `planning`, `implementation`, `testing`, `quality`, `done` | Current workflow phase |
+| `phase` | Yes | `investigation`, `requirements`, `planning`, `implementation`, `testing`, `quality`, `done` | Current workflow phase (fallback: extracted from overview if missing) |
 | `summary` | For `done` | string | What was accomplished |
 | `reason` | For `blocked` | string | Why blocked |
 | `needs` | For `blocked` | `human_decision`, `clarification`, `error_resolution` | What's needed to unblock |
