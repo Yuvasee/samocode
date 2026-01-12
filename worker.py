@@ -95,9 +95,7 @@ def main() -> None:
         logger.error("Configuration validation failed:")
         for error in validation_errors:
             logger.error(f"  - {error}")
-        fatal_errors = [e for e in validation_errors if "TELEGRAM" not in e]
-        if fatal_errors:
-            sys.exit(1)
+        sys.exit(1)
 
     if session_path.exists() and not session_path.is_dir():
         logger.error(f"Session path exists but is not a directory: {session_path}")

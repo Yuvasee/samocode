@@ -85,10 +85,6 @@ class SamocodeConfig:
         if self.claude_timeout < 1:
             errors.append(f"Invalid timeout: {self.claude_timeout}")
 
-        if not self.telegram_bot_token:
-            errors.append("TELEGRAM_BOT_TOKEN not set (notifications disabled)")
-
-        if not self.telegram_chat_id:
-            errors.append("TELEGRAM_CHAT_ID not set (notifications disabled)")
+        # Telegram is optional - no error if not configured
 
         return errors
