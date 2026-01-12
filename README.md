@@ -37,21 +37,17 @@ cp .env.example .env
 # - TELEGRAM_CHAT_ID (optional - for notifications)
 ```
 
-### 4. Configure Project CLAUDE.md
+### 4. Configure Project `.samocode` File
 
-**Every project using samocode must have this in its CLAUDE.md:**
+**Every project using samocode must have a `.samocode` file in its root:**
 
-```markdown
-## Project Paths
-
-These paths are used by samocode:
-
-- **MAIN_REPO**: `~/your-project/repo`
-- **WORKTREES**: `~/your-project/worktrees/`
-- **SESSIONS**: `~/your-project/_sessions/`
+```
+MAIN_REPO=~/your-project/repo
+WORKTREES=~/your-project/worktrees/
+SESSIONS=~/your-project/_sessions/
 ```
 
-Samocode-parent reads these paths and passes them to the worker. Without them, samocode will refuse to run.
+Samocode-parent reads this file and passes the paths to the worker. Without it, samocode will refuse to run.
 
 ## Quick Start
 
@@ -72,7 +68,7 @@ Samocode takes two key parameters:
 - **task**: what to implement after understanding the code
 
 Samocode-parent will:
-1. Read `CLAUDE.md` → get SESSIONS, WORKTREES, MAIN_REPO paths
+1. Read `.samocode` → get SESSIONS, WORKTREES, MAIN_REPO paths
 2. Start the worker with project-specific config
 3. Monitor and report: "Iteration 3, implementation phase..."
 
@@ -117,7 +113,7 @@ Samocode has a three-layer architecture:
 │  SAMOCODE-PARENT (Your interactive Claude session)             │
 │  - You talk to this Claude directly                            │
 │  - Runs in your project directory (e.g., ~/avon-ai)            │
-│  - Reads project's CLAUDE.md for paths                         │
+│  - Reads project's .samocode file for paths                    │
 │  - Starts worker.py with project-specific config               │
 │  - Monitors progress, answers Q&A, debugs issues               │
 └─────────────────────────────────────────────────────────────────┘
@@ -150,7 +146,7 @@ Claude decides everything by reading `_overview.md` and using skills.
 
 ### Why Samocode-Parent Matters
 
-1. **Project Context**: Parent reads your project's CLAUDE.md and knows project-specific paths
+1. **Project Context**: Parent reads your project's `.samocode` file and knows project-specific paths
 2. **Path Injection**: Parent passes `SESSIONS_DIR` and `WORKTREES_DIR` to worker
 3. **Monitoring**: Parent watches worker output and reports progress to you
 4. **Debugging**: When things go wrong, parent can analyze and fix issues
@@ -187,12 +183,12 @@ Parent Claude handles these gates on your behalf - answering questions, approvin
 
 ## Configuration
 
-### Project Paths (Required in CLAUDE.md)
+### `.samocode` File (Required per project)
 
-These are read from your project's CLAUDE.md by samocode-parent and passed to the worker:
+Create a `.samocode` file in each project root. Samocode-parent reads this and passes paths to worker:
 
-| Path | Description |
-|------|-------------|
+| Key | Description |
+|-----|-------------|
 | `SESSIONS` | Where session folders are stored |
 | `WORKTREES` | Where git worktrees are created (repo-based sessions) |
 | `MAIN_REPO` | Main git repository path (optional, for --repo flag) |
@@ -210,7 +206,7 @@ These are read from your project's CLAUDE.md by samocode-parent and passed to th
 | `SAMOCODE_MAX_RETRIES` | `3` | Retry attempts on failure |
 | `SAMOCODE_RETRY_DELAY` | `5` | Delay between retries (seconds) |
 
-**Note:** `SESSIONS_DIR` and `WORKTREES_DIR` are NOT in `.env`. They must be passed by samocode-parent from the project's CLAUDE.md.
+**Note:** `SESSIONS_DIR` and `WORKTREES_DIR` are NOT in `.env`. They are read by samocode-parent from the project's `.samocode` file.
 
 ## Worker CLI Reference
 
