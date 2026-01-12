@@ -148,11 +148,8 @@ def main() -> None:
 
             # Add session handler once session directory exists (created by Claude)
             if session_handler is None and session_path.exists():
-                try:
-                    session_handler = add_session_handler(logger, session_path)
-                    logger.info(f"Session log: {session_path / 'session.log'}")
-                except ValueError:
-                    pass  # Session path doesn't exist yet, will retry next iteration
+                session_handler = add_session_handler(logger, session_path)
+                logger.info(f"Session log: {session_path / 'session.log'}")
 
             # Get current phase from overview for logging context
             phase = extract_phase(session_path)

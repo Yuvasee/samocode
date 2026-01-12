@@ -68,14 +68,3 @@ def add_session_handler(
     logger.addHandler(handler)
 
     return handler
-
-
-def remove_session_handler(logger: logging.Logger, handler: logging.Handler) -> None:
-    """Remove and close a session handler from logger.
-
-    Args:
-        logger: Logger instance to remove handler from
-        handler: Handler instance to remove
-    """
-    logger.removeHandler(handler)
-    handler.close()
