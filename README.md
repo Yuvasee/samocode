@@ -99,6 +99,65 @@ python worker.py --session api-redesign \
 
 Claude decides everything by reading `_overview.md` and using skills.
 
+## Samocode-Parent: The Interactive Layer
+
+Samocode has a three-layer architecture:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  SAMOCODE-PARENT (Your interactive Claude session)             │
+│  - You talk to this Claude directly                            │
+│  - Runs in your project directory (e.g., ~/avon-ai)            │
+│  - Reads project's CLAUDE.md for paths                         │
+│  - Starts worker.py with project-specific config               │
+│  - Monitors progress, answers Q&A, debugs issues               │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  WORKER (Python orchestrator)                                   │
+│  - Runs: python ~/samocode/worker.py --session ...             │
+│  - Receives SESSIONS_DIR, WORKTREES_DIR from parent            │
+│  - Spawns Claude CLI for each iteration                        │
+│  - Reads signals, sends Telegram notifications                 │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  SAMOCODE-CHILD (Spawned Claude CLI instances)                 │
+│  - Runs with cwd = Working Dir from _overview.md               │
+│  - Receives workflow.md as prompt                              │
+│  - Reads session state, executes skills, writes signal         │
+│  - Each iteration is a fresh Claude instance                   │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Why Samocode-Parent Matters
+
+1. **Project Context**: Parent reads your project's CLAUDE.md and knows project-specific paths
+2. **Path Injection**: Parent passes `SESSIONS_DIR` and `WORKTREES_DIR` to worker
+3. **Monitoring**: Parent watches worker output and reports progress to you
+4. **Debugging**: When things go wrong, parent can analyze and fix issues
+5. **Q&A Bridge**: Parent can answer questions in `_qa.md` on your behalf
+
+### Typical Workflow
+
+```
+You: "Run samocode on the API redesign task"
+     ↓
+Samocode-Parent:
+  1. Reads ~/your-project/CLAUDE.md → gets SESSIONS, WORKTREES paths
+  2. Runs: SESSIONS_DIR=... WORKTREES_DIR=... python worker.py --session ...
+  3. Monitors output, reports: "Iteration 3, implementation phase..."
+  4. When blocked: "Samocode needs answers in _qa.md, here are the questions..."
+     ↓
+You: Answer questions or give guidance
+     ↓
+Samocode-Parent:
+  5. Continues worker, monitors until done
+  6. Reports: "Complete! Here's what was accomplished..."
+```
+
 ## Usage
 
 ### Starting a New Session
