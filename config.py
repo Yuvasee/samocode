@@ -29,30 +29,38 @@ class SamocodeConfig:
 
     @classmethod
     def from_env(cls) -> "SamocodeConfig":
-        """Load configuration from environment variables."""
-        default_sessions = str(Path.home() / "samocode" / "_sessions")
-        default_worktrees = str(Path.home() / "samocode" / "worktrees")
-        default_projects = str(Path.home() / "projects")
+        """Load configuration from environment variables.
+
+        SESSIONS_DIR and WORKTREES_DIR must be passed by samocode-parent
+        from project's CLAUDE.md. They have no defaults.
+        """
+        sessions_dir = os.getenv("SESSIONS_DIR")
+        worktrees_dir = os.getenv("WORKTREES_DIR")
+
+        if not sessions_dir:
+            raise ValueError(
+                "SESSIONS_DIR not set. Must be passed by samocode-parent "
+                "from project's CLAUDE.md (## Project Paths section)"
+            )
+        if not worktrees_dir:
+            raise ValueError(
+                "WORKTREES_DIR not set. Must be passed by samocode-parent "
+                "from project's CLAUDE.md (## Project Paths section)"
+            )
+
         return cls(
-            sessions_dir=Path(os.getenv("SESSIONS_DIR", default_sessions))
-            .expanduser()
-            .resolve(),
+            sessions_dir=Path(sessions_dir).expanduser().resolve(),
             default_projects_folder=Path(
-                os.getenv("DEFAULT_PROJECTS_FOLDER", default_projects)
+                os.getenv("DEFAULT_PROJECTS_FOLDER", str(Path.home() / "projects"))
             )
             .expanduser()
             .resolve(),
             repo_path=None,  # Set per-session via CLI
-            worktrees_dir=Path(os.getenv("WORKTREES_DIR", default_worktrees))
-            .expanduser()
-            .resolve(),
+            worktrees_dir=Path(worktrees_dir).expanduser().resolve(),
             telegram_bot_token=os.getenv("TELEGRAM_BOT_TOKEN", ""),
             telegram_chat_id=os.getenv("TELEGRAM_CHAT_ID", ""),
             claude_path=Path(
-                os.getenv(
-                    "CLAUDE_PATH",
-                    "claude",  # Assumes claude is in PATH
-                )
+                os.getenv("CLAUDE_PATH", "claude")  # Assumes claude is in PATH
             ),
             claude_model=os.getenv("CLAUDE_MODEL", "opus"),
             claude_max_turns=int(os.getenv("CLAUDE_MAX_TURNS", "120")),

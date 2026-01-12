@@ -31,21 +31,50 @@ Samocode is an autonomous session orchestrator that runs Claude CLI in a loop to
    - If `$ARGUMENTS` is a full path to `_samocode/` or `_overview.md`, use it
    - If `$ARGUMENTS` is a project path, look for `_samocode/_overview.md` inside it
    - If no argument, check if current working dir has `_samocode/`
+   - Derive PROJECT_PATH from session path (parent of `_samocode/`)
 
-2. **Verify session exists:**
+2. **Read project paths from CLAUDE.md:**
+
+   Look for `CLAUDE.md` in PROJECT_PATH (or its parent if needed). Parse the `## Project Paths` section:
+
+   ```markdown
+   ## Project Paths
+   - **MAIN_REPO**: `~/project/repo`
+   - **WORKTREES**: `~/project/worktrees/`
+   - **SESSIONS**: `~/project/_sessions/`
+   ```
+
+   Extract values (strip backticks and trailing slashes):
+   - `SESSIONS_DIR` from SESSIONS line
+   - `WORKTREES_DIR` from WORKTREES line
+   - `MAIN_REPO` from MAIN_REPO line (optional, for --repo flag)
+
+   **If CLAUDE.md or Project Paths section is missing:**
+   - ERROR: Tell user they need to add Project Paths to their CLAUDE.md
+   - Show them the required format (see below)
+   - Do NOT proceed without these paths
+
+3. **Verify session exists:**
    ```bash
    cat [SESSION_PATH]/_overview.md
    ```
    - Show user the current Status section (Phase, Blocked, Last Action, Next)
    - If blocked, ask user how to proceed
 
-3. **Start samocode:**
+4. **Start samocode:**
    ```bash
-   cd ~/samocode && CLAUDE_TIMEOUT=900 python worker.py --session [SESSION_PATH] 2>&1
+   cd ~/samocode && \
+     SESSIONS_DIR=[extracted value] \
+     WORKTREES_DIR=[extracted value] \
+     CLAUDE_TIMEOUT=900 \
+     python worker.py --session [SESSION_PATH] 2>&1
    ```
+
+   If MAIN_REPO was found and session is repo-based, add `--repo [MAIN_REPO]`
+
    Run this in background using `run_in_background: true`
 
-4. **Monitor loop using background sleep triggers:**
+5. **Monitor loop using background sleep triggers:**
 
    Since you can't poll automatically, use background bash with sleep:
 
@@ -67,10 +96,29 @@ Samocode is an autonomous session orchestrator that runs Claude CLI in a loop to
    - Set next timer (adjust sleep based on phase)
    - Stop when `done`, alert on `blocked`
 
-5. **On completion or block:**
+6. **On completion or block:**
    - Read final `_overview.md` status
    - Summarize what was accomplished
    - If blocked, explain what's needed
+
+## Required CLAUDE.md Format
+
+Every project using samocode MUST have this in its CLAUDE.md:
+
+```markdown
+## Project Paths
+
+These paths are used by samocode:
+
+- **MAIN_REPO**: `~/path/to/main/repo`
+- **WORKTREES**: `~/path/to/worktrees/`
+- **SESSIONS**: `~/path/to/_sessions/`
+```
+
+**Notes:**
+- SESSIONS: Where samocode session folders are stored
+- WORKTREES: Where git worktrees are created for repo-based sessions
+- MAIN_REPO: The main git repository (used with --repo flag)
 
 ## Session Structure
 
@@ -100,10 +148,11 @@ Next: [what to do next]
 
 ## Common Issues
 
-1. **Telegram errors**: Check `~/samocode/.env` has TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID
-2. **Timeout**: Increase CLAUDE_TIMEOUT if iterations take >15 min
-3. **ngrok needed**: For webhooks (Vapi, Stripe), run `ngrok http [PORT]` first
-4. **Session not found**: Ensure `_samocode/_overview.md` exists in project
+1. **Missing Project Paths**: Add `## Project Paths` section to project's CLAUDE.md
+2. **Telegram errors**: Check `~/samocode/.env` has TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID
+3. **Timeout**: Increase CLAUDE_TIMEOUT if iterations take >15 min
+4. **ngrok needed**: For webhooks (Vapi, Stripe), run `ngrok http [PORT]` first
+5. **Session not found**: Ensure `_samocode/_overview.md` exists in project
 
 ## Debugging Samocode Bugs
 
@@ -124,8 +173,8 @@ If samocode exhibits bugs or weird behavior (loops, wrong decisions, missing ste
 3. **Samocode source locations:**
    - Worker/orchestrator: `~/samocode/worker.py`, `claude_runner.py`, `config.py`
    - Workflow prompt: `~/samocode/workflow.md`
-   - Skills: `~/.claude/skills/*/SKILL.md`
-   - Session management: `~/.claude/skills/session-management/SKILL.md`
+   - Skills: `~/samocode/skills/*/SKILL.md`
+   - Commands: `~/samocode/commands/*.md`
 
 4. **Common fix patterns:**
    - Infinite loops → Add explicit stop conditions in workflow.md
@@ -139,10 +188,13 @@ If samocode exhibits bugs or weird behavior (loops, wrong decisions, missing ste
 
 ```
 User: "Run samocode on the hvac project"
+→ Read ~/code/hvac-voice-agent/CLAUDE.md for Project Paths
 → Session: ~/code/hvac-voice-agent/_samocode
-→ Start worker, monitor iterations, report progress
+→ Start worker with SESSIONS_DIR and WORKTREES_DIR from CLAUDE.md
+→ Monitor iterations, report progress
 
 User: "Continue the samocode session"
 → Find session from context or ask user
+→ Read project's CLAUDE.md for paths
 → Start worker, monitor iterations, report progress
 ```
