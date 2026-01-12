@@ -1,6 +1,6 @@
 # Samocode - Autonomous Session Orchestrator
 
-This is Claude automation as I see it most effective for my personal tasks. Currently it's genuinely a supervised agentic loop. It's good at both research and coding (better as separate tasks) and capable of doing pretty big pieces end-to-end. The emerging behavior to earn money for its owner is still TBD. Reviewing the code it produces for production is highly recommended.
+This is Claude automation the way I find most effective for my personal tasks. Currently it's essentially a supervised agentic loop. It's good at both research and coding (better as separate tasks) and capable of doing pretty big pieces end-to-end. The emergent behavior of earning money for its owner is still TBD. Reviewing the code it produces for production is highly recommended.
 
 ---
 
