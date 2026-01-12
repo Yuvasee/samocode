@@ -1,4 +1,4 @@
-"""Telegram notifications for Samocode orchestrator.
+"""Notifications for Samocode orchestrator.
 
 Simple HTTP-based notifications using Telegram Bot API.
 Failures are logged but don't stop execution.
@@ -8,7 +8,7 @@ import logging
 
 import requests
 
-logger = logging.getLogger("samocode.telegram")
+logger = logging.getLogger("samocode.notifications")
 
 
 def send_telegram_message(
@@ -67,7 +67,7 @@ def notify_blocked(
     """Notify that workflow is blocked."""
     needs_text = f"\n*Needs:* `{needs}`" if needs else ""
     message = (
-        f"🚫 *Samocode Blocked*\n\n"
+        f"*Samocode Blocked*\n\n"
         f"*Session:* `{session_name}`\n"
         f"*Reason:* `{reason}`{needs_text}\n\n"
         f"Check session files."
@@ -83,7 +83,7 @@ def notify_waiting(
 ) -> None:
     """Notify that workflow is waiting for input."""
     message = (
-        f"⏳ *Samocode Waiting*\n\n"
+        f"*Samocode Waiting*\n\n"
         f"*Session:* `{session_name}`\n"
         f"*Waiting for:* `{waiting_for}`\n\n"
         f"Check session files."
@@ -100,7 +100,7 @@ def notify_complete(
 ) -> None:
     """Notify that workflow completed successfully."""
     message = (
-        f"✅ *Samocode Complete*\n\n"
+        f"*Samocode Complete*\n\n"
         f"*Session:* `{session_name}`\n"
         f"*Iterations:* {iterations}\n"
         f"*Summary:* `{summary}`"
@@ -120,7 +120,7 @@ def notify_error(
         error_message[:500] + "..." if len(error_message) > 500 else error_message
     )
     message = (
-        f"❌ *Samocode Error*\n\n"
+        f"*Samocode Error*\n\n"
         f"*Session:* `{session_name}`\n"
         f"*Iteration:* {iteration}\n"
         f"*Error:* `{truncated}`\n\n"

@@ -6,8 +6,8 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-# Load .env from samocode directory
-load_dotenv(Path(__file__).parent / ".env")
+# Load .env from samocode root directory (parent of worker/)
+load_dotenv(Path(__file__).parent.parent / ".env")
 
 
 @dataclass(frozen=True)
@@ -32,7 +32,7 @@ class SamocodeConfig:
         """Load configuration from environment variables.
 
         SESSIONS_DIR and WORKTREES_DIR must be passed by samocode-parent
-        from project's CLAUDE.md. They have no defaults.
+        from project's .samocode file. They have no defaults.
         """
         sessions_dir = os.getenv("SESSIONS_DIR")
         worktrees_dir = os.getenv("WORKTREES_DIR")
@@ -40,12 +40,12 @@ class SamocodeConfig:
         if not sessions_dir:
             raise ValueError(
                 "SESSIONS_DIR not set. Must be passed by samocode-parent "
-                "from project's CLAUDE.md (## Project Paths section)"
+                "from project's .samocode file"
             )
         if not worktrees_dir:
             raise ValueError(
                 "WORKTREES_DIR not set. Must be passed by samocode-parent "
-                "from project's CLAUDE.md (## Project Paths section)"
+                "from project's .samocode file"
             )
 
         return cls(
