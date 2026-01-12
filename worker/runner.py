@@ -9,26 +9,9 @@ from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 
-from config import SamocodeConfig
+from .config import SamocodeConfig
 
 logger = logging.getLogger("samocode")
-
-
-def extract_working_dir(session_path: Path) -> Path | None:
-    """Extract Working Dir from session _overview.md."""
-    overview_path = session_path / "_overview.md"
-    if not overview_path.exists():
-        return None
-
-    content = overview_path.read_text()
-    match = re.search(r"^Working Dir:\s*(.+)$", content, re.MULTILINE)
-    if not match:
-        return None
-
-    working_dir_str = match.group(1).strip()
-    working_dir = Path(working_dir_str).expanduser().resolve()
-
-    return working_dir if working_dir.exists() else None
 
 
 class ExecutionStatus(Enum):
@@ -51,6 +34,23 @@ class ExecutionResult:
     attempt: int
 
 
+def extract_working_dir(session_path: Path) -> Path | None:
+    """Extract Working Dir from session _overview.md."""
+    overview_path = session_path / "_overview.md"
+    if not overview_path.exists():
+        return None
+
+    content = overview_path.read_text()
+    match = re.search(r"^Working Dir:\s*(.+)$", content, re.MULTILINE)
+    if not match:
+        return None
+
+    working_dir_str = match.group(1).strip()
+    working_dir = Path(working_dir_str).expanduser().resolve()
+
+    return working_dir if working_dir.exists() else None
+
+
 def build_prompt(
     workflow_prompt_path: Path,
     session_path: Path,
@@ -71,7 +71,7 @@ def build_prompt(
         prompt += f"- Base repo: `{config.repo_path}`\n"
         prompt += f"- Worktree path: `{worktree_path}`\n"
         branch_prefix = os.getenv("GIT_BRANCH_PREFIX", "")
-        branch_name = session_name.split('-', 3)[-1]
+        branch_name = session_name.split("-", 3)[-1]
         if branch_prefix:
             prompt += f"- Branch name: `{branch_prefix}/{branch_name}`\n"
         else:

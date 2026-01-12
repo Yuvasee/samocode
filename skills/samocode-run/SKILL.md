@@ -66,7 +66,7 @@ Samocode is an autonomous session orchestrator that runs Claude CLI in a loop to
      SESSIONS_DIR=[extracted value] \
      WORKTREES_DIR=[extracted value] \
      CLAUDE_TIMEOUT=900 \
-     python worker.py --session [SESSION_PATH] 2>&1
+     python main.py --session [SESSION_PATH] 2>&1
    ```
 
    If MAIN_REPO was found and session is repo-based, add `--repo [MAIN_REPO]`
@@ -166,7 +166,7 @@ If samocode exhibits bugs or weird behavior (loops, wrong decisions, missing ste
    - **WAIT FOR USER CONFIRMATION before making any changes**
 
 3. **Samocode source locations:**
-   - Worker/orchestrator: `~/samocode/worker.py`, `claude_runner.py`, `config.py`
+   - Worker/orchestrator: `~/samocode/main.py`, `claude_runner.py`, `config.py`
    - Workflow prompt: `~/samocode/workflow.md`
    - Skills: `~/samocode/skills/*/SKILL.md`
    - Commands: `~/samocode/commands/*.md`

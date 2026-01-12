@@ -125,7 +125,7 @@ Samocode has a three-layer architecture:
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │  WORKER (Python orchestrator - "dumb")                          │
-│  - Runs: python ~/samocode/worker.py --session ...             │
+│  - Runs: python ~/samocode/main.py --session ...               │
 │  - Receives SESSIONS_DIR, WORKTREES_DIR from parent            │
 │  - Spawns Claude CLI for each iteration                        │
 │  - Reads signals, sends Telegram notifications                 │
@@ -222,7 +222,7 @@ The worker is normally started by samocode-parent, but can be run directly for d
 
 ```bash
 SESSIONS_DIR=~/project/_sessions WORKTREES_DIR=~/project/worktrees \
-python worker.py --session api-redesign \
+python main.py --session api-redesign \
   --repo ~/my-repo \
   --dive "current API structure and pain points" \
   --task "Redesign the REST API to use consistent naming"
@@ -232,7 +232,7 @@ python worker.py --session api-redesign \
 
 ```bash
 SESSIONS_DIR=~/project/_sessions WORKTREES_DIR=~/project/worktrees \
-python worker.py --session ~/code/my-project/_samocode \
+python main.py --session ~/code/my-project/_samocode \
   --dive "understand existing code" \
   --task "Add new feature"
 ```
@@ -240,7 +240,7 @@ python worker.py --session ~/code/my-project/_samocode \
 **Dry run** (show config without executing):
 
 ```bash
-python worker.py --session test --dry-run
+python main.py --session test --dry-run
 ```
 
 **Required for new sessions:** Both `--dive` and `--task` must be provided.
@@ -254,7 +254,7 @@ When the agent signals `waiting` for Q&A answers:
 
 ```bash
 SESSIONS_DIR=~/project/_sessions WORKTREES_DIR=~/project/worktrees \
-python worker.py --session my-task --repo ~/my-repo
+python main.py --session my-task --repo ~/my-repo
 ```
 
 **Note:** `--dive` and `--task` are only used on first run. On subsequent runs, agent reads state from `_overview.md`.
@@ -376,19 +376,19 @@ Commands are standalone utilities that work independently of samocode. They don'
 
 ```
 ~/samocode/
-├── install.sh            # Install skills/commands to ~/.claude/
-├── uninstall.sh          # Remove installed skills/commands
-├── .claude-plugin/       # Plugin manifest (for validation)
-│   └── plugin.json
-├── worker.py             # Main orchestrator loop
+├── main.py               # Entry point - orchestrator loop
 ├── workflow.md           # Master prompt for Claude
-├── config.py             # Configuration from environment
-├── signals.py            # Signal file operations
-├── claude_runner.py      # Claude CLI execution with retry
-├── telegram.py           # Telegram notifications
-├── logging_setup.py      # Logging configuration
+├── worker/               # Core worker package
+│   ├── __init__.py
+│   ├── config.py         # Configuration from environment
+│   ├── signals.py        # Signal file operations
+│   ├── runner.py         # Claude CLI execution with retry
+│   ├── notifications.py  # Telegram notifications
+│   └── logging.py        # Logging configuration
 ├── skills/               # Claude Code skills (9 skills)
 ├── commands/             # Claude Code commands (14 commands)
+├── install.sh            # Install skills/commands to ~/.claude/
+├── uninstall.sh          # Remove installed skills/commands
 ├── _samocode/            # This repo's own session
-└── _sessions/            # Other sessions (gitignored)
+└── logs/                 # Runtime logs
 ```
