@@ -150,12 +150,13 @@ claude
 
 **Step 2: Start a new samocode session**
 ```
-You: "Run samocode. Dive into our authentication architecture and
-      existing user models. Task: add JWT-based user authentication."
+You: "Run samocode with dive into our authentication architecture
+      and existing user models. Task: add JWT-based user authentication."
 ```
 
-The **dive** tells samocode what to investigate first (codebase exploration).
-The **task** defines what to implement after understanding the code.
+Samocode takes two key parameters:
+- **dive**: what to investigate first (codebase exploration phase)
+- **task**: what to implement after understanding the code
 
 Samocode-parent will:
 1. Read `CLAUDE.md` → get SESSIONS, WORKTREES, MAIN_REPO paths
