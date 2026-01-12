@@ -1,6 +1,6 @@
 # Samocode - Autonomous Session Orchestrator
 
-A "dumb" Python orchestrator that runs Claude Code CLI in a loop. Claude reads session state, decides actions via skills, updates state, and signals flow control. Human intervention only via `_qa.md` files and Telegram notifications.
+A "dumb" Python orchestrator that runs Claude Code CLI in a loop. Claude reads session state, decides actions via skills, updates state, and signals flow control. Human intervention happens via samocode-parent at key decision points (human gates).
 
 ## Installation
 
@@ -154,27 +154,36 @@ Claude decides everything by reading `_overview.md` and using skills.
 2. **Path Injection**: Parent passes `SESSIONS_DIR` and `WORKTREES_DIR` to worker
 3. **Monitoring**: Parent watches worker output and reports progress to you
 4. **Debugging**: When things go wrong, parent can analyze and fix issues
-5. **Q&A Bridge**: Parent can answer questions in `_qa.md` on your behalf
+5. **Human Gates**: Parent handles approval checkpoints (Q&A answers, plan approval) on your behalf
 
 ## Workflow Phases
 
 ```
-investigation → requirements → planning → implementation → testing → quality → testing → done
-                     │                                        ↑          │         ↑
-                     └── Q&A via _qa.md ──────────────────────┘          └─────────┘
-                                                                      (fix loop if
-                                                                       blocking issues)
+investigation → requirements → planning → implementation → testing → quality → done
+                     │              │                         ↑          │       ↑
+                     └──────────────┴── HUMAN GATES ──────────┘          └───────┘
+                                    (parent handles)                  (fix loop if
+                                                                      blocking issues)
 ```
 
-| Phase | Skill | Description |
-|-------|-------|-------------|
-| investigation | `dive` | Understand the problem space |
-| requirements | `task` | Q&A with human via `_qa.md` |
-| planning | `planning` | Create implementation plan |
-| implementation | `dop2` (default) | Execute plan phases |
-| testing | `testing` | Verify feature works |
-| quality | `cleanup`, `multi-review` | Clean up and review code |
-| done | - | Generate summary |
+| Phase | Skill | Human Gate? | Description |
+|-------|-------|-------------|-------------|
+| investigation | `dive` | No | Understand the problem space |
+| requirements | `task` | **Yes** | Q&A with human via `_qa.md` |
+| planning | `planning` | **Yes** | Create plan, wait for approval |
+| implementation | `dop2` (default) | No | Execute plan phases |
+| testing | `testing` | No | Verify feature works |
+| quality | `cleanup`, `multi-review` | No | Clean up and review code |
+| done | - | No | Generate summary |
+
+### Human Gates
+
+Samocode pauses at key decision points for human approval:
+
+1. **Requirements Gate** (after investigation): Q&A questions in `_qa.md` - clarify scope, preferences, constraints
+2. **Planning Gate** (after requirements): Review implementation plan before execution starts
+
+Parent Claude handles these gates on your behalf - answering questions, approving plans, or escalating to you when needed.
 
 ## Configuration
 
