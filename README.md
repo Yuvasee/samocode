@@ -392,3 +392,84 @@ Commands are standalone utilities that work independently of samocode. They don'
 ├── _samocode/            # This repo's own session
 └── logs/                 # Runtime logs
 ```
+
+## Diagrams
+
+### Workflow Phases
+
+```mermaid
+stateDiagram-v2
+    [*] --> investigation
+
+    investigation --> requirements: dive complete
+
+    requirements --> planning: Q&A answered
+    note right of requirements: HUMAN GATE - Answer Q&A
+
+    planning --> implementation: plan approved
+    note right of planning: HUMAN GATE - Approve plan
+
+    implementation --> testing1: all phases done
+
+    testing1 --> quality: tests pass
+
+    quality --> testing2: issues fixed
+    note right of quality: May need human input
+
+    testing2 --> done: tests pass
+
+    done --> [*]
+```
+
+### Core Flow
+
+```mermaid
+sequenceDiagram
+    participant H as Human
+    participant P as Parent Claude
+    participant O as Orchestrator
+    participant C as Claude CLI
+    participant F as Session Files
+
+    H->>P: "Run samocode with dive X, task Y"
+    P->>O: spawn main.py
+
+    loop Each Iteration
+        O->>C: spawn with workflow.md
+        activate C
+
+        C->>F: read _overview.md
+        F-->>C: current state
+
+        C->>C: determine phase
+        C->>C: execute skill
+
+        Note over C: RESEARCH / CODE
+
+        C->>F: update _overview.md
+        C->>F: write artifacts
+        C->>F: write _signal.json
+
+        deactivate C
+
+        O->>F: read _signal.json
+        F-->>O: signal status
+
+        alt continue
+            Note over O: next iteration
+        else waiting
+            O->>H: notification
+            H->>F: answer Q&A / approve
+            Note over O: resume
+        else blocked
+            O->>H: notification
+            H->>F: intervene
+            Note over O: restart needed
+        else done
+            O->>H: notification
+            Note over O: complete
+        end
+    end
+
+    P->>H: "Complete! Summary: ..."
+```
