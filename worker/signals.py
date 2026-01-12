@@ -24,6 +24,7 @@ class Signal:
     reason: str | None = None
     needs: str | None = None
     waiting_for: str | None = None
+    phase: str | None = None
 
     def to_dict(self) -> dict[str, str | None]:
         """Convert to JSON-serializable dict."""
@@ -33,6 +34,7 @@ class Signal:
             "reason": self.reason,
             "needs": self.needs,
             "for": self.waiting_for,
+            "phase": self.phase,
         }
 
 
@@ -77,6 +79,7 @@ def read_signal_file(session_path: Path) -> Signal:
             reason=data.get("reason"),
             needs=data.get("needs"),
             waiting_for=data.get("for"),
+            phase=data.get("phase"),
         )
 
     except json.JSONDecodeError as e:
