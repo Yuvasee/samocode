@@ -35,3 +35,47 @@ def setup_logging(log_dir: Path) -> logging.Logger:
     logger.addHandler(file_handler)
 
     return logger
+
+
+def add_session_handler(
+    logger: logging.Logger, session_path: Path
+) -> logging.FileHandler:
+    """Add a session-specific file handler to the logger.
+
+    Args:
+        logger: The logger to add the handler to
+        session_path: Path to the session directory
+
+    Returns:
+        The created FileHandler so caller can remove it later
+
+    Raises:
+        ValueError: If session_path does not exist
+    """
+    if not session_path.exists():
+        raise ValueError(f"Session path does not exist: {session_path}")
+
+    session_name = session_path.name
+    log_file = session_path / "session.log"
+
+    formatter = logging.Formatter(
+        f"[%(asctime)s] %(levelname)s - [{session_name}] %(message)s",
+        datefmt="%Y-%m-%dT%H:%M:%S",
+    )
+
+    handler = logging.FileHandler(log_file)
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+
+    return handler
+
+
+def remove_session_handler(logger: logging.Logger, handler: logging.Handler) -> None:
+    """Remove and close a session handler from logger.
+
+    Args:
+        logger: Logger instance to remove handler from
+        handler: Handler instance to remove
+    """
+    logger.removeHandler(handler)
+    handler.close()
