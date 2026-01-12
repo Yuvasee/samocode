@@ -87,6 +87,8 @@ You: "JWT, store in httpOnly cookies"
 
 Parent updates `_qa.md` and continues the worker.
 
+**Tip:** You can say "accept all suggestions" to let parent auto-fill answers with the suggested options.
+
 **Step 4: Review completion**
 ```
 Samocode-Parent: "Complete after 8 iterations. Created:
