@@ -32,9 +32,9 @@ pip install -r requirements.txt
 ```bash
 cp .env.example .env
 # Edit .env with your settings:
-# - TELEGRAM_BOT_TOKEN
-# - TELEGRAM_CHAT_ID
 # - CLAUDE_PATH (path to claude CLI)
+# - TELEGRAM_BOT_TOKEN (optional - for notifications)
+# - TELEGRAM_CHAT_ID (optional - for notifications)
 ```
 
 ### 4. Configure Project CLAUDE.md
@@ -192,9 +192,9 @@ These are read from your project's CLAUDE.md by samocode-parent and passed to th
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `TELEGRAM_BOT_TOKEN` | - | Telegram bot token for notifications |
-| `TELEGRAM_CHAT_ID` | - | Telegram chat ID for notifications |
 | `CLAUDE_PATH` | `claude` | Path to Claude CLI |
+| `TELEGRAM_BOT_TOKEN` | - | (Optional) Telegram bot token for notifications |
+| `TELEGRAM_CHAT_ID` | - | (Optional) Telegram chat ID for notifications |
 | `CLAUDE_MODEL` | `opus` | Model to use |
 | `CLAUDE_MAX_TURNS` | `120` | Max turns per iteration |
 | `CLAUDE_TIMEOUT` | `600` | Timeout in seconds |
