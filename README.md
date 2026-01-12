@@ -142,21 +142,51 @@ Samocode has a three-layer architecture:
 
 ### Typical Workflow
 
+**Step 1: Start Claude in your project directory**
+```bash
+cd ~/your-project
+claude
 ```
-You: "Run samocode on the API redesign task"
-     ↓
-Samocode-Parent:
-  1. Reads ~/your-project/CLAUDE.md → gets SESSIONS, WORKTREES paths
-  2. Runs: SESSIONS_DIR=... WORKTREES_DIR=... python worker.py --session ...
-  3. Monitors output, reports: "Iteration 3, implementation phase..."
-  4. When blocked: "Samocode needs answers in _qa.md, here are the questions..."
-     ↓
-You: Answer questions or give guidance
-     ↓
-Samocode-Parent:
-  5. Continues worker, monitors until done
-  6. Reports: "Complete! Here's what was accomplished..."
+
+**Step 2: Start a new samocode session**
 ```
+You: "Run samocode to add user authentication"
+```
+
+Samocode-parent will:
+1. Read `CLAUDE.md` → get SESSIONS, WORKTREES, MAIN_REPO paths
+2. Run worker with: `SESSIONS_DIR=... WORKTREES_DIR=... python worker.py --session auth --dive "..." --task "..."`
+3. Monitor and report: "Iteration 3, implementation phase..."
+
+**Step 3: Answer Q&A when needed**
+```
+Samocode-Parent: "Samocode is waiting. Questions in _qa.md:
+  Q1: Which auth method? (JWT/OAuth/Session)
+  Q2: Where to store tokens?"
+
+You: "JWT, store in httpOnly cookies"
+```
+
+Parent updates `_qa.md` and continues the worker.
+
+**Step 4: Review completion**
+```
+Samocode-Parent: "Complete after 8 iterations. Created:
+  - auth middleware
+  - login/logout endpoints
+  - JWT token handling
+  All tests passing."
+```
+
+### Alternative: Manual Session Start (Optional)
+
+You can also create a session first with `/session-start`:
+```
+You: /session-start auth-feature
+You: /samocode-run
+```
+
+This is optional - samocode auto-creates sessions when run with `--dive` and `--task`.
 
 ## Usage
 
