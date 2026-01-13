@@ -14,6 +14,18 @@ from .config import SamocodeConfig
 logger = logging.getLogger("samocode")
 
 
+PHASE_AGENTS: dict[str, str] = {
+    "init": "init-agent",
+    "investigation": "investigation-agent",
+    "requirements": "requirements-agent",
+    "planning": "planning-agent",
+    "implementation": "implementation-agent",
+    "testing": "testing-agent",
+    "quality": "quality-agent",
+    "done": "done-agent",
+}
+
+
 class ExecutionStatus(Enum):
     """Result of Claude CLI execution."""
 
@@ -32,6 +44,88 @@ class ExecutionResult:
     stderr: str
     returncode: int | None
     attempt: int
+
+
+def get_agent_for_phase(phase: str | None) -> str | None:
+    """Map workflow phase to agent name.
+
+    Returns agent name if phase has a dedicated agent, None otherwise.
+    When None, caller should fall back to workflow.md prompt mode.
+    """
+    if phase is None:
+        return None
+    return PHASE_AGENTS.get(phase.lower())
+
+
+def build_session_context(
+    session_path: Path,
+    config: SamocodeConfig,
+    phase: str | None = None,
+    iteration: int | None = None,
+    is_path_based_session: bool = False,
+    initial_dive: str | None = None,
+    initial_task: str | None = None,
+) -> str:
+    """Build session context for --append-system-prompt injection.
+
+    This context is appended to agent prompts to provide session-specific
+    information that agents need but shouldn't have hardcoded.
+    """
+    lines = ["# Session Context"]
+    lines.append(f"**Session path:** {session_path}")
+
+    working_dir = extract_working_dir(session_path)
+    if working_dir:
+        lines.append(f"**Working directory:** {working_dir}")
+
+    if phase:
+        lines.append(f"**Phase:** {phase}")
+    if iteration:
+        lines.append(f"**Iteration:** {iteration}")
+
+    if config.repo_path:
+        session_name = session_path.name
+        worktree_path = config.worktrees_dir / session_name
+        lines.append("")
+        lines.append("## Worktree Configuration")
+        lines.append(f"- Base repo: `{config.repo_path}`")
+        lines.append(f"- Worktree path: `{worktree_path}`")
+        branch_prefix = os.getenv("GIT_BRANCH_PREFIX", "")
+        branch_name = session_name.split("-", 3)[-1]
+        if branch_prefix:
+            lines.append(f"- Branch name: `{branch_prefix}/{branch_name}`")
+        else:
+            lines.append(f"- Branch name: `{branch_name}`")
+    elif is_path_based_session:
+        project_path = session_path.parent
+        lines.append("")
+        lines.append("## Standalone Project Configuration")
+        lines.append(f"- Project folder: `{project_path}`")
+        lines.append("- No git worktree (standalone project)")
+    else:
+        project_path = config.default_projects_folder / session_path.name
+        lines.append("")
+        lines.append("## Standalone Project Configuration")
+        lines.append(f"- Project folder: `{project_path}`")
+        lines.append("- No git worktree (standalone project)")
+
+    if initial_dive or initial_task:
+        lines.append("")
+        lines.append("## Initial Instructions")
+        lines.append("This is a NEW session. After initialization:")
+        if initial_dive:
+            lines.append(f"1. Run dive skill with topic: **{initial_dive}**")
+        if initial_task:
+            step = "2" if initial_dive else "1"
+            lines.append(f"{step}. Define task: **{initial_task}**")
+        lines.append("")
+        lines.append(
+            "**MANDATORY**: After these steps, continue through ALL workflow phases "
+            "(requirements -> planning -> implementation -> testing -> quality -> done). "
+            "Do NOT signal `done` after just the dive - that's only phase 1 of 7."
+        )
+
+    return "\n".join(lines)
 
 
 def extract_working_dir(session_path: Path) -> Path | None:
@@ -65,6 +159,20 @@ def extract_phase(session_path: Path) -> str | None:
     return match.group(1).strip()
 
 
+def extract_iteration(session_path: Path) -> int | None:
+    """Extract Iteration from session _overview.md Status section."""
+    overview_path = session_path / "_overview.md"
+    if not overview_path.exists():
+        return None
+
+    content = overview_path.read_text()
+    match = re.search(r"^Iteration:\s*(\d+)$", content, re.MULTILINE)
+    if not match:
+        return None
+
+    return int(match.group(1))
+
+
 def build_prompt(
     workflow_prompt_path: Path,
     session_path: Path,
@@ -73,12 +181,15 @@ def build_prompt(
     initial_task: str | None = None,
     is_path_based_session: bool = False,
 ) -> str:
-    """Build the full prompt with optional initial instructions."""
+    """Build the full prompt for workflow.md fallback mode.
+
+    This is used when no phase-specific agent is available.
+    For agent mode, build_session_context() is used instead.
+    """
     prompt = workflow_prompt_path.read_text()
     prompt += f"\n\n## Session Path\n\n`{session_path}`\n"
 
     if config.repo_path:
-        # Repo-based session: create worktree
         session_name = session_path.name
         worktree_path = config.worktrees_dir / session_name
         prompt += "\n## Worktree Configuration\n\n"
@@ -91,13 +202,11 @@ def build_prompt(
         else:
             prompt += f"- Branch name: `{branch_name}`\n"
     elif is_path_based_session:
-        # Path-based session: project folder is parent of session path
         project_path = session_path.parent
         prompt += "\n## Standalone Project Configuration\n\n"
         prompt += f"- Project folder: `{project_path}`\n"
         prompt += "- No git worktree (standalone project)\n"
     else:
-        # Name-based session: create folder in default projects
         project_path = config.default_projects_folder / session_path.name
         prompt += "\n## Standalone Project Configuration\n\n"
         prompt += f"- Project folder: `{project_path}`\n"
@@ -114,7 +223,7 @@ def build_prompt(
             )
         prompt += (
             "\n**MANDATORY**: After these steps, continue through ALL workflow phases "
-            "(requirements → planning → implementation → testing → quality → done). "
+            "(requirements -> planning -> implementation -> testing -> quality -> done). "
             "Do NOT signal `done` after just the dive - that's only phase 1 of 7.\n"
         )
 
@@ -130,8 +239,15 @@ def run_claude_once(
     initial_task: str | None = None,
     is_path_based_session: bool = False,
 ) -> ExecutionResult:
-    """Execute Claude CLI once with timeout protection."""
+    """Execute Claude CLI once with timeout protection.
+
+    Uses phase-specific agent if available, falls back to workflow.md prompt.
+    """
     logger.info(f"Executing Claude CLI (attempt {attempt})...")
+
+    phase = extract_phase(session_path)
+    iteration = extract_iteration(session_path)
+    agent_name = get_agent_for_phase(phase)
 
     working_dir = extract_working_dir(session_path)
     if working_dir is None:
@@ -144,30 +260,55 @@ def run_claude_once(
     else:
         logger.info(f"Using Working Dir: {working_dir}")
 
-    prompt = build_prompt(
-        workflow_prompt_path,
-        session_path,
-        config,
-        initial_dive,
-        initial_task,
-        is_path_based_session,
-    )
+    cli_args = [
+        str(config.claude_path),
+        "--dangerously-skip-permissions",
+        "--model",
+        config.claude_model,
+        "--max-turns",
+        str(config.claude_max_turns),
+        "--verbose",
+        "--output-format",
+        "stream-json",
+    ]
+
+    if agent_name:
+        logger.info(f"Using agent: {agent_name} (phase: {phase})")
+        session_context = build_session_context(
+            session_path=session_path,
+            config=config,
+            phase=phase,
+            iteration=iteration,
+            is_path_based_session=is_path_based_session,
+            initial_dive=initial_dive,
+            initial_task=initial_task,
+        )
+        cli_args.extend(
+            [
+                "--agent",
+                agent_name,
+                "--append-system-prompt",
+                session_context,
+            ]
+        )
+    else:
+        logger.info(f"No agent for phase '{phase}', using workflow.md fallback")
+        prompt = build_prompt(
+            workflow_prompt_path,
+            session_path,
+            config,
+            initial_dive,
+            initial_task,
+            is_path_based_session,
+        )
+        cli_args.extend(["-p", prompt])
 
     env = os.environ.copy()
     env["SAMOCODE_SESSION_PATH"] = str(session_path)
 
     try:
         result = subprocess.run(
-            [
-                str(config.claude_path),
-                "-p",
-                prompt,
-                "--dangerously-skip-permissions",
-                "--model",
-                config.claude_model,
-                "--max-turns",
-                str(config.claude_max_turns),
-            ],
+            cli_args,
             cwd=str(working_dir),
             env=env,
             capture_output=True,
