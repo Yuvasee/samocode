@@ -30,6 +30,28 @@ for skill in "$SAMOCODE_DIR/skills/"*/; do
     ln -s "$skill" "$target"
 done
 
+# Create agents symlinks
+echo ""
+echo "Installing agents..."
+mkdir -p "$CLAUDE_DIR/agents"
+for agent in "$SAMOCODE_DIR/agents/"*.md; do
+    [ -f "$agent" ] || continue  # Skip if no matches
+    agent_name=$(basename "$agent")
+    target="$CLAUDE_DIR/agents/$agent_name"
+
+    if [ -L "$target" ]; then
+        echo "  Updating: $agent_name"
+        rm "$target"
+    elif [ -f "$target" ]; then
+        echo "  Warning: $agent_name exists and is not a symlink, skipping"
+        continue
+    else
+        echo "  Installing: $agent_name"
+    fi
+
+    ln -s "$agent" "$target"
+done
+
 # Create commands symlinks
 echo ""
 echo "Installing commands..."
@@ -55,6 +77,7 @@ echo "Installation complete!"
 echo ""
 echo "Installed:"
 echo "  - 9 skills"
+echo "  - 9 agents"
 echo "  - 14 commands"
 echo ""
 echo "============================================================"
