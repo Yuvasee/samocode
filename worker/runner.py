@@ -3,9 +3,12 @@
 import logging
 import os
 import re
+import select
 import subprocess
 import time
-from dataclasses import dataclass
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from datetime import datetime
 from enum import Enum
 from pathlib import Path
 
@@ -44,6 +47,7 @@ class ExecutionResult:
     stderr: str
     returncode: int | None
     attempt: int
+    log_file: Path | None = field(default=None)
 
 
 def get_agent_for_phase(phase: str | None) -> str | None:
@@ -173,6 +177,73 @@ def extract_iteration(session_path: Path) -> int | None:
     return int(match.group(1))
 
 
+def generate_log_filename(session_path: Path, phase: str | None) -> Path:
+    """Generate timestamped JSONL filename for this invocation."""
+    timestamp = datetime.now().strftime("%m-%d-%H%M%S")
+    phase_slug = phase.lower() if phase else "unknown"
+    return session_path / f"{timestamp}-{phase_slug}.jsonl"
+
+
+def stream_logs(
+    process: subprocess.Popen[str],
+    log_file: Path,
+    timeout: float,
+    on_line: Callable[[str], None] | None = None,
+) -> tuple[str, str]:
+    """Stream stdout from process to JSONL file with timeout support.
+
+    Uses select() for non-blocking reads with timeout awareness.
+    """
+    stdout_lines: list[str] = []
+    stderr_lines: list[str] = []
+    deadline = time.time() + timeout
+
+    stdout_pipe = process.stdout
+    stderr_pipe = process.stderr
+    if stdout_pipe is None or stderr_pipe is None:
+        raise RuntimeError("Process stdout/stderr pipes not available")
+
+    log_file.parent.mkdir(parents=True, exist_ok=True)
+
+    with open(log_file, "w", encoding="utf-8") as f:
+        while True:
+            remaining = deadline - time.time()
+            if remaining <= 0:
+                raise subprocess.TimeoutExpired(cmd="claude", timeout=timeout)
+
+            if process.poll() is not None:
+                # Process finished - drain remaining output
+                for line in stdout_pipe:
+                    stdout_lines.append(line)
+                    f.write(line)
+                    if on_line:
+                        on_line(line)
+                for line in stderr_pipe:
+                    stderr_lines.append(line)
+                break
+
+            readable, _, _ = select.select(
+                [stdout_pipe, stderr_pipe],
+                [],
+                [],
+                min(remaining, 1.0),
+            )
+
+            for stream in readable:
+                line = stream.readline()
+                if line:
+                    if stream is stdout_pipe:
+                        stdout_lines.append(line)
+                        f.write(line)
+                        f.flush()
+                        if on_line:
+                            on_line(line)
+                    else:
+                        stderr_lines.append(line)
+
+    return "".join(stdout_lines), "".join(stderr_lines)
+
+
 def build_prompt(
     workflow_prompt_path: Path,
     session_path: Path,
@@ -238,10 +309,12 @@ def run_claude_once(
     initial_dive: str | None = None,
     initial_task: str | None = None,
     is_path_based_session: bool = False,
+    on_line: Callable[[str], None] | None = None,
 ) -> ExecutionResult:
-    """Execute Claude CLI once with timeout protection.
+    """Execute Claude CLI once with timeout protection and log streaming.
 
     Uses phase-specific agent if available, falls back to workflow.md prompt.
+    Streams stdout to a JSONL file for real-time monitoring.
     """
     logger.info(f"Executing Claude CLI (attempt {attempt})...")
 
@@ -306,37 +379,50 @@ def run_claude_once(
     env = os.environ.copy()
     env["SAMOCODE_SESSION_PATH"] = str(session_path)
 
+    log_file = generate_log_filename(session_path, phase)
+    logger.info(f"Streaming logs to: {log_file}")
+
+    process: subprocess.Popen[str] | None = None
     try:
-        result = subprocess.run(
+        process = subprocess.Popen(
             cli_args,
             cwd=str(working_dir),
             env=env,
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
-            timeout=config.claude_timeout,
+            bufsize=1,
         )
 
-        if result.returncode == 0:
+        stdout, stderr = stream_logs(process, log_file, config.claude_timeout, on_line)
+        process.wait()
+
+        if process.returncode == 0:
             logger.info("Claude CLI completed successfully")
             return ExecutionResult(
                 status=ExecutionStatus.SUCCESS,
-                stdout=result.stdout,
-                stderr=result.stderr,
-                returncode=result.returncode,
+                stdout=stdout,
+                stderr=stderr,
+                returncode=process.returncode,
                 attempt=attempt,
+                log_file=log_file,
             )
 
-        logger.error(f"Claude CLI failed with code {result.returncode}")
-        logger.error(f"stderr: {result.stderr[:500]}")
+        logger.error(f"Claude CLI failed with code {process.returncode}")
+        logger.error(f"stderr: {stderr[:500]}")
         return ExecutionResult(
             status=ExecutionStatus.FAILURE,
-            stdout=result.stdout,
-            stderr=result.stderr,
-            returncode=result.returncode,
+            stdout=stdout,
+            stderr=stderr,
+            returncode=process.returncode,
             attempt=attempt,
+            log_file=log_file,
         )
 
     except subprocess.TimeoutExpired:
+        if process is not None:
+            process.kill()
+            process.wait()
         logger.error(f"Claude CLI timed out after {config.claude_timeout}s")
         return ExecutionResult(
             status=ExecutionStatus.TIMEOUT,
@@ -344,9 +430,13 @@ def run_claude_once(
             stderr=f"Timeout after {config.claude_timeout}s",
             returncode=None,
             attempt=attempt,
+            log_file=log_file,
         )
 
     except Exception as e:
+        if process is not None:
+            process.kill()
+            process.wait()
         logger.error(f"Claude CLI execution failed: {e}")
         return ExecutionResult(
             status=ExecutionStatus.FAILURE,
@@ -354,6 +444,7 @@ def run_claude_once(
             stderr=str(e),
             returncode=None,
             attempt=attempt,
+            log_file=log_file if log_file.exists() else None,
         )
 
 
@@ -364,6 +455,7 @@ def run_claude_with_retry(
     initial_dive: str | None = None,
     initial_task: str | None = None,
     is_path_based_session: bool = False,
+    on_line: Callable[[str], None] | None = None,
 ) -> ExecutionResult:
     """Execute Claude CLI with retry logic for transient failures."""
     result: ExecutionResult | None = None
@@ -377,6 +469,7 @@ def run_claude_with_retry(
             initial_dive if attempt == 1 else None,
             initial_task if attempt == 1 else None,
             is_path_based_session,
+            on_line,
         )
 
         if result.status == ExecutionStatus.SUCCESS:
@@ -398,6 +491,7 @@ def run_claude_with_retry(
             stderr="No attempts made",
             returncode=None,
             attempt=0,
+            log_file=None,
         )
 
     return ExecutionResult(
@@ -406,4 +500,5 @@ def run_claude_with_retry(
         stderr=result.stderr,
         returncode=result.returncode,
         attempt=config.max_retries,
+        log_file=result.log_file,
     )
