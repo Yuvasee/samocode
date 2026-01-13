@@ -1,12 +1,33 @@
 """Session resolution logic for samocode.
 
 This module contains the business logic for:
-1. Determining where to look for .samocode config file
-2. Resolving session paths from CLI arguments
+1. Determining if session arg is path-based or name-based
+2. Determining where to look for .samocode config file
+3. Resolving session paths from CLI arguments
 """
 
 from datetime import datetime
 from pathlib import Path
+
+
+def is_path_based_session(session_arg: str) -> bool:
+    """Determine if session argument is a path or a name.
+
+    Args:
+        session_arg: The --session CLI argument value
+
+    Returns:
+        True if path-based (contains "/" or starts with "~")
+        False if name-based (just a name like "my-task")
+
+    Examples:
+        "/home/dev/project/_sessions/task" → True (absolute path)
+        "~/project/_sessions/task" → True (tilde path)
+        "project/_sessions/task" → True (relative path with slash)
+        "my-task" → False (name only)
+        "my cool task" → False (name with spaces, no slash)
+    """
+    return "/" in session_arg or session_arg.startswith("~")
 
 
 def determine_config_hint_dir(session_arg: str, samocode_dir: Path) -> Path:
@@ -20,16 +41,13 @@ def determine_config_hint_dir(session_arg: str, samocode_dir: Path) -> Path:
         Directory path to use as hint for config lookup
 
     Business Logic:
-        - Path-based sessions (contain "/" or start with "~"):
-          Use parent of session path. This allows finding .samocode
-          in the project directory when session is like:
-          /home/dev/project/_sessions/my-task
+        - Path-based sessions: Use parent of session path.
+          This allows finding .samocode in the project directory.
 
-        - Name-based sessions (just a name like "my-task"):
-          Use samocode's own directory. Config will be loaded from
-          environment variables (SESSIONS_DIR, WORKTREES_DIR).
+        - Name-based sessions: Use samocode's own directory.
+          Config will be loaded from environment variables.
     """
-    if "/" in session_arg or session_arg.startswith("~"):
+    if is_path_based_session(session_arg):
         return Path(session_arg).expanduser().resolve().parent
     return samocode_dir
 
@@ -50,18 +68,18 @@ def resolve_session_path(
         - is_path_based: True if session was specified as path, False if name
 
     Business Logic:
-        Path-based (contains "/" or starts with "~"):
+        Path-based:
             - Use the path directly after expansion
             - Display name is parent folder name (project context)
 
-        Name-based (no "/" and doesn't start with "~"):
+        Name-based:
             - Normalize: lowercase, spaces become dashes
             - Search sessions_dir for existing "*-{name}" pattern
             - If found: use most recent match (sorted alphabetically)
             - If not found: create new path with "YY-MM-DD-{name}"
             - Display name is the full session folder name
     """
-    if "/" in session_arg or session_arg.startswith("~"):
+    if is_path_based_session(session_arg):
         session_path = Path(session_arg).expanduser().resolve()
         display_name = session_path.parent.name
         return session_path, display_name, True
