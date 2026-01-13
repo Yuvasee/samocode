@@ -8,9 +8,9 @@ Claude reads session state, decides actions via skills, updates state, signals n
 import argparse
 import sys
 from dataclasses import replace as dataclass_replace
-from datetime import datetime
 from pathlib import Path
 
+from samocode.session import determine_config_hint_dir, resolve_session_path
 from worker import (
     ExecutionStatus,
     SamocodeConfig,
@@ -57,15 +57,11 @@ def main() -> None:
     )
 
     args = parser.parse_args()
+    samocode_dir = Path(__file__).parent
 
-    # Determine config hint directory for .samocode file lookup
-    # For path-based sessions, use the project directory (parent of session path)
-    # For name-based sessions, use samocode's own directory
-    if "/" in args.session or args.session.startswith("~"):
-        config_hint_dir = Path(args.session).expanduser().resolve().parent
-    else:
-        config_hint_dir = Path(__file__).parent  # samocode's own directory
-
+    # Determine where to look for .samocode config file
+    # See tests/test_session_resolution.py for detailed business logic
+    config_hint_dir = determine_config_hint_dir(args.session, samocode_dir)
     config = SamocodeConfig.from_env(working_dir=config_hint_dir)
 
     # Set repo_path from CLI arg if provided
@@ -79,30 +75,11 @@ def main() -> None:
             sys.exit(1)
         config = dataclass_replace(config, repo_path=repo_path)
 
-    # Build session path
-    # If --session contains '/' or '~', treat as full path
-    # Otherwise, use SESSIONS_DIR with date prefix
-    if "/" in args.session or args.session.startswith("~"):
-        # Full path mode: use directly
-        session_path = Path(args.session).expanduser().resolve()
-        # Display name is parent folder name (e.g., ~/code/project/_samocode -> "project")
-        session_display_name = session_path.parent.name
-        is_path_based_session = True
-    else:
-        # Name mode: {SESSIONS_DIR}/YY-MM-DD-{session_name}
-        session_name = args.session.lower().replace(" ", "-")
-        existing = list(config.sessions_dir.glob(f"*-{session_name}"))
-        if existing:
-            # Use most recent existing session
-            session_path = sorted(existing)[-1]
-        else:
-            # Create new session with today's date
-            date_prefix = datetime.now().strftime("%y-%m-%d")
-            session_path = config.sessions_dir / f"{date_prefix}-{session_name}"
-        session_display_name = session_path.name
-        is_path_based_session = False
-
-    samocode_dir = Path(__file__).parent
+    # Resolve session path from CLI argument
+    # See tests/test_session_resolution.py for detailed business logic
+    session_path, session_display_name, is_path_based_session = resolve_session_path(
+        args.session, config.sessions_dir
+    )
     log_dir = samocode_dir / "logs"
     workflow_prompt_path = samocode_dir / "workflow.md"
 
