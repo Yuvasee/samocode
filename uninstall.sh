@@ -22,6 +22,20 @@ for skill in "$SAMOCODE_DIR/skills/"*/; do
     fi
 done
 
+# Remove agents symlinks
+echo ""
+echo "Removing agents..."
+for agent in "$SAMOCODE_DIR/agents/"*.md; do
+    [ -f "$agent" ] || continue  # Skip if no matches
+    agent_name=$(basename "$agent")
+    target="$CLAUDE_DIR/agents/$agent_name"
+
+    if [ -L "$target" ]; then
+        echo "  Removing: $agent_name"
+        rm "$target"
+    fi
+done
+
 # Remove commands symlinks
 echo ""
 echo "Removing commands..."
