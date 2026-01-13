@@ -47,7 +47,7 @@ Tests the specific feature or bug fix implemented in the current session. NOT fu
    **If adding MCP:** After modifying `.mcp.json`, signal `continue` to restart Claude Code process (MCP doesn't hot-reload).
 
 5. **Start the application:**
-   - Read project's `CLAUDE.md` for startup instructions
+   - Read project's `.samocode` file or README for startup instructions
    - Follow project-specific setup commands
    - Verify app is running (check ports, health endpoints)
    - If fails to start -> document error, signal blocked
@@ -67,7 +67,7 @@ Tests the specific feature or bug fix implemented in the current session. NOT fu
      -H "Content-Type: application/json" \
      -d '{"test": "data"}'
    ```
-   - Use project-specific auth if needed (check CLAUDE.md)
+   - Use project-specific auth if needed (check .samocode or README)
    - Verify response codes and data
 
 7. **Smoke test (side effect):**
@@ -168,7 +168,7 @@ EOF
 
 ## Edge Cases
 
-- Working Dir not in `_overview.md` -> Check project CLAUDE.md for MAIN_REPO, or ask user
+- Working Dir not in `_overview.md` -> Check project .samocode file for MAIN_REPO, or ask user
 - App fails to start -> Document in test report, signal blocked
 - MCP not available -> Use Puppeteer/Playwright via bash instead
 - Can't determine what to test -> Review implementation docs, ask if unclear
@@ -180,4 +180,4 @@ EOF
 - Don't attempt to fix failures automatically - signal blocked instead
 - Document everything for human review
 - Smoke test happens naturally (app start + no crashes)
-- Read project CLAUDE.md for project-specific setup instructions
+- Read project .samocode file or README for project-specific setup instructions
