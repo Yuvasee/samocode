@@ -102,17 +102,23 @@ Created: [timestamp]
 ## State Updates
 
 Edit `_overview.md`:
-- Status: `Phase: implementation`, `Iteration: 1`, `Last Action: Plan created`, `Next: Execute Phase 1`
+- Status: `Phase: planning`, `Blocked: waiting_human`, `Last Action: Plan created`, `Next: Await plan approval`
 - Flow Log: `- [MM-DD HH:MM] Plan created -> [filename].md`
 - Files: `- [filename].md - Implementation plan`
 
+After human approves, they will update signal to continue and phase will move to implementation.
+
 ## Signal
 
+After creating the plan, signal waiting for human approval:
+
 ```json
-{"status": "continue", "phase": "planning"}
+{"status": "waiting", "phase": "planning", "for": "plan_approval"}
 ```
 
-If MCP config was added, note in signal that restart needed for MCP pickup.
+This pauses the orchestrator so the human can review and approve the plan before implementation begins.
+
+If MCP config was added, mention it in the overview but still wait for plan approval.
 
 ## Important Notes
 

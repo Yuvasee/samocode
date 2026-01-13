@@ -22,8 +22,8 @@ init -> investigation -> requirements -> planning -> implementation -> testing -
 
 - **init**: Create session infrastructure (worktree/folder, _overview.md)
 - **investigation**: Deep-dive exploration using `dive` skill
-- **requirements**: Q&A with human to clarify scope
-- **planning**: Create phased implementation plan
+- **requirements**: Q&A with human to clarify scope → **WAIT for human answers**
+- **planning**: Create phased implementation plan → **WAIT for human approval**
 - **implementation**: Execute plan phases iteratively (dop/dop2/do)
 - **testing**: Runs twice - after implementation, after quality
 - **quality**: Review + fix blocking issues (max 3 iterations)
@@ -53,15 +53,17 @@ Write `_signal.json` with current phase before exiting:
 | `waiting` | Paused for human input | `phase`, `for` |
 
 **`needs` values**: `human_decision`, `clarification`, `error_resolution`
-**`for` values**: `qa_answers`, `file_update`, `human_action`
+**`for` values**: `qa_answers`, `plan_approval`, `file_update`, `human_action`
 
 ### Examples
 
 ```json
+{"status": "continue", "phase": "investigation"}
+{"status": "waiting", "phase": "requirements", "for": "qa_answers"}
+{"status": "waiting", "phase": "planning", "for": "plan_approval"}
 {"status": "continue", "phase": "implementation"}
 {"status": "done", "phase": "done", "summary": "Implemented feature X"}
 {"status": "blocked", "phase": "testing", "reason": "Tests failed", "needs": "error_resolution"}
-{"status": "waiting", "phase": "requirements", "for": "qa_answers"}
 ```
 
 ## Flow Log Format
