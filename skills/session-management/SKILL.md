@@ -12,7 +12,7 @@ Manages work sessions. Session paths must be explicitly provided or known from c
 **IMPORTANT:** Sessions do NOT have a default location. The session path must be:
 1. Provided explicitly in arguments (e.g., `start ~/projects/my-project/_sessions/session-name`)
 2. Already known from conversation context (active session in working memory)
-3. Defined in project's `CLAUDE.md` under `SESSIONS` path
+3. Defined in project's `.samocode` file under `SESSIONS` path
 
 If session path cannot be determined: **STOP and ask the user** for the session location.
 
@@ -32,7 +32,7 @@ Create a new work session.
 
 1. **Resolve session location:**
    - If full path provided in arguments: use it
-   - If only name provided: check project `CLAUDE.md` for `SESSIONS` path
+   - If only name provided: check project `.samocode` file for `SESSIONS` path
    - If neither: **STOP and ask user** for session directory path
 
 2. **Capture timestamps atomically:**
@@ -55,7 +55,7 @@ Create a new work session.
    - If folder exists, ERROR: "Session already exists"
 
 5. **Detect Working Dir:**
-   - Check project `CLAUDE.md` for `MAIN_REPO` path
+   - Check project `.samocode` file for `MAIN_REPO` path
    - Or use git root: `git rev-parse --show-toplevel`
    - Or use current working directory
    - If unclear: leave as "TBD" and note to set it
@@ -109,7 +109,7 @@ Load and continue working in an existing session.
 
 1. **Resolve session location:**
    - If full path provided: use it
-   - Check project `CLAUDE.md` for `SESSIONS` path
+   - Check project `.samocode` file for `SESSIONS` path
    - If not found: **STOP and ask user** for sessions directory
 
 2. **Find matching sessions:**

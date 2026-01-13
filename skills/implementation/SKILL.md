@@ -80,7 +80,7 @@ Execute a task directly with full implementation and documentation.
 
 5. **Git workflow:**
    - Read Working Dir from session `_overview.md`
-   - If Working Dir not set: check project `CLAUDE.md` for `MAIN_REPO`, or use git root, or ask user
+   - If Working Dir not set: check project `.samocode` file for `MAIN_REPO`, or use git root, or ask user
    - Check branch: `cd [WORKING_DIR] && git branch --show-current`
    - If on feature branch: commit with short message
    - If on main: warn user to create branch first
@@ -310,7 +310,7 @@ IMPORTANT: Only work on this specific part. Don't do other parts of the plan.
 
 7. **Git workflow:**
    - Read Working Dir from session `_overview.md`
-   - If not set: check project `CLAUDE.md` for `MAIN_REPO`, or use git root, or ask user
+   - If not set: check project `.samocode` file for `MAIN_REPO`, or use git root, or ask user
    - Check branch: `cd [WORKING_DIR] && git branch --show-current`
    - If on feature branch: commit with short message
    - If on main: warn user
