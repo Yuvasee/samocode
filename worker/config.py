@@ -45,8 +45,6 @@ def _parse_samocode_contents(path: Path) -> dict[str, str]:
 class SamocodeConfig:
     """Runtime configuration for Samocode orchestrator."""
 
-    sessions_dir: Path
-    default_projects_folder: Path
     repo_path: Path | None  # Set per-session via --repo CLI arg
     worktrees_dir: Path
     telegram_bot_token: str
@@ -69,15 +67,7 @@ class SamocodeConfig:
         if working_dir:
             samocode_config = parse_samocode_file(working_dir)
 
-        # Map .samocode keys to our config (SESSIONS->sessions_dir, WORKTREES->worktrees_dir)
-        sessions_dir = samocode_config.get("SESSIONS") or os.getenv("SESSIONS_DIR")
         worktrees_dir = samocode_config.get("WORKTREES") or os.getenv("WORKTREES_DIR")
-
-        if not sessions_dir:
-            raise ValueError(
-                "SESSIONS not found in .samocode and SESSIONS_DIR env var not set. "
-                "Create .samocode file with SESSIONS=path or set SESSIONS_DIR."
-            )
         if not worktrees_dir:
             raise ValueError(
                 "WORKTREES not found in .samocode and WORKTREES_DIR env var not set. "
@@ -85,12 +75,6 @@ class SamocodeConfig:
             )
 
         return cls(
-            sessions_dir=Path(sessions_dir).expanduser().resolve(),
-            default_projects_folder=Path(
-                os.getenv("DEFAULT_PROJECTS_FOLDER", str(Path.home() / "projects"))
-            )
-            .expanduser()
-            .resolve(),
             repo_path=None,  # Set per-session via CLI
             worktrees_dir=Path(worktrees_dir).expanduser().resolve(),
             telegram_bot_token=os.getenv("TELEGRAM_BOT_TOKEN", ""),
