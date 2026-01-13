@@ -10,7 +10,6 @@ import sys
 from dataclasses import replace as dataclass_replace
 from pathlib import Path
 
-from samocode.session import determine_config_hint_dir, resolve_session_path
 from worker import (
     ExecutionStatus,
     SamocodeConfig,
@@ -36,7 +35,7 @@ def main() -> None:
     parser.add_argument(
         "--session",
         required=True,
-        help="Session name (e.g., 'my-task') or full path (e.g., '~/project/_samocode')",
+        help="Session path (e.g., '~/project/_samocode/my-task')",
     )
     parser.add_argument(
         "--repo",
@@ -59,10 +58,12 @@ def main() -> None:
     args = parser.parse_args()
     samocode_dir = Path(__file__).parent
 
-    # Determine where to look for .samocode config file
-    # See tests/test_session_resolution.py for detailed business logic
-    config_hint_dir = determine_config_hint_dir(args.session, samocode_dir)
-    config = SamocodeConfig.from_env(working_dir=config_hint_dir)
+    # Session path is always a full path - resolve and get display name
+    session_path = Path(args.session).expanduser().resolve()
+    session_display_name = session_path.parent.name
+
+    # Look for .samocode config in session's parent directory
+    config = SamocodeConfig.from_env(working_dir=session_path.parent)
 
     # Set repo_path from CLI arg if provided
     if args.repo:
@@ -74,12 +75,6 @@ def main() -> None:
             print(f"Error: Not a git repository: {repo_path}")
             sys.exit(1)
         config = dataclass_replace(config, repo_path=repo_path)
-
-    # Resolve session path from CLI argument
-    # See tests/test_session_resolution.py for detailed business logic
-    session_path, session_display_name, is_path_based_session = resolve_session_path(
-        args.session, config.sessions_dir
-    )
     log_dir = samocode_dir / "logs"
     workflow_prompt_path = samocode_dir / "workflow.md"
 
@@ -98,7 +93,7 @@ def main() -> None:
 
     if not workflow_prompt_path.exists():
         logger.error(f"Workflow prompt not found: {workflow_prompt_path}")
-        logger.error("Create workflow.md with Claude instructions")
+        logger.error("Create workflow.md with common session instructions")
         sys.exit(1)
 
     logger.info("=" * 70)
@@ -118,7 +113,6 @@ def main() -> None:
     if args.dry_run:
         logger.info("DRY RUN: Would start orchestrator loop")
         logger.info(f"  - Session: {session_path}")
-        logger.info(f"  - Workflow: {workflow_prompt_path}")
         logger.info(f"  - Config: {config}")
         return
 
@@ -153,7 +147,6 @@ def main() -> None:
                 config,
                 initial_dive if iteration == 1 else None,
                 initial_task if iteration == 1 else None,
-                is_path_based_session,
             )
 
             if result.status != ExecutionStatus.SUCCESS:
