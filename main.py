@@ -26,18 +26,11 @@ from worker import (
     setup_logging,
 )
 
-VERSION = "1.0.0"
-
 
 def main() -> None:
     """Main orchestrator entry point."""
     parser = argparse.ArgumentParser(
         description="Samocode - Autonomous Session Orchestrator"
-    )
-    parser.add_argument(
-        "--version",
-        action="version",
-        version=f"samocode {VERSION}",
     )
     parser.add_argument(
         "--session",
