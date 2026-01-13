@@ -58,7 +58,15 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    config = SamocodeConfig.from_env()
+    # Determine config hint directory for .samocode file lookup
+    # For path-based sessions, use the project directory (parent of session path)
+    # For name-based sessions, use samocode's own directory
+    if "/" in args.session or args.session.startswith("~"):
+        config_hint_dir = Path(args.session).expanduser().resolve().parent
+    else:
+        config_hint_dir = Path(__file__).parent  # samocode's own directory
+
+    config = SamocodeConfig.from_env(working_dir=config_hint_dir)
 
     # Set repo_path from CLI arg if provided
     if args.repo:
