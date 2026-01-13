@@ -163,6 +163,7 @@ def run_claude_once(
         initial_task=initial_task,
     )
     cli_args.extend(["--agent", agent_name, "--append-system-prompt", session_context])
+    cli_args.extend(["-p", "Start"])
 
     log_file = generate_log_filename(session_path, phase)
     logger.info(f"Streaming logs to: {log_file}")
@@ -366,19 +367,17 @@ def _build_initial_instructions(
     initial_dive: str | None, initial_task: str | None
 ) -> list[str]:
     """Build initial instructions section for prompts."""
-    lines = ["## Initial Instructions", "This is a NEW session. After initialization:"]
+    lines = ["## Initial Session Data", "Store the following in _overview.md for later phases:"]
 
     if initial_dive:
-        lines.append(f"1. Run dive skill with topic: **{initial_dive}**")
+        lines.append(f"- **Dive topic:** {initial_dive}")
     if initial_task:
-        step = "2" if initial_dive else "1"
-        lines.append(f"{step}. Define task: **{initial_task}**")
+        lines.append(f"- **Task:** {initial_task}")
 
     lines.append("")
     lines.append(
-        "**MANDATORY**: After these steps, continue through ALL workflow phases "
-        "(requirements -> planning -> implementation -> testing -> quality -> done). "
-        "Do NOT signal `done` after just the dive - that's only phase 1 of 7."
+        "**IMPORTANT**: Do NOT execute dive or task now. Only store them in _overview.md. "
+        "Set Phase: investigation and signal continue. Later agents will execute these."
     )
     return lines
 
