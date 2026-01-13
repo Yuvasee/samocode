@@ -376,9 +376,6 @@ def run_claude_once(
         )
         cli_args.extend(["-p", prompt])
 
-    env = os.environ.copy()
-    env["SAMOCODE_SESSION_PATH"] = str(session_path)
-
     log_file = generate_log_filename(session_path, phase)
     logger.info(f"Streaming logs to: {log_file}")
 
@@ -387,7 +384,6 @@ def run_claude_once(
         process = subprocess.Popen(
             cli_args,
             cwd=str(working_dir),
-            env=env,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,

@@ -10,6 +10,37 @@ from dotenv import load_dotenv
 load_dotenv(Path(__file__).parent.parent / ".env")
 
 
+def parse_samocode_file(start_path: Path) -> dict[str, str]:
+    """Find and parse .samocode file starting from given path.
+
+    Searches start_path and parent directories up to home.
+    Returns dict of key-value pairs, or empty dict if not found.
+    """
+    current = start_path.resolve()
+    home = Path.home()
+
+    while current != current.parent and current >= home:
+        samocode_path = current / ".samocode"
+        if samocode_path.exists():
+            return _parse_samocode_contents(samocode_path)
+        current = current.parent
+
+    return {}
+
+
+def _parse_samocode_contents(path: Path) -> dict[str, str]:
+    """Parse .samocode file contents into key-value dict."""
+    result: dict[str, str] = {}
+    for line in path.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if "=" in line:
+            key, value = line.split("=", 1)
+            result[key.strip()] = value.strip()
+    return result
+
+
 @dataclass(frozen=True)
 class SamocodeConfig:
     """Runtime configuration for Samocode orchestrator."""
@@ -28,24 +59,29 @@ class SamocodeConfig:
     retry_delay: int
 
     @classmethod
-    def from_env(cls) -> "SamocodeConfig":
-        """Load configuration from environment variables.
+    def from_env(cls, working_dir: Path | None = None) -> "SamocodeConfig":
+        """Load configuration from .samocode file and environment.
 
-        SESSIONS_DIR and WORKTREES_DIR must be passed by samocode-parent
-        from project's .samocode file. They have no defaults.
+        If working_dir provided, searches for .samocode file there first.
+        Falls back to environment variables if .samocode not found.
         """
-        sessions_dir = os.getenv("SESSIONS_DIR")
-        worktrees_dir = os.getenv("WORKTREES_DIR")
+        samocode_config: dict[str, str] = {}
+        if working_dir:
+            samocode_config = parse_samocode_file(working_dir)
+
+        # Map .samocode keys to our config (SESSIONS->sessions_dir, WORKTREES->worktrees_dir)
+        sessions_dir = samocode_config.get("SESSIONS") or os.getenv("SESSIONS_DIR")
+        worktrees_dir = samocode_config.get("WORKTREES") or os.getenv("WORKTREES_DIR")
 
         if not sessions_dir:
             raise ValueError(
-                "SESSIONS_DIR not set. Must be passed by samocode-parent "
-                "from project's .samocode file"
+                "SESSIONS not found in .samocode and SESSIONS_DIR env var not set. "
+                "Create .samocode file with SESSIONS=path or set SESSIONS_DIR."
             )
         if not worktrees_dir:
             raise ValueError(
-                "WORKTREES_DIR not set. Must be passed by samocode-parent "
-                "from project's .samocode file"
+                "WORKTREES not found in .samocode and WORKTREES_DIR env var not set. "
+                "Create .samocode file with WORKTREES=path or set WORKTREES_DIR."
             )
 
         return cls(
