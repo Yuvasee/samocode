@@ -35,7 +35,7 @@ def main() -> None:
     parser.add_argument(
         "--session",
         required=True,
-        help="Session path (e.g., '~/project/_samocode/my-task')",
+        help="Session path (e.g., '~/project/_sessions/my-task')",
     )
     parser.add_argument(
         "--repo",

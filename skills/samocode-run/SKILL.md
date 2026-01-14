@@ -118,13 +118,14 @@ SESSIONS=~/path/to/_sessions/
 ## Session Structure
 
 ```
-project/
-└── _samocode/
-    ├── _overview.md      # Main session state
-    ├── _qa.md            # Q&A when waiting for human input
-    ├── [date]-plan-*.md  # Implementation plans
-    ├── [date]-dive-*.md  # Investigation reports
-    └── [date]-*.md       # Other artifacts
+[SESSIONS_DIR]/
+└── [session-name]/           # Session folder (e.g., pyright-ci-enforcement)
+    ├── _overview.md          # Main session state
+    ├── _signal.json          # Control signal
+    ├── _qa.md                # Q&A when waiting for human input
+    ├── [date]-plan-*.md      # Implementation plans
+    ├── [date]-dive-*.md      # Investigation reports
+    └── [date]-*.md           # Other artifacts
 ```
 
 ## Key Files in _overview.md
