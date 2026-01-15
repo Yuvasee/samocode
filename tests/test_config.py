@@ -289,3 +289,69 @@ class TestSamocodeConfigValidate:
         errors = config.validate()
 
         assert any("timeout" in e for e in errors)
+
+
+class TestSamocodeConfigToLogString:
+    """Tests for SamocodeConfig.to_log_string - loggable config output."""
+
+    def test_includes_key_config_values(self, tmp_path: Path) -> None:
+        """Log string includes main config values."""
+        config = SamocodeConfig(
+            repo_path=tmp_path / "repo",
+            worktrees_dir=tmp_path / "worktrees",
+            telegram_bot_token="",
+            telegram_chat_id="",
+            claude_path=tmp_path / "claude",
+            claude_model="opus",
+            claude_max_turns=120,
+            claude_timeout=600,
+            max_retries=3,
+            retry_delay=5,
+        )
+
+        result = config.to_log_string()
+
+        assert "worktrees=" in result
+        assert "repo=" in result
+        assert "model=opus" in result
+        assert "timeout=600s" in result
+        assert "max_turns=120" in result
+
+    def test_shows_telegram_configured(self, tmp_path: Path) -> None:
+        """Shows telegram=configured when token is set."""
+        config = SamocodeConfig(
+            repo_path=None,
+            worktrees_dir=tmp_path,
+            telegram_bot_token="secret-token",
+            telegram_chat_id="12345",
+            claude_path=tmp_path / "claude",
+            claude_model="opus",
+            claude_max_turns=120,
+            claude_timeout=600,
+            max_retries=3,
+            retry_delay=5,
+        )
+
+        result = config.to_log_string()
+
+        assert "telegram=configured" in result
+        assert "secret-token" not in result  # Should not expose token
+
+    def test_shows_telegram_none(self, tmp_path: Path) -> None:
+        """Shows telegram=none when token is not set."""
+        config = SamocodeConfig(
+            repo_path=None,
+            worktrees_dir=tmp_path,
+            telegram_bot_token="",
+            telegram_chat_id="",
+            claude_path=tmp_path / "claude",
+            claude_model="opus",
+            claude_max_turns=120,
+            claude_timeout=600,
+            max_retries=3,
+            retry_delay=5,
+        )
+
+        result = config.to_log_string()
+
+        assert "telegram=none" in result
