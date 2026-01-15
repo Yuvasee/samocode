@@ -21,6 +21,7 @@ from worker import (
     notify_complete,
     notify_error,
     notify_waiting,
+    parse_samocode_file,
     read_signal_file,
     run_claude_with_retry,
     setup_logging,
@@ -63,6 +64,7 @@ def main() -> None:
     session_display_name = session_path.parent.name
 
     # Look for .samocode config in session's parent directory
+    samocode_config = parse_samocode_file(session_path.parent)
     config = SamocodeConfig.from_env(working_dir=session_path.parent)
 
     # Set repo_path from CLI arg if provided
@@ -129,6 +131,11 @@ def main() -> None:
             if session_handler is None and session_path.exists():
                 session_handler = add_session_handler(logger, session_path)
                 logger.info(f"Session log: {session_path / 'session.log'}")
+                # Log startup parameters for transparency
+                logger.info(f"Startup args: --session {args.session} --repo {args.repo} --dive {args.dive} --task {args.task}")
+                if samocode_config:
+                    logger.info(f".samocode: {samocode_config}")
+                logger.info(f"Config: {config.to_log_string()}")
 
             # Get current phase from overview for logging context
             phase = extract_phase(session_path)
@@ -138,7 +145,9 @@ def main() -> None:
             logger.info(f"Iteration {iteration} {phase_str}")
             logger.info("=" * 70)
 
-            clear_signal_file(session_path)
+            previous_signal = clear_signal_file(session_path)
+            if previous_signal:
+                logger.info(f"Previous signal: {previous_signal}")
             logger.info("Cleared signal file")
 
             result = run_claude_with_retry(

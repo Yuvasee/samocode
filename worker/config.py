@@ -89,6 +89,15 @@ class SamocodeConfig:
             retry_delay=int(os.getenv("SAMOCODE_RETRY_DELAY", "5")),
         )
 
+    def to_log_string(self) -> str:
+        """Return loggable config string (excludes secrets)."""
+        telegram_status = "configured" if self.telegram_bot_token else "none"
+        return (
+            f"worktrees={self.worktrees_dir}, repo={self.repo_path}, "
+            f"model={self.claude_model}, timeout={self.claude_timeout}s, "
+            f"max_turns={self.claude_max_turns}, telegram={telegram_status}"
+        )
+
     def validate(self) -> list[str]:
         """Validate configuration. Returns list of error messages."""
         errors: list[str] = []

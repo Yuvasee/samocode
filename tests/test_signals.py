@@ -90,35 +90,49 @@ class TestClearSignalFile:
     """Tests for clear_signal_file - creating empty signal."""
 
     def test_creates_empty_signal(self, tmp_path: Path) -> None:
-        """Creates _signal.json with empty object."""
+        """Creates _signal.json with empty object, returns None."""
         session = tmp_path / "session"
         session.mkdir()
 
-        clear_signal_file(session)
+        result = clear_signal_file(session)
 
         signal_file = session / "_signal.json"
         assert signal_file.exists()
         assert json.loads(signal_file.read_text()) == {}
+        assert result is None
 
     def test_creates_directory_if_needed(self, tmp_path: Path) -> None:
-        """Creates session directory if it doesn't exist."""
+        """Creates session directory if it doesn't exist, returns None."""
         session = tmp_path / "new-session"
 
-        clear_signal_file(session)
+        result = clear_signal_file(session)
 
         assert session.exists()
         assert (session / "_signal.json").exists()
+        assert result is None
 
     def test_overwrites_existing_signal(self, tmp_path: Path) -> None:
-        """Overwrites existing signal file."""
+        """Overwrites existing signal file, returns previous contents."""
         session = tmp_path / "session"
         session.mkdir()
         signal_file = session / "_signal.json"
         signal_file.write_text('{"status": "done", "summary": "old"}')
 
-        clear_signal_file(session)
+        result = clear_signal_file(session)
 
         assert json.loads(signal_file.read_text()) == {}
+        assert result == '{"status": "done", "summary": "old"}'
+
+    def test_returns_none_for_empty_signal(self, tmp_path: Path) -> None:
+        """Returns None when previous signal was empty object."""
+        session = tmp_path / "session"
+        session.mkdir()
+        signal_file = session / "_signal.json"
+        signal_file.write_text("{}")
+
+        result = clear_signal_file(session)
+
+        assert result is None
 
 
 class TestReadSignalFile:

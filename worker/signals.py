@@ -38,11 +38,20 @@ class Signal:
         }
 
 
-def clear_signal_file(session_path: Path) -> None:
-    """Create empty signal file at start of each iteration."""
+def clear_signal_file(session_path: Path) -> str | None:
+    """Clear signal file at start of each iteration.
+
+    Returns previous contents if file existed and had content, None otherwise.
+    """
     session_path.mkdir(parents=True, exist_ok=True)
     signal_file = session_path / "_signal.json"
+    previous: str | None = None
+    if signal_file.exists():
+        content = signal_file.read_text().strip()
+        if content and content != "{}":
+            previous = content
     signal_file.write_text("{}")
+    return previous
 
 
 def read_signal_file(session_path: Path) -> Signal:
