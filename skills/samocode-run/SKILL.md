@@ -1,11 +1,33 @@
 ---
 name: samocode-run
-description: Run and monitor samocode autonomous sessions on projects. Use when continuing work on a project with an existing _samocode session.
+description: Run and monitor samocode autonomous sessions on projects. Use when user says "run samocode" or wants to continue a samocode session.
 ---
 
 # Samocode Run
 
 Runs the samocode autonomous orchestrator on a project session and monitors its progress.
+
+## CRITICAL: DO NOT MANUALLY ORCHESTRATE
+
+**When user asks to "run samocode" or "continue samocode", you MUST use this skill.**
+
+DO NOT:
+- Launch Task subagents yourself for investigation/planning/implementation phases
+- Manually read `_overview.md` and decide what phase to run
+- Update `_signal.json` yourself
+- Pretend to be the orchestrator
+
+The Python worker (`main.py`) handles ALL of this. Your job is to START the worker and MONITOR its output.
+
+## Trigger Phrases
+
+Use this skill when user says:
+- "run samocode"
+- "start samocode"
+- "continue samocode"
+- "let samocode work on it"
+- "continue the session"
+- "run the orchestrator"
 
 ## What is Samocode?
 
@@ -17,9 +39,8 @@ Samocode is an autonomous session orchestrator that runs Claude CLI in a loop to
 
 ## When to Use
 
-- User wants to continue work on a project with an existing `_samocode/` folder
-- User says "run samocode", "continue the session", "let samocode work on it"
-- Project has a `_samocode/_overview.md` file with session state
+- User wants to run/continue a samocode session
+- Session folder exists with `_overview.md` file
 
 ## Execution
 
@@ -28,10 +49,10 @@ Samocode is an autonomous session orchestrator that runs Claude CLI in a loop to
 ### Steps
 
 1. **Find session:**
-   - If `$ARGUMENTS` is a full path to `_samocode/` or `_overview.md`, use it
-   - If `$ARGUMENTS` is a project path, look for `_samocode/_overview.md` inside it
-   - If no argument, check if current working dir has `_samocode/`
-   - Derive PROJECT_PATH from session path (parent of `_samocode/`)
+   - If `$ARGUMENTS` is a full path to a session folder or `_overview.md`, use it
+   - If `$ARGUMENTS` is a project path, look for `.samocode` file to find SESSIONS dir
+   - If no argument, check current working dir for `.samocode` config
+   - Session folders are in SESSIONS dir (from `.samocode` file), NOT nested in project
 
 2. **Read project paths from `.samocode` file:**
 
@@ -117,16 +138,20 @@ SESSIONS=~/path/to/_sessions/
 
 ## Session Structure
 
+Sessions are stored in SESSIONS dir (from `.samocode` file), NOT nested inside projects:
+
 ```
 [SESSIONS_DIR]/
-└── [session-name]/           # Session folder (e.g., pyright-ci-enforcement)
-    ├── _overview.md          # Main session state
-    ├── _signal.json          # Control signal
-    ├── _qa.md                # Q&A when waiting for human input
-    ├── [date]-plan-*.md      # Implementation plans
-    ├── [date]-dive-*.md      # Investigation reports
-    └── [date]-*.md           # Other artifacts
+└── [YY-MM-DD]-[session-name]/    # Session folder (e.g., 26-01-15-pyright-ci)
+    ├── _overview.md              # Main session state
+    ├── _signal.json              # Control signal
+    ├── _qa.md                    # Q&A when waiting for human input
+    ├── [MM-DD-HH:mm]-plan-*.md   # Implementation plans
+    ├── [MM-DD-HH:mm]-dive-*.md   # Investigation reports
+    └── [MM-DD-HH:mm]-*.md        # Other artifacts
 ```
+
+**IMPORTANT:** Do NOT create `_samocode/` subfolders inside sessions. All files go directly in the session folder.
 
 ## Key Files in _overview.md
 
@@ -148,7 +173,8 @@ Next: [what to do next]
 2. **Telegram errors**: Check `~/samocode/.env` has TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID
 3. **Timeout**: Increase CLAUDE_TIMEOUT if iterations take >15 min
 4. **ngrok needed**: For webhooks (Vapi, Stripe), run `ngrok http [PORT]` first
-5. **Session not found**: Ensure `_samocode/_overview.md` exists in project
+5. **Session not found**: Ensure session folder with `_overview.md` exists in SESSIONS dir
+6. **Nested _samocode/ error**: Sessions must NOT have `_samocode/` subfolder - migrate files to session root
 
 ## Debugging Samocode Bugs
 
@@ -184,13 +210,16 @@ If samocode exhibits bugs or weird behavior (loops, wrong decisions, missing ste
 
 ```
 User: "Run samocode on the hvac project"
-→ Read ~/code/hvac-voice-agent/.samocode for paths
-→ Session: ~/code/hvac-voice-agent/_samocode
-→ Start worker with SESSIONS_DIR and WORKTREES_DIR from .samocode
+→ Read ~/code/hvac-voice-agent/.samocode for paths (SESSIONS=~/code/hvac/_sessions/)
+→ Find session in SESSIONS dir (e.g., ~/code/hvac/_sessions/26-01-15-voice-agent/)
+→ Run: python main.py --session [SESSION_PATH]
 → Monitor iterations, report progress
 
 User: "Continue the samocode session"
 → Find session from context or ask user
 → Read project's .samocode for paths
-→ Start worker, monitor iterations, report progress
+→ Run: python main.py --session [SESSION_PATH]
+→ Monitor iterations, report progress
 ```
+
+**Remember:** You run `python main.py`, the Python worker runs Claude. You do NOT run phase agents yourself.
