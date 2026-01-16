@@ -158,10 +158,10 @@ class TestBuildSessionContext:
             initial_task="add feature",
         )
 
-        assert "Initial Instructions" in context
+        assert "Initial Session Data" in context
         assert "architecture" in context
         assert "add feature" in context
-        assert "MANDATORY" in context
+        assert "IMPORTANT" in context
 
 
 class TestExtractWorkingDir:

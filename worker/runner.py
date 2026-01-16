@@ -8,11 +8,11 @@ import subprocess
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime
 from enum import Enum
 from pathlib import Path
 
 from .config import SamocodeConfig
+from .timestamps import jsonl_timestamp
 
 logger = logging.getLogger("samocode")
 
@@ -26,6 +26,47 @@ PHASE_AGENTS: dict[str, str] = {
     "quality": "quality-agent",
     "done": "done-agent",
 }
+
+
+class SessionStructureError(Exception):
+    """Raised when session has invalid structure (e.g., nested _samocode subfolder)."""
+
+    pass
+
+
+def validate_session_structure(session_path: Path) -> list[str]:
+    """Validate session folder structure. Returns list of warnings.
+
+    Raises SessionStructureError for critical issues.
+
+    Valid structure: session files directly in session_path
+    Invalid structure: nested _samocode subfolder (deprecated pattern)
+    """
+    warnings: list[str] = []
+
+    # Check for nested _samocode subfolder (invalid pattern)
+    nested_samocode = session_path / "_samocode"
+    if nested_samocode.exists() and nested_samocode.is_dir():
+        nested_overview = nested_samocode / "_overview.md"
+        root_overview = session_path / "_overview.md"
+
+        if nested_overview.exists():
+            if root_overview.exists():
+                raise SessionStructureError(
+                    f"CRITICAL: Duplicate _overview.md found at both "
+                    f"{root_overview} and {nested_overview}. "
+                    f"The nested _samocode/ pattern is deprecated. "
+                    f"Migration required: Move files from {nested_samocode} to "
+                    f"{session_path} and remove the _samocode/ subfolder."
+                )
+            else:
+                raise SessionStructureError(
+                    f"CRITICAL: Session uses deprecated nested _samocode/ structure. "
+                    f"Migration required: Move files from {nested_samocode} to "
+                    f"{session_path} and remove the _samocode/ subfolder."
+                )
+
+    return warnings
 
 
 class ExecutionStatus(Enum):
@@ -123,8 +164,15 @@ def run_claude_once(
     - New session (no _overview.md): uses init-agent
     - Existing session: uses agent for current phase
     - Unknown phase: raises error (no fallback)
+
+    Raises SessionStructureError if session has invalid nested structure.
     """
     logger.info(f"Executing Claude CLI (attempt {attempt})...")
+
+    # Validate session structure (fail-fast on deprecated nested _samocode pattern)
+    structure_warnings = validate_session_structure(session_path)
+    for warning in structure_warnings:
+        logger.warning(warning)
 
     # Determine agent based on session state
     is_new_session = not (session_path / "_overview.md").exists()
@@ -199,7 +247,15 @@ def extract_iteration(session_path: Path) -> int | None:
 
 
 def extract_working_dir(session_path: Path) -> Path | None:
-    """Extract Working Dir from session _overview.md."""
+    """Extract and validate Working Dir from session _overview.md.
+
+    Returns None if:
+    - _overview.md doesn't exist
+    - Working Dir line not found
+    - Working Dir doesn't exist
+    - Working Dir points to session folder (invalid - must be project)
+    - Working Dir is "TBD" (not yet set)
+    """
     content = _read_overview(session_path)
     if content is None:
         return None
@@ -208,8 +264,91 @@ def extract_working_dir(session_path: Path) -> Path | None:
     if not match:
         return None
 
-    working_dir = Path(match.group(1).strip()).expanduser().resolve()
-    return working_dir if working_dir.exists() else None
+    raw_value = match.group(1).strip()
+
+    # Handle "TBD" placeholder
+    if raw_value.upper() == "TBD":
+        logger.warning("Working Dir is TBD - needs to be set in _overview.md")
+        return None
+
+    working_dir = Path(raw_value).expanduser().resolve()
+
+    # Validate path exists
+    if not working_dir.exists():
+        logger.warning(f"Working Dir path does not exist: {working_dir}")
+        return None
+
+    # Validate Working Dir is not the session folder itself
+    session_resolved = session_path.resolve()
+    if working_dir == session_resolved:
+        logger.error(
+            f"Working Dir cannot be session folder. "
+            f"Working Dir should point to project directory, not {session_resolved}"
+        )
+        return None
+
+    # Validate Working Dir is not inside session folder
+    try:
+        working_dir.relative_to(session_resolved)
+        logger.error(
+            f"Working Dir cannot be inside session folder. "
+            f"Working Dir: {working_dir}, Session: {session_resolved}"
+        )
+        return None
+    except ValueError:
+        pass  # Not relative - this is correct
+
+    # Validate Working Dir is not the sessions directory
+    sessions_dir = session_path.parent.resolve()
+    if working_dir == sessions_dir:
+        logger.error(
+            f"Working Dir cannot be sessions directory. "
+            f"Working Dir should point to project directory, not {sessions_dir}"
+        )
+        return None
+
+    return working_dir
+
+
+def extract_total_iterations(session_path: Path) -> int:
+    """Extract Total Iterations from session _overview.md."""
+    content = _read_overview(session_path)
+    if content is None:
+        return 0
+
+    match = re.search(r"^Total Iterations:\s*(\d+)$", content, re.MULTILINE)
+    return int(match.group(1)) if match else 0
+
+
+def increment_total_iterations(session_path: Path) -> int:
+    """Increment Total Iterations in _overview.md, return new value.
+
+    If Total Iterations line doesn't exist, adds it after Iteration line.
+    """
+    overview_path = session_path / "_overview.md"
+    if not overview_path.exists():
+        return 1
+
+    content = overview_path.read_text()
+
+    # Try to find and increment existing counter
+    match = re.search(r"^(Total Iterations:\s*)(\d+)$", content, re.MULTILINE)
+    if match:
+        current = int(match.group(2))
+        new_value = current + 1
+        new_content = content[: match.start(2)] + str(new_value) + content[match.end(2) :]
+        overview_path.write_text(new_content)
+        return new_value
+
+    # Add Total Iterations after Iteration line
+    iteration_match = re.search(r"^(Iteration:\s*\d+)$", content, re.MULTILINE)
+    if iteration_match:
+        insert_pos = iteration_match.end()
+        new_content = content[:insert_pos] + "\nTotal Iterations: 1" + content[insert_pos:]
+        overview_path.write_text(new_content)
+        return 1
+
+    return 1
 
 
 # =============================================================================
@@ -265,7 +404,7 @@ def get_agent_for_phase(phase: str | None) -> str | None:
 
 def generate_log_filename(session_path: Path, phase: str | None) -> Path:
     """Generate timestamped JSONL filename for this invocation."""
-    timestamp = datetime.now().strftime("%m-%d-%H%M%S")
+    timestamp = jsonl_timestamp()
     phase_slug = phase.lower() if phase else "unknown"
     return session_path / f"{timestamp}-{phase_slug}.jsonl"
 
