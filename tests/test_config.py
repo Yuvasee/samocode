@@ -161,8 +161,8 @@ class TestSamocodeConfigFromEnv:
             config = SamocodeConfig.from_env(working_dir=tmp_path)
 
         assert config.claude_model == "opus"
-        assert config.claude_max_turns == 120
-        assert config.claude_timeout == 600
+        assert config.claude_max_turns == 300
+        assert config.claude_timeout == 1800
         assert config.max_retries == 3
         assert config.retry_delay == 5
         assert config.telegram_bot_token == ""

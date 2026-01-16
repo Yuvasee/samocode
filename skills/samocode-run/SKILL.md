@@ -86,9 +86,10 @@ Samocode is an autonomous session orchestrator that runs Claude CLI in a loop to
    cd ~/samocode && \
      SESSIONS_DIR=[extracted value] \
      WORKTREES_DIR=[extracted value] \
-     CLAUDE_TIMEOUT=900 \
      python main.py --session [SESSION_PATH] 2>&1
    ```
+
+   Default timeout is 30 min, max turns 300. Override with CLAUDE_TIMEOUT and CLAUDE_MAX_TURNS env vars if needed.
 
    If MAIN_REPO was found and session is repo-based, add `--repo [MAIN_REPO]`
 
@@ -171,7 +172,7 @@ Next: [what to do next]
 
 1. **Missing .samocode file**: Create `.samocode` file in project root with SESSIONS, WORKTREES, MAIN_REPO
 2. **Telegram errors**: Check `~/samocode/.env` has TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID
-3. **Timeout**: Increase CLAUDE_TIMEOUT if iterations take >15 min
+3. **Timeout**: Default is 30 min. Increase CLAUDE_TIMEOUT env var if iterations need more
 4. **ngrok needed**: For webhooks (Vapi, Stripe), run `ngrok http [PORT]` first
 5. **Session not found**: Ensure session folder with `_overview.md` exists in SESSIONS dir
 6. **Nested _samocode/ error**: Sessions must NOT have `_samocode/` subfolder - migrate files to session root

@@ -83,8 +83,8 @@ class SamocodeConfig:
                 os.getenv("CLAUDE_PATH", "claude")  # Assumes claude is in PATH
             ),
             claude_model=os.getenv("CLAUDE_MODEL", "opus"),
-            claude_max_turns=int(os.getenv("CLAUDE_MAX_TURNS", "120")),
-            claude_timeout=int(os.getenv("CLAUDE_TIMEOUT", "600")),
+            claude_max_turns=int(os.getenv("CLAUDE_MAX_TURNS", "300")),
+            claude_timeout=int(os.getenv("CLAUDE_TIMEOUT", "1800")),
             max_retries=int(os.getenv("SAMOCODE_MAX_RETRIES", "3")),
             retry_delay=int(os.getenv("SAMOCODE_RETRY_DELAY", "5")),
         )
