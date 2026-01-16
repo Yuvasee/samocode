@@ -89,6 +89,24 @@ The `summary` field should be a single line describing:
 - Quality issues addressed
 - Final status
 
+## CRITICAL CONSTRAINT
+
+**The done-agent MUST ALWAYS signal `done`, NEVER `continue`.**
+
+If you cannot complete the summary:
+- Signal `blocked` with reason explaining what's missing
+- Do NOT signal `continue` - this causes infinite loops
+
+The done phase is terminal. There is no "next iteration" of done.
+
+```json
+// CORRECT
+{"status": "done", "phase": "done", "summary": "..."}
+
+// WRONG - causes infinite loop (orchestrator will convert to blocked)
+{"status": "continue", "phase": "done"}
+```
+
 ## Important Notes
 
 - This is the final phase - no more iterations after this

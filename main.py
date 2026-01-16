@@ -13,10 +13,13 @@ from pathlib import Path
 from worker import (
     ExecutionStatus,
     SamocodeConfig,
+    Signal,
     SignalStatus,
     add_session_handler,
     clear_signal_file,
     extract_phase,
+    extract_total_iterations,
+    increment_total_iterations,
     notify_blocked,
     notify_complete,
     notify_error,
@@ -119,6 +122,7 @@ def main() -> None:
         return
 
     iteration = 0
+    cumulative_iterations = extract_total_iterations(session_path)
     initial_dive = args.dive
     initial_task = args.task
     session_handler = None
@@ -126,6 +130,9 @@ def main() -> None:
     try:
         while True:
             iteration += 1
+            # Track cumulative iterations in _overview.md (persists across restarts)
+            if session_path.exists() and (session_path / "_overview.md").exists():
+                cumulative_iterations = increment_total_iterations(session_path)
 
             # Add session handler once session directory exists (created by Claude)
             if session_handler is None and session_path.exists():
@@ -142,7 +149,8 @@ def main() -> None:
             phase_str = f"[{phase}]" if phase else ""
 
             logger.info(f"\n{'=' * 70}")
-            logger.info(f"Iteration {iteration} {phase_str}")
+            total_str = f" (total: {cumulative_iterations})" if cumulative_iterations > iteration else ""
+            logger.info(f"Iteration {iteration}{total_str} {phase_str}")
             logger.info("=" * 70)
 
             previous_signal = clear_signal_file(session_path)
@@ -174,6 +182,21 @@ def main() -> None:
             signal = read_signal_file(session_path)
             # Use phase from signal if available, otherwise use previously extracted phase
             signal_phase = signal.phase or phase
+
+            # Validate done-phase signals: done phase must signal done, not continue
+            if signal_phase == "done" and signal.status == SignalStatus.CONTINUE:
+                logger.error(
+                    "Done-agent signaled 'continue' which is invalid. "
+                    "Done phase must signal 'done' or 'blocked'. "
+                    "Treating as blocked to prevent infinite loop."
+                )
+                signal = Signal(
+                    status=SignalStatus.BLOCKED,
+                    phase="done",
+                    reason="Done-agent incorrectly signaled continue",
+                    needs="investigation",
+                )
+
             phase_log = f"[{signal_phase}] " if signal_phase else ""
             logger.info(f"{phase_log}Signal: {signal.status.value}")
 
@@ -220,7 +243,9 @@ def main() -> None:
 
         logger.info("=" * 70)
         logger.info("Orchestrator finished")
-        logger.info(f"Total iterations: {iteration}")
+        logger.info(f"This run: {iteration} iterations")
+        if cumulative_iterations > iteration:
+            logger.info(f"Session total: {cumulative_iterations} iterations")
         logger.info("=" * 70)
 
     except KeyboardInterrupt:
