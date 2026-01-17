@@ -70,8 +70,7 @@ def main() -> None:
     samocode_config = parse_samocode_file(session_path.parent)
     config = SamocodeConfig.from_env(working_dir=session_path.parent)
 
-    # Set repo_path from CLI arg or MAIN_REPO from .samocode
-    repo_source = None
+    # Set repo_path from CLI arg or MAIN_REPO from .samocode (REQUIRED)
     if args.repo:
         repo_path = Path(args.repo).expanduser().resolve()
         repo_source = "--repo CLI arg"
@@ -79,14 +78,18 @@ def main() -> None:
         repo_path = Path(samocode_config["MAIN_REPO"]).expanduser().resolve()
         repo_source = "MAIN_REPO in .samocode"
     else:
-        repo_path = None
+        print(
+            "Error: MAIN_REPO is required. Either:\n"
+            "  1. Pass --repo /path to the orchestrator, or\n"
+            "  2. Set MAIN_REPO in .samocode file"
+        )
+        sys.exit(1)
 
-    if repo_path is not None:
-        if not repo_path.exists():
-            print(f"Error: Repo path does not exist: {repo_path} (from {repo_source})")
-            sys.exit(1)
-        # Git check is optional - some projects might not be git repos
-        config = dataclass_replace(config, repo_path=repo_path)
+    if not repo_path.exists():
+        print(f"Error: Repo path does not exist: {repo_path} (from {repo_source})")
+        sys.exit(1)
+    # Git check is optional - some projects might not be git repos
+    config = dataclass_replace(config, repo_path=repo_path)
     log_dir = samocode_dir / "logs"
     workflow_prompt_path = samocode_dir / "workflow.md"
 
@@ -176,7 +179,10 @@ def main() -> None:
             if result.status != ExecutionStatus.SUCCESS:
                 logger.error("Claude execution failed after retries")
                 logger.error(f"Status: {result.status.value}")
-                logger.error(f"Last stderr: {result.stderr[:500]}")
+                if result.stderr:
+                    logger.error(f"Last stderr: {result.stderr[:500]}")
+                if result.stdout:
+                    logger.error(f"Last stdout (last 500 chars): {result.stdout[-500:]}")
                 notify_error(
                     f"Claude execution failed: {result.status.value}",
                     session_display_name,

@@ -23,7 +23,6 @@ from worker.runner import (
     build_session_context,
     extract_iteration,
     extract_phase,
-    extract_working_dir,
     generate_log_filename,
     get_agent_for_phase,
     run_claude_once,
@@ -31,12 +30,12 @@ from worker.runner import (
 )
 
 
-def make_config(tmp_path: Path) -> SamocodeConfig:
+def make_config(tmp_path: Path, repo_path: Path | None = None) -> SamocodeConfig:
     """Create a test configuration."""
     claude = tmp_path / "claude"
     claude.touch()
     return SamocodeConfig(
-        repo_path=None,
+        repo_path=repo_path,
         worktrees_dir=tmp_path / "worktrees",
         telegram_bot_token="",
         telegram_chat_id="",
@@ -164,51 +163,6 @@ class TestBuildSessionContext:
         assert "IMPORTANT" in context
 
 
-class TestExtractWorkingDir:
-    """Tests for extract_working_dir - parsing _overview.md."""
-
-    def test_overview_not_exists(self, tmp_path: Path) -> None:
-        """Returns None when _overview.md doesn't exist."""
-        session = tmp_path / "session"
-        session.mkdir()
-
-        result = extract_working_dir(session)
-
-        assert result is None
-
-    def test_working_dir_not_found(self, tmp_path: Path) -> None:
-        """Returns None when Working Dir line not present."""
-        session = tmp_path / "session"
-        session.mkdir()
-        (session / "_overview.md").write_text("# Session\nNo working dir here")
-
-        result = extract_working_dir(session)
-
-        assert result is None
-
-    def test_working_dir_found(self, tmp_path: Path) -> None:
-        """Returns path when Working Dir found and exists."""
-        session = tmp_path / "session"
-        session.mkdir()
-        project = tmp_path / "project"
-        project.mkdir()
-        (session / "_overview.md").write_text(f"Working Dir: {project}\n")
-
-        result = extract_working_dir(session)
-
-        assert result == project
-
-    def test_working_dir_not_exists(self, tmp_path: Path) -> None:
-        """Returns None when Working Dir path doesn't exist."""
-        session = tmp_path / "session"
-        session.mkdir()
-        (session / "_overview.md").write_text("Working Dir: /nonexistent/path\n")
-
-        result = extract_working_dir(session)
-
-        assert result is None
-
-
 class TestExtractPhase:
     """Tests for extract_phase - parsing phase from _overview.md."""
 
@@ -310,8 +264,8 @@ class TestRunClaudeOnce:
         session.mkdir()
         project_dir = tmp_path / "project"
         project_dir.mkdir()
-        (session / "_overview.md").write_text(f"Working Dir: {project_dir}\nPhase: init\n")
-        config = make_config(tmp_path)
+        (session / "_overview.md").write_text("Phase: init\n")
+        config = make_config(tmp_path, repo_path=project_dir)
 
         with patch("worker.runner.subprocess.Popen") as mock_popen:
             mock_process = MagicMock()
@@ -338,8 +292,8 @@ class TestRunClaudeOnce:
         session.mkdir()
         project_dir = tmp_path / "project"
         project_dir.mkdir()
-        (session / "_overview.md").write_text(f"Working Dir: {project_dir}\nPhase: init\n")
-        config = make_config(tmp_path)
+        (session / "_overview.md").write_text("Phase: init\n")
+        config = make_config(tmp_path, repo_path=project_dir)
 
         with patch("worker.runner.subprocess.Popen") as mock_popen:
             mock_process = MagicMock()
@@ -366,8 +320,8 @@ class TestRunClaudeOnce:
         session.mkdir()
         project_dir = tmp_path / "project"
         project_dir.mkdir()
-        (session / "_overview.md").write_text(f"Working Dir: {project_dir}\nPhase: init\n")
-        config = make_config(tmp_path)
+        (session / "_overview.md").write_text("Phase: init\n")
+        config = make_config(tmp_path, repo_path=project_dir)
 
         with patch("worker.runner.subprocess.Popen") as mock_popen:
             mock_process = MagicMock()
@@ -386,6 +340,22 @@ class TestRunClaudeOnce:
                 result = run_claude_once(workflow, session, config, 1)
 
         assert result.status == ExecutionStatus.TIMEOUT
+
+    def test_missing_repo_path_raises_error(self, tmp_path: Path) -> None:
+        """Raises ValueError when repo_path is not set."""
+        workflow = tmp_path / "workflow.md"
+        workflow.write_text("# Workflow")
+        session = tmp_path / "session"
+        session.mkdir()
+        (session / "_overview.md").write_text("Phase: init\n")
+        config = make_config(tmp_path)  # No repo_path
+
+        import pytest
+
+        with pytest.raises(ValueError) as exc_info:
+            run_claude_once(workflow, session, config, 1)
+
+        assert "MAIN_REPO is required" in str(exc_info.value)
 
 
 class TestRunClaudeWithRetry:
