@@ -65,14 +65,14 @@ Samocode is an autonomous session orchestrator that runs Claude CLI in a loop to
    ```
 
    Extract values:
+   - `MAIN_REPO` from MAIN_REPO line (**REQUIRED** - this is the working directory)
    - `SESSIONS_DIR` from SESSIONS line
    - `WORKTREES_DIR` from WORKTREES line
-   - `MAIN_REPO` from MAIN_REPO line (optional, for --repo flag)
 
-   **If `.samocode` file is missing:**
-   - ERROR: Tell user they need to create `.samocode` file in project root
+   **If `.samocode` file is missing or MAIN_REPO is not set:**
+   - ERROR: Tell user they need to create `.samocode` file with MAIN_REPO
    - Show them the required format (see below)
-   - Do NOT proceed without this file
+   - Do NOT proceed without MAIN_REPO
 
 3. **Verify session exists:**
    ```bash
@@ -133,9 +133,9 @@ SESSIONS=~/path/to/_sessions/
 ```
 
 **Keys:**
+- `MAIN_REPO`: **REQUIRED** - The main working directory (where Claude runs)
 - `SESSIONS`: Where samocode session folders are stored
 - `WORKTREES`: Where git worktrees are created for repo-based sessions
-- `MAIN_REPO`: The main git repository (optional, used with --repo flag)
 
 ## Session Structure
 

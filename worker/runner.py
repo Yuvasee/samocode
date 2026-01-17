@@ -191,24 +191,16 @@ def run_claude_once(
                 f"Valid phases: {', '.join(PHASE_AGENTS.keys())}"
             )
 
-    working_dir = extract_working_dir(session_path)
-    if working_dir is None:
-        # Fallback to repo_path from config (set via --repo CLI arg or MAIN_REPO)
-        if config.repo_path is not None:
-            working_dir = config.repo_path
-            logger.warning(
-                f"Working Dir not found in _overview.md, using --repo: {working_dir}"
-            )
-        else:
-            # No valid Working Dir - this is a configuration error
-            raise ValueError(
-                "Cannot determine Working Dir. Either:\n"
-                "  1. Add 'Working Dir: /path' to _overview.md, or\n"
-                "  2. Pass --repo /path to the orchestrator, or\n"
-                "  3. Set MAIN_REPO in .samocode file"
-            )
-    else:
-        logger.info(f"Using Working Dir: {working_dir}")
+    # Use config.repo_path (from --repo CLI arg or MAIN_REPO in .samocode)
+    # Never parse Working Dir from _overview.md - it's AI-generated and unreliable
+    if config.repo_path is None:
+        raise ValueError(
+            "MAIN_REPO is required. Either:\n"
+            "  1. Pass --repo /path to the orchestrator, or\n"
+            "  2. Set MAIN_REPO in .samocode file"
+        )
+    working_dir = config.repo_path
+    logger.info(f"Working Dir: {working_dir}")
 
     cli_args = _build_cli_args(config)
 
@@ -256,82 +248,6 @@ def extract_iteration(session_path: Path) -> int | None:
 
     match = re.search(r"^Iteration:\s*(\d+)$", content, re.MULTILINE)
     return int(match.group(1)) if match else None
-
-
-def extract_working_dir(session_path: Path) -> Path | None:
-    """Extract and validate Working Dir from session _overview.md.
-
-    Supports two formats:
-    - Key-value: "Working Dir: /path"
-    - Header: "## Working Directory\\n/path"
-
-    Returns None if:
-    - _overview.md doesn't exist
-    - Working Dir line not found
-    - Working Dir doesn't exist
-    - Working Dir points to session folder (invalid - must be project)
-    - Working Dir is "TBD" (not yet set)
-    """
-    content = _read_overview(session_path)
-    if content is None:
-        return None
-
-    # Try key-value format first: "Working Dir: /path"
-    match = re.search(r"^Working Dir:\s*(.+)$", content, re.MULTILINE)
-
-    # Fall back to header format: "## Working Directory\n/path"
-    if not match:
-        match = re.search(
-            r"^##\s*Working Directory\s*\n([~/].+)$", content, re.MULTILINE
-        )
-
-    if not match:
-        return None
-
-    raw_value = match.group(1).strip()
-
-    # Handle "TBD" placeholder
-    if raw_value.upper() == "TBD":
-        logger.warning("Working Dir is TBD - needs to be set in _overview.md")
-        return None
-
-    working_dir = Path(raw_value).expanduser().resolve()
-
-    # Validate path exists
-    if not working_dir.exists():
-        logger.warning(f"Working Dir path does not exist: {working_dir}")
-        return None
-
-    # Validate Working Dir is not the session folder itself
-    session_resolved = session_path.resolve()
-    if working_dir == session_resolved:
-        logger.error(
-            f"Working Dir cannot be session folder. "
-            f"Working Dir should point to project directory, not {session_resolved}"
-        )
-        return None
-
-    # Validate Working Dir is not inside session folder
-    try:
-        working_dir.relative_to(session_resolved)
-        logger.error(
-            f"Working Dir cannot be inside session folder. "
-            f"Working Dir: {working_dir}, Session: {session_resolved}"
-        )
-        return None
-    except ValueError:
-        pass  # Not relative - this is correct
-
-    # Validate Working Dir is not the sessions directory
-    sessions_dir = session_path.parent.resolve()
-    if working_dir == sessions_dir:
-        logger.error(
-            f"Working Dir cannot be sessions directory. "
-            f"Working Dir should point to project directory, not {sessions_dir}"
-        )
-        return None
-
-    return working_dir
 
 
 def extract_total_iterations(session_path: Path) -> int:
@@ -400,9 +316,8 @@ def build_session_context(
     lines.append("\n\n# Session Context")
     lines.append(f"**Session path:** {session_path}")
 
-    working_dir = extract_working_dir(session_path)
-    if working_dir:
-        lines.append(f"**Working directory:** {working_dir}")
+    if config.repo_path:
+        lines.append(f"**Working directory:** {config.repo_path}")
 
     if phase:
         lines.append(f"**Phase:** {phase}")
@@ -595,7 +510,11 @@ def _execute_process(
             )
 
         logger.error(f"Claude CLI failed with code {process.returncode}")
-        logger.error(f"stderr: {stderr[:500]}")
+        if stderr:
+            logger.error(f"stderr: {stderr[:500]}")
+        if stdout:
+            # Log last 500 chars of stdout for debugging when stderr is empty
+            logger.error(f"stdout (last 500 chars): {stdout[-500:]}")
         return ExecutionResult(
             status=ExecutionStatus.FAILURE,
             stdout=stdout,
