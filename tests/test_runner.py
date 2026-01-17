@@ -304,9 +304,13 @@ class TestRunClaudeOnce:
         """Returns SUCCESS status on successful execution."""
         workflow = tmp_path / "workflow.md"
         workflow.write_text("# Workflow")
-        session = tmp_path / "session"
+        sessions_dir = tmp_path / "sessions"
+        sessions_dir.mkdir()
+        session = sessions_dir / "test-session"
         session.mkdir()
-        (session / "_overview.md").write_text(f"Working Dir: {tmp_path}\nPhase: init\n")
+        project_dir = tmp_path / "project"
+        project_dir.mkdir()
+        (session / "_overview.md").write_text(f"Working Dir: {project_dir}\nPhase: init\n")
         config = make_config(tmp_path)
 
         with patch("worker.runner.subprocess.Popen") as mock_popen:
@@ -328,9 +332,13 @@ class TestRunClaudeOnce:
         """Returns FAILURE status on non-zero return code."""
         workflow = tmp_path / "workflow.md"
         workflow.write_text("# Workflow")
-        session = tmp_path / "session"
+        sessions_dir = tmp_path / "sessions"
+        sessions_dir.mkdir()
+        session = sessions_dir / "test-session"
         session.mkdir()
-        (session / "_overview.md").write_text(f"Working Dir: {tmp_path}\nPhase: init\n")
+        project_dir = tmp_path / "project"
+        project_dir.mkdir()
+        (session / "_overview.md").write_text(f"Working Dir: {project_dir}\nPhase: init\n")
         config = make_config(tmp_path)
 
         with patch("worker.runner.subprocess.Popen") as mock_popen:
@@ -352,9 +360,13 @@ class TestRunClaudeOnce:
         """Returns TIMEOUT status when execution times out."""
         workflow = tmp_path / "workflow.md"
         workflow.write_text("# Workflow")
-        session = tmp_path / "session"
+        sessions_dir = tmp_path / "sessions"
+        sessions_dir.mkdir()
+        session = sessions_dir / "test-session"
         session.mkdir()
-        (session / "_overview.md").write_text(f"Working Dir: {tmp_path}\nPhase: init\n")
+        project_dir = tmp_path / "project"
+        project_dir.mkdir()
+        (session / "_overview.md").write_text(f"Working Dir: {project_dir}\nPhase: init\n")
         config = make_config(tmp_path)
 
         with patch("worker.runner.subprocess.Popen") as mock_popen:
