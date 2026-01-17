@@ -70,15 +70,22 @@ def main() -> None:
     samocode_config = parse_samocode_file(session_path.parent)
     config = SamocodeConfig.from_env(working_dir=session_path.parent)
 
-    # Set repo_path from CLI arg if provided
+    # Set repo_path from CLI arg or MAIN_REPO from .samocode
+    repo_source = None
     if args.repo:
         repo_path = Path(args.repo).expanduser().resolve()
+        repo_source = "--repo CLI arg"
+    elif samocode_config.get("MAIN_REPO"):
+        repo_path = Path(samocode_config["MAIN_REPO"]).expanduser().resolve()
+        repo_source = "MAIN_REPO in .samocode"
+    else:
+        repo_path = None
+
+    if repo_path is not None:
         if not repo_path.exists():
-            print(f"Error: Repo path does not exist: {repo_path}")
+            print(f"Error: Repo path does not exist: {repo_path} (from {repo_source})")
             sys.exit(1)
-        if not (repo_path / ".git").exists():
-            print(f"Error: Not a git repository: {repo_path}")
-            sys.exit(1)
+        # Git check is optional - some projects might not be git repos
         config = dataclass_replace(config, repo_path=repo_path)
     log_dir = samocode_dir / "logs"
     workflow_prompt_path = samocode_dir / "workflow.md"

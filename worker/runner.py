@@ -193,8 +193,20 @@ def run_claude_once(
 
     working_dir = extract_working_dir(session_path)
     if working_dir is None:
-        working_dir = session_path.parent
-        logger.info(f"Using session parent as Working Dir: {working_dir}")
+        # Fallback to repo_path from config (set via --repo CLI arg or MAIN_REPO)
+        if config.repo_path is not None:
+            working_dir = config.repo_path
+            logger.warning(
+                f"Working Dir not found in _overview.md, using --repo: {working_dir}"
+            )
+        else:
+            # No valid Working Dir - this is a configuration error
+            raise ValueError(
+                "Cannot determine Working Dir. Either:\n"
+                "  1. Add 'Working Dir: /path' to _overview.md, or\n"
+                "  2. Pass --repo /path to the orchestrator, or\n"
+                "  3. Set MAIN_REPO in .samocode file"
+            )
     else:
         logger.info(f"Using Working Dir: {working_dir}")
 
@@ -249,6 +261,10 @@ def extract_iteration(session_path: Path) -> int | None:
 def extract_working_dir(session_path: Path) -> Path | None:
     """Extract and validate Working Dir from session _overview.md.
 
+    Supports two formats:
+    - Key-value: "Working Dir: /path"
+    - Header: "## Working Directory\\n/path"
+
     Returns None if:
     - _overview.md doesn't exist
     - Working Dir line not found
@@ -260,7 +276,15 @@ def extract_working_dir(session_path: Path) -> Path | None:
     if content is None:
         return None
 
+    # Try key-value format first: "Working Dir: /path"
     match = re.search(r"^Working Dir:\s*(.+)$", content, re.MULTILINE)
+
+    # Fall back to header format: "## Working Directory\n/path"
+    if not match:
+        match = re.search(
+            r"^##\s*Working Directory\s*\n([~/].+)$", content, re.MULTILINE
+        )
+
     if not match:
         return None
 
