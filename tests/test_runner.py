@@ -16,15 +16,14 @@ from unittest.mock import MagicMock, patch
 
 
 from worker.config import SamocodeConfig
+from worker.phases import Phase, get_agent_for_phase
 from worker.runner import (
     ExecutionResult,
     ExecutionStatus,
-    PHASE_AGENTS,
     build_session_context,
     extract_iteration,
     extract_phase,
     generate_log_filename,
-    get_agent_for_phase,
     run_claude_once,
     run_claude_with_retry,
 )
@@ -52,9 +51,9 @@ class TestGetAgentForPhase:
     """Tests for get_agent_for_phase - mapping phases to agents."""
 
     def test_all_known_phases(self) -> None:
-        """All phases in PHASE_AGENTS are mapped correctly."""
-        for phase, expected_agent in PHASE_AGENTS.items():
-            assert get_agent_for_phase(phase) == expected_agent
+        """All phases in Phase enum are mapped correctly."""
+        for phase in Phase:
+            assert get_agent_for_phase(phase.value) == f"{phase.value}-agent"
 
     def test_unknown_phase_returns_none(self) -> None:
         """Unknown phase returns None."""

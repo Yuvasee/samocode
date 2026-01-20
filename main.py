@@ -10,6 +10,8 @@ import sys
 from dataclasses import replace as dataclass_replace
 from pathlib import Path
 
+import logging
+
 from worker import (
     ExecutionStatus,
     SamocodeConfig,
@@ -19,16 +21,80 @@ from worker import (
     clear_signal_file,
     extract_phase,
     extract_total_iterations,
+    get_phase_iteration_count,
     increment_total_iterations,
+    is_iteration_limit_exceeded,
     notify_blocked,
     notify_complete,
     notify_error,
     notify_waiting,
     parse_samocode_file,
     read_signal_file,
+    record_signal,
     run_claude_with_retry,
     setup_logging,
+    validate_signal_for_phase,
+    validate_transition,
 )
+
+
+def validate_and_process_signal(
+    signal: Signal,
+    current_phase: str | None,
+    session_path: Path,
+    iteration: int,
+    logger: logging.Logger,
+) -> Signal:
+    """Validate signal and enforce phase constraints.
+
+    Returns the signal (possibly modified if invalid).
+    Records signal to history.
+    """
+    # Record signal to history first (even if invalid)
+    record_signal(session_path, signal, iteration, current_phase)
+
+    signal_phase = signal.phase or current_phase
+
+    # Validate signal is allowed for phase
+    is_valid, error = validate_signal_for_phase(signal_phase, signal.status.value)
+    if not is_valid:
+        logger.error(f"Invalid signal: {error}")
+        return Signal(
+            status=SignalStatus.BLOCKED,
+            phase=signal_phase,
+            reason=f"Invalid signal: {error}",
+            needs="investigation",
+        )
+
+    # Check per-phase iteration limit
+    if signal_phase:
+        phase_iterations = get_phase_iteration_count(session_path, signal_phase)
+        exceeded, max_allowed = is_iteration_limit_exceeded(signal_phase, phase_iterations)
+        if exceeded:
+            logger.error(
+                f"Phase '{signal_phase}' exceeded iteration limit: "
+                f"{phase_iterations} > {max_allowed}"
+            )
+            return Signal(
+                status=SignalStatus.BLOCKED,
+                phase=signal_phase,
+                reason=f"Phase '{signal_phase}' exceeded {max_allowed} iteration limit",
+                needs="investigation",
+            )
+
+    # Validate phase transition (if signal indicates phase change)
+    if signal.phase and current_phase and signal.phase.lower() != current_phase.lower():
+        is_valid, error = validate_transition(current_phase, signal.phase)
+        if not is_valid:
+            logger.error(f"Invalid transition: {error}")
+            return Signal(
+                status=SignalStatus.BLOCKED,
+                phase=current_phase,
+                reason=f"Invalid transition: {error}",
+                needs="investigation",
+            )
+
+    return signal
 
 
 def main() -> None:
@@ -193,22 +259,18 @@ def main() -> None:
                 break
 
             signal = read_signal_file(session_path)
+
+            # Validate signal and record to history
+            signal = validate_and_process_signal(
+                signal,
+                phase,  # phase from overview
+                session_path,
+                iteration,
+                logger,
+            )
+
             # Use phase from signal if available, otherwise use previously extracted phase
             signal_phase = signal.phase or phase
-
-            # Validate done-phase signals: done phase must signal done, not continue
-            if signal_phase == "done" and signal.status == SignalStatus.CONTINUE:
-                logger.error(
-                    "Done-agent signaled 'continue' which is invalid. "
-                    "Done phase must signal 'done' or 'blocked'. "
-                    "Treating as blocked to prevent infinite loop."
-                )
-                signal = Signal(
-                    status=SignalStatus.BLOCKED,
-                    phase="done",
-                    reason="Done-agent incorrectly signaled continue",
-                    needs="investigation",
-                )
 
             phase_log = f"[{signal_phase}] " if signal_phase else ""
             logger.info(f"{phase_log}Signal: {signal.status.value}")

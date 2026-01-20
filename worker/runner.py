@@ -12,20 +12,10 @@ from enum import Enum
 from pathlib import Path
 
 from .config import SamocodeConfig
+from .phases import Phase, get_agent_for_phase
 from .timestamps import jsonl_timestamp
 
 logger = logging.getLogger("samocode")
-
-PHASE_AGENTS: dict[str, str] = {
-    "init": "init-agent",
-    "investigation": "investigation-agent",
-    "requirements": "requirements-agent",
-    "planning": "planning-agent",
-    "implementation": "implementation-agent",
-    "testing": "testing-agent",
-    "quality": "quality-agent",
-    "done": "done-agent",
-}
 
 
 class SessionStructureError(Exception):
@@ -188,7 +178,7 @@ def run_claude_once(
         if agent_name is None:
             raise ValueError(
                 f"Unknown phase '{phase}' has no agent. "
-                f"Valid phases: {', '.join(PHASE_AGENTS.keys())}"
+                f"Valid phases: {', '.join(p.value for p in Phase)}"
             )
 
     # Use config.repo_path (from --repo CLI arg or MAIN_REPO in .samocode)
@@ -332,13 +322,6 @@ def build_session_context(
         lines.extend(_build_initial_instructions(initial_dive, initial_task))
 
     return "\n".join(lines)
-
-
-def get_agent_for_phase(phase: str | None) -> str | None:
-    """Map workflow phase to agent name."""
-    if phase is None:
-        return None
-    return PHASE_AGENTS.get(phase.lower())
 
 
 def generate_log_filename(session_path: Path, phase: str | None) -> Path:
