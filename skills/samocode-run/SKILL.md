@@ -26,21 +26,31 @@ Use this skill when user says:
 - "start samocode"
 - "continue samocode"
 - "let samocode work on it"
-- "continue the session"
-- "run the orchestrator"
 
 ## What is Samocode?
 
 Samocode is an autonomous session orchestrator that runs Claude CLI in a loop to complete complex tasks. It:
 - Reads session state from `_overview.md`
-- Follows a structured workflow (investigation → Q&A → planning → implementation → testing → quality)
+- Runs phase-specific agents automatically based on current phase
 - Sends Telegram notifications on state changes
 - Continues until task is complete or blocked
 
+For workflow details and phase definitions, see `~/samocode/CLAUDE.md`.
+
+## Sessions: Manual vs Autonomous
+
+There's no strict "samocode session" - just sessions. Any session can be worked on:
+- **Manually** by you (the parent Claude) - e.g., investigation, Q&A, planning
+- **Autonomously** by samocode - e.g., implementation, testing, quality fixes
+- **Mixed** - start manually, hand off to samocode, take back control when blocked
+
+This flexibility is intentional. Use samocode for repetitive/long-running phases, work manually when human judgment is needed.
+
 ## When to Use
 
-- User wants to run/continue a samocode session
-- Session folder exists with `_overview.md` file
+**Only when user explicitly asks for samocode** (see Trigger Phrases above).
+
+Do NOT assume samocode should run just because a session exists.
 
 ## Execution
 
