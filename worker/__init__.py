@@ -3,6 +3,16 @@
 from .config import SamocodeConfig, parse_samocode_file
 from .logging import add_session_handler, setup_logging
 from .notifications import notify_blocked, notify_complete, notify_error, notify_waiting
+from .phases import (
+    Phase,
+    PhaseConfig,
+    PHASE_CONFIGS,
+    get_agent_for_phase,
+    get_phase_config,
+    is_iteration_limit_exceeded,
+    validate_signal_for_phase,
+    validate_transition,
+)
 from .runner import (
     ExecutionResult,
     ExecutionStatus,
@@ -11,6 +21,12 @@ from .runner import (
     increment_total_iterations,
     run_claude_with_retry,
     validate_session_structure,
+)
+from .signal_history import (
+    SignalHistoryEntry,
+    get_phase_iteration_count,
+    read_signal_history,
+    record_signal,
 )
 from .signals import (
     Signal,
@@ -29,25 +45,45 @@ from .timestamps import (
 )
 
 __all__ = [
+    # Config
     "SamocodeConfig",
     "parse_samocode_file",
+    # Logging
     "add_session_handler",
-    "extract_phase",
-    "extract_total_iterations",
-    "increment_total_iterations",
+    "setup_logging",
+    # Notifications
     "notify_blocked",
     "notify_complete",
     "notify_error",
     "notify_waiting",
-    "setup_logging",
+    # Phases
+    "Phase",
+    "PhaseConfig",
+    "PHASE_CONFIGS",
+    "get_agent_for_phase",
+    "get_phase_config",
+    "is_iteration_limit_exceeded",
+    "validate_signal_for_phase",
+    "validate_transition",
+    # Runner
     "ExecutionResult",
     "ExecutionStatus",
+    "extract_phase",
+    "extract_total_iterations",
+    "increment_total_iterations",
     "run_claude_with_retry",
     "validate_session_structure",
+    # Signal history
+    "SignalHistoryEntry",
+    "get_phase_iteration_count",
+    "read_signal_history",
+    "record_signal",
+    # Signals
     "Signal",
     "SignalStatus",
     "clear_signal_file",
     "read_signal_file",
+    # Timestamps
     "FILE_TIMESTAMP_PATTERN",
     "FOLDER_TIMESTAMP_PATTERN",
     "file_timestamp",
