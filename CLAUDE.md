@@ -7,9 +7,11 @@ Autonomous session orchestrator for Claude Code. Python spawns Claude CLI in a l
 ```
 main.py              # Orchestrator entry point - main loop
 workflow.md          # Master prompt template for Claude iterations
-worker/              # Core package (~1,100 lines)
+worker/              # Core package (~1,400 lines)
   config.py          # Configuration from .samocode + .env
+  phases.py          # Phase enum, config registry, transition validation
   runner.py          # Claude CLI execution with retry
+  signal_history.py  # Signal history tracking for debugging
   signals.py         # Signal file I/O (continue/done/blocked/waiting)
   logging.py         # Rotating file + console logging
   notifications.py   # Telegram notifications
@@ -42,7 +44,7 @@ python main.py --help           # Run orchestrator
 - Strict typing - no `any` types, use `|` for unions
 - Main functions at top, utilities below
 - Frozen dataclasses for config/data structures
-- Enums for status values (ExecutionStatus, SignalStatus)
+- Enums for status values (ExecutionStatus, SignalStatus, Phase)
 - Global imports at file top, no dynamic imports
 - Section comments (`# ===`) for large module organization
 - Short, context-independent comments
@@ -84,8 +86,10 @@ SESSIONS=~/project/_sessions/
 
 ## Key Files
 
-- `worker/runner.py` - Core execution logic, phase agent selection
+- `worker/phases.py` - Phase enum, PhaseConfig registry, transition/signal validation (source of truth)
+- `worker/runner.py` - Core execution logic, Claude CLI invocation
 - `worker/config.py` - SamocodeConfig dataclass, validation
 - `worker/signals.py` - Signal dataclass, JSON parsing
+- `worker/signal_history.py` - Records signals to `_signal_history.jsonl` for debugging
 - `workflow.md` - Master prompt injected into each Claude run
 - `TECH_DEBT.md` - Known architectural issues
