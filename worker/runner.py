@@ -207,7 +207,7 @@ def run_claude_once(
     cli_args.extend(["--agent", agent_name, "--append-system-prompt", session_context])
     cli_args.extend(["-p", "Start"])
 
-    log_file = generate_log_filename(session_path, phase)
+    log_file = generate_log_filename(session_path, phase, iteration)
     logger.info(f"Streaming logs to: {log_file}")
 
     return _execute_process(
@@ -324,15 +324,21 @@ def build_session_context(
     return "\n".join(lines)
 
 
-def generate_log_filename(session_path: Path, phase: str | None) -> Path:
+def generate_log_filename(
+    session_path: Path, phase: str | None, iteration: int | None = None
+) -> Path:
     """Generate timestamped JSONL filename for this invocation.
+
+    Format: {MM-DD-HHMM}-{NNN}-{phase}.jsonl
+    Example: 01-15-1437-001-investigation.jsonl
 
     Logs are stored in _logs/ subfolder to keep session root clean.
     """
     timestamp = jsonl_timestamp()
+    iteration_str = f"{iteration:03d}" if iteration else "000"
     phase_slug = phase.lower() if phase else "unknown"
     logs_dir = session_path / "_logs"
-    return logs_dir / f"{timestamp}-{phase_slug}.jsonl"
+    return logs_dir / f"{timestamp}-{iteration_str}-{phase_slug}.jsonl"
 
 
 # =============================================================================

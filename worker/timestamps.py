@@ -51,13 +51,13 @@ def folder_timestamp(dt: datetime | None = None) -> str:
 
 
 def jsonl_timestamp(dt: datetime | None = None) -> str:
-    """Generate timestamp for JSONL log files: MM-DD-HHMMSS
+    """Generate timestamp for JSONL log files: MM-DD-HHMM
 
-    Example: 01-15-143721
+    Example: 01-15-1437
     """
     if dt is None:
         dt = datetime.now()
-    return dt.strftime("%m-%d-%H%M%S")
+    return dt.strftime("%m-%d-%H%M")
 
 
 # Valid timestamp patterns for validation
