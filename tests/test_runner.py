@@ -248,14 +248,14 @@ class TestGenerateLogFilename:
     """Tests for generate_log_filename - timestamped log paths."""
 
     def test_format_with_phase(self, tmp_path: Path) -> None:
-        """Generates MM-DD-HHMMSS-phase.jsonl format."""
+        """Generates MM-DD-HHMMSS-phase.jsonl format in _logs/ subfolder."""
         session = tmp_path / "session"
 
         filename = generate_log_filename(session, "testing")
 
         assert filename.suffix == ".jsonl"
         assert "testing" in filename.name
-        assert filename.parent == session
+        assert filename.parent == session / "_logs"
 
     def test_none_phase_becomes_unknown(self, tmp_path: Path) -> None:
         """None phase becomes 'unknown' in filename."""
@@ -264,6 +264,7 @@ class TestGenerateLogFilename:
         filename = generate_log_filename(session, None)
 
         assert "unknown" in filename.name
+        assert filename.parent == session / "_logs"
 
 
 class TestRunClaudeOnce:
