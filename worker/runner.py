@@ -319,7 +319,7 @@ def build_session_context(
     lines.append("## Injected Timestamps")
     lines.append(f"- `TIMESTAMP_FILE`: `{file_timestamp()}`")
     lines.append(f"- `TIMESTAMP_LOG`: `{log_timestamp()}`")
-    if iteration:
+    if iteration is not None:
         lines.append(f"- `TIMESTAMP_ITERATION`: `{iteration_timestamp(iteration)}`")
     else:
         lines.append(f"- `TIMESTAMP_ITERATION`: `{iteration_timestamp(1)}`")
