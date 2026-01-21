@@ -6,14 +6,14 @@ Claude reads session state, decides actions via skills, updates state, signals n
 """
 
 import argparse
-import sys
-from dataclasses import replace as dataclass_replace
-from pathlib import Path
-
 import logging
+import sys
+from pathlib import Path
 
 from worker import (
     ExecutionStatus,
+    ProjectConfig,
+    RuntimeConfig,
     SamocodeConfig,
     Signal,
     SignalStatus,
@@ -28,9 +28,9 @@ from worker import (
     notify_complete,
     notify_error,
     notify_waiting,
-    parse_samocode_file,
     read_signal_file,
     record_signal,
+    resolve_session_path,
     run_claude_with_retry,
     setup_logging,
     validate_signal_for_phase,
@@ -97,19 +97,32 @@ def validate_and_process_signal(
     return signal
 
 
-def main() -> None:
-    """Main orchestrator entry point."""
+def parse_args() -> argparse.Namespace:
+    """Parse and validate command-line arguments."""
     parser = argparse.ArgumentParser(
-        description="Samocode - Autonomous Session Orchestrator"
+        description="Samocode - Autonomous Session Orchestrator",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Start new session
+  python main.py --config ~/project/.samocode --session my-task
+
+  # Continue existing session (auto-resolves dated folders)
+  python main.py --config ~/project/.samocode --session my-task
+
+  # With initial dive topic
+  python main.py --config ~/project/.samocode --session explore-api --dive "auth endpoints"
+""",
+    )
+    parser.add_argument(
+        "--config",
+        required=True,
+        help="Path to .samocode config file (e.g., ~/project/.samocode)",
     )
     parser.add_argument(
         "--session",
         required=True,
-        help="Session path (e.g., '~/project/_sessions/my-task')",
-    )
-    parser.add_argument(
-        "--repo",
-        help="Base git repo path (creates worktree). If not provided, creates standalone project folder.",
+        help="Session name, not path (e.g., 'my-task' or '26-01-21-my-task')",
     )
     parser.add_argument(
         "--dive",
@@ -125,52 +138,63 @@ def main() -> None:
         help="Show what would execute without running Claude",
     )
 
-    args = parser.parse_args()
+    return parser.parse_args()
+
+
+def load_config(args: argparse.Namespace) -> SamocodeConfig:
+    """Load and validate configuration. Exits on error."""
+    errors: list[str] = []
+
+    # Load project config from explicit path
+    config_path = Path(args.config).expanduser().resolve()
+    try:
+        project = ProjectConfig.from_file(config_path)
+    except ValueError as e:
+        print(f"Error: {e}")
+        sys.exit(1)
+
+    # Validate project paths exist
+    path_errors = project.validate()
+    errors.extend(path_errors)
+
+    # Load runtime config from environment
+    runtime = RuntimeConfig.from_env()
+    runtime_errors = runtime.validate()
+    errors.extend(runtime_errors)
+
+    # Resolve session path
+    session_path = resolve_session_path(project.sessions, args.session)
+
+    # Validate session path is sensible (if it exists)
+    if session_path.exists() and not session_path.is_dir():
+        errors.append(f"Session path exists but is not a directory: {session_path}")
+
+    if errors:
+        print("Configuration errors:")
+        for error in errors:
+            print(f"  - {error}")
+        sys.exit(1)
+
+    return SamocodeConfig(
+        project=project,
+        runtime=runtime,
+        session_path=session_path,
+    )
+
+
+def main() -> None:
+    """Main orchestrator entry point."""
+    args = parse_args()
     samocode_dir = Path(__file__).parent
 
-    # Session path is always a full path - resolve and get display name
-    session_path = Path(args.session).expanduser().resolve()
-    session_display_name = session_path.parent.name
+    config = load_config(args)
+    session_path = config.session_path
+    session_display_name = session_path.name
 
-    # Look for .samocode config in session's parent directory
-    samocode_config = parse_samocode_file(session_path.parent)
-    config = SamocodeConfig.from_env(working_dir=session_path.parent)
-
-    # Set repo_path from CLI arg or MAIN_REPO from .samocode (REQUIRED)
-    if args.repo:
-        repo_path = Path(args.repo).expanduser().resolve()
-        repo_source = "--repo CLI arg"
-    elif samocode_config.get("MAIN_REPO"):
-        repo_path = Path(samocode_config["MAIN_REPO"]).expanduser().resolve()
-        repo_source = "MAIN_REPO in .samocode"
-    else:
-        print(
-            "Error: MAIN_REPO is required. Either:\n"
-            "  1. Pass --repo /path to the orchestrator, or\n"
-            "  2. Set MAIN_REPO in .samocode file"
-        )
-        sys.exit(1)
-
-    if not repo_path.exists():
-        print(f"Error: Repo path does not exist: {repo_path} (from {repo_source})")
-        sys.exit(1)
-    # Git check is optional - some projects might not be git repos
-    config = dataclass_replace(config, repo_path=repo_path)
     log_dir = samocode_dir / "logs"
     workflow_prompt_path = samocode_dir / "workflow.md"
 
     logger = setup_logging(log_dir)
-
-    validation_errors = config.validate()
-    if validation_errors:
-        logger.error("Configuration validation failed:")
-        for error in validation_errors:
-            logger.error(f"  - {error}")
-        sys.exit(1)
-
-    if session_path.exists() and not session_path.is_dir():
-        logger.error(f"Session path exists but is not a directory: {session_path}")
-        sys.exit(1)
 
     if not workflow_prompt_path.exists():
         logger.error(f"Workflow prompt not found: {workflow_prompt_path}")
@@ -179,8 +203,9 @@ def main() -> None:
 
     logger.info("=" * 70)
     logger.info("Samocode Orchestrator Started")
+    logger.info(f"Config: {args.config}")
     logger.info(f"Session: {session_path}")
-    logger.info(f"Repo: {config.repo_path or 'none (standalone project)'}")
+    logger.info(f"Repo: {config.main_repo}")
     logger.info(f"Model: {config.claude_model}")
     logger.info(f"Max turns: {config.claude_max_turns}")
     logger.info(f"Timeout: {config.claude_timeout}s")
@@ -194,7 +219,7 @@ def main() -> None:
     if args.dry_run:
         logger.info("DRY RUN: Would start orchestrator loop")
         logger.info(f"  - Session: {session_path}")
-        logger.info(f"  - Config: {config}")
+        logger.info(f"  - Config: {config.to_log_string()}")
         return
 
     iteration = 0
@@ -214,10 +239,6 @@ def main() -> None:
             if session_handler is None and session_path.exists():
                 session_handler = add_session_handler(logger, session_path)
                 logger.info(f"Session log: {session_path / 'session.log'}")
-                # Log startup parameters for transparency
-                logger.info(f"Startup args: --session {args.session} --repo {args.repo} --dive {args.dive} --task {args.task}")
-                if samocode_config:
-                    logger.info(f".samocode: {samocode_config}")
                 logger.info(f"Config: {config.to_log_string()}")
 
             # Get current phase from overview for logging context
@@ -263,7 +284,7 @@ def main() -> None:
             # Validate signal and record to history
             signal = validate_and_process_signal(
                 signal,
-                phase,  # phase from overview
+                phase,
                 session_path,
                 iteration,
                 logger,
@@ -332,10 +353,10 @@ def main() -> None:
         try:
             notify_error(
                 f"Orchestrator crashed: {e}",
-                session_display_name if "session_display_name" in dir() else "unknown",
-                iteration if "iteration" in dir() else 0,
-                config.telegram_bot_token if "config" in dir() else "",
-                config.telegram_chat_id if "config" in dir() else "",
+                session_display_name,
+                iteration,
+                config.telegram_bot_token,
+                config.telegram_chat_id,
             )
         except Exception:
             pass

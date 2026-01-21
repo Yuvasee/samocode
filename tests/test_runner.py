@@ -15,7 +15,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 
-from worker.config import SamocodeConfig
+from worker.config import ProjectConfig, RuntimeConfig, SamocodeConfig
 from worker.phases import Phase, get_agent_for_phase
 from worker.runner import (
     ExecutionResult,
@@ -33,9 +33,17 @@ def make_config(tmp_path: Path, repo_path: Path | None = None) -> SamocodeConfig
     """Create a test configuration."""
     claude = tmp_path / "claude"
     claude.touch()
-    return SamocodeConfig(
-        repo_path=repo_path,
-        worktrees_dir=tmp_path / "worktrees",
+    worktrees = tmp_path / "worktrees"
+    worktrees.mkdir(exist_ok=True)
+    sessions = tmp_path / "sessions"
+    sessions.mkdir(exist_ok=True)
+
+    project = ProjectConfig(
+        main_repo=repo_path or tmp_path / "repo",
+        worktrees=worktrees,
+        sessions=sessions,
+    )
+    runtime = RuntimeConfig(
         telegram_bot_token="",
         telegram_chat_id="",
         claude_path=claude,
@@ -44,6 +52,11 @@ def make_config(tmp_path: Path, repo_path: Path | None = None) -> SamocodeConfig
         claude_timeout=30,
         max_retries=2,
         retry_delay=0,
+    )
+    return SamocodeConfig(
+        project=project,
+        runtime=runtime,
+        session_path=sessions / "test-session",
     )
 
 
@@ -107,18 +120,33 @@ class TestBuildSessionContext:
         """Context includes worktree config when repo_path set."""
         workflow = tmp_path / "workflow.md"
         workflow.write_text("# Workflow")
-        config = make_config(tmp_path)
-        config = SamocodeConfig(
-            repo_path=tmp_path / "repo",
-            worktrees_dir=tmp_path / "worktrees",
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        worktrees = tmp_path / "worktrees"
+        worktrees.mkdir()
+        sessions = tmp_path / "sessions"
+        sessions.mkdir()
+        claude = tmp_path / "claude"
+        claude.touch()
+        project = ProjectConfig(
+            main_repo=repo,
+            worktrees=worktrees,
+            sessions=sessions,
+        )
+        runtime = RuntimeConfig(
             telegram_bot_token="",
             telegram_chat_id="",
-            claude_path=config.claude_path,
+            claude_path=claude,
             claude_model="opus",
             claude_max_turns=10,
             claude_timeout=30,
             max_retries=2,
             retry_delay=0,
+        )
+        config = SamocodeConfig(
+            project=project,
+            runtime=runtime,
+            session_path=sessions / "test",
         )
         session = tmp_path / "worktrees" / "25-01-13-feature"
         session.mkdir(parents=True)
@@ -127,18 +155,6 @@ class TestBuildSessionContext:
 
         assert "Worktree Configuration" in context
         assert str(config.repo_path) in context
-
-    def test_without_repo_path(self, tmp_path: Path) -> None:
-        """Context shows standalone project when no repo_path."""
-        workflow = tmp_path / "workflow.md"
-        workflow.write_text("# Workflow")
-        config = make_config(tmp_path)
-        session = tmp_path / "project" / "_samocode" / "session"
-        session.mkdir(parents=True)
-
-        context = build_session_context(workflow, session, config)
-
-        assert "Standalone Project" in context
 
     def test_with_initial_instructions(self, tmp_path: Path) -> None:
         """Context includes initial dive/task instructions."""
@@ -339,22 +355,6 @@ class TestRunClaudeOnce:
                 result = run_claude_once(workflow, session, config, 1)
 
         assert result.status == ExecutionStatus.TIMEOUT
-
-    def test_missing_repo_path_raises_error(self, tmp_path: Path) -> None:
-        """Raises ValueError when repo_path is not set."""
-        workflow = tmp_path / "workflow.md"
-        workflow.write_text("# Workflow")
-        session = tmp_path / "session"
-        session.mkdir()
-        (session / "_overview.md").write_text("Phase: init\n")
-        config = make_config(tmp_path)  # No repo_path
-
-        import pytest
-
-        with pytest.raises(ValueError) as exc_info:
-            run_claude_once(workflow, session, config, 1)
-
-        assert "MAIN_REPO is required" in str(exc_info.value)
 
 
 class TestRunClaudeWithRetry:

@@ -72,14 +72,21 @@ python main.py --help           # Run orchestrator
 
 ## Configuration
 
-**`.samocode` file** (per-project):
+**CLI arguments:**
+```bash
+python main.py --config ~/project/.samocode --session my-task
+```
+- `--config` (required) - Full path to `.samocode` file
+- `--session` (required) - Session name (not path)
+
+**`.samocode` file** (per-project, all required):
 ```
 MAIN_REPO=~/project
 WORKTREES=~/project/worktrees/
 SESSIONS=~/project/_sessions/
 ```
 
-**Environment variables** (in .env):
+**Environment variables** (in .env) - runtime settings only:
 - `CLAUDE_PATH` - Path to Claude CLI
 - `CLAUDE_MODEL` - Model name (default: opus)
 - `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` - Optional notifications
@@ -88,7 +95,7 @@ SESSIONS=~/project/_sessions/
 
 - `worker/phases.py` - Phase enum, PhaseConfig registry, transition/signal validation (source of truth)
 - `worker/runner.py` - Core execution logic, Claude CLI invocation
-- `worker/config.py` - SamocodeConfig dataclass, validation
+- `worker/config.py` - ProjectConfig, RuntimeConfig, SamocodeConfig dataclasses
 - `worker/signals.py` - Signal dataclass, JSON parsing
 - `worker/signal_history.py` - Records signals to `_signal_history.jsonl` for debugging
 - `workflow.md` - Master prompt injected into each Claude run

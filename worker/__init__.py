@@ -1,6 +1,12 @@
 """Samocode worker package - core orchestrator components."""
 
-from .config import SamocodeConfig, parse_samocode_file
+from .config import (
+    ProjectConfig,
+    RuntimeConfig,
+    SamocodeConfig,
+    parse_samocode_file,
+    resolve_session_path,
+)
 from .logging import add_session_handler, setup_logging
 from .notifications import notify_blocked, notify_complete, notify_error, notify_waiting
 from .phases import (
@@ -46,8 +52,11 @@ from .timestamps import (
 
 __all__ = [
     # Config
+    "ProjectConfig",
+    "RuntimeConfig",
     "SamocodeConfig",
     "parse_samocode_file",
+    "resolve_session_path",
     # Logging
     "add_session_handler",
     "setup_logging",
