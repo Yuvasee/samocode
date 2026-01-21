@@ -132,6 +132,26 @@ class TestIterationTimestamp:
         result = iteration_timestamp(999, dt)
         assert result == "[999 @ 01-15 14:30]"
 
+    def test_very_large_iteration(self) -> None:
+        """Iterations > 999 expand to 4 digits (documented behavior)."""
+        dt = datetime(2026, 1, 15, 14, 30)
+        result = iteration_timestamp(1000, dt)
+        assert result == "[1000 @ 01-15 14:30]"
+
+    def test_zero_iteration_raises(self) -> None:
+        """Iteration 0 raises ValueError."""
+        import pytest
+
+        with pytest.raises(ValueError, match="Iteration must be >= 1"):
+            iteration_timestamp(0)
+
+    def test_negative_iteration_raises(self) -> None:
+        """Negative iterations raise ValueError."""
+        import pytest
+
+        with pytest.raises(ValueError, match="Iteration must be >= 1"):
+            iteration_timestamp(-1)
+
     def test_uses_now_if_none(self) -> None:
         """Uses current time if dt is None."""
         result = iteration_timestamp(1)

@@ -34,7 +34,14 @@ def iteration_timestamp(iteration: int, dt: datetime | None = None) -> str:
     """Generate combined iteration and timestamp: [NNN @ MM-DD HH:MM]
 
     Example: [001 @ 01-15 14:30]
+
+    Args:
+        iteration: Iteration number (1-999). Values outside this range
+            will still work but may break 3-digit format expectations.
+        dt: Optional datetime, defaults to now()
     """
+    if iteration < 1:
+        raise ValueError(f"Iteration must be >= 1, got {iteration}")
     if dt is None:
         dt = datetime.now()
     return f"[{iteration:03d} @ {dt.strftime('%m-%d %H:%M')}]"

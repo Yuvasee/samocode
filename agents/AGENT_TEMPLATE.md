@@ -29,11 +29,11 @@ Session context is provided via --append-system-prompt by the orchestrator:
 
 ## Output Document Structure
 
-Create at: `[SESSION_PATH]/[MM-DD-HH:mm]-[type]-[slug].md`
+Create at: `[SESSION_PATH]/[TIMESTAMP_FILE]-[type]-[slug].md`
 
 ```markdown
 # [Title]
-Date: [timestamp]
+Date: [TIMESTAMP_LOG]
 
 ## Summary
 [Brief overview]
@@ -48,7 +48,7 @@ Date: [timestamp]
 
 Edit `_overview.md`:
 - Update Status section with new phase/iteration
-- Add to Flow Log: `- [MM-DD HH:MM] [action] -> [filename].md`
+- Add to Flow Log: `- [TIMESTAMP_ITERATION] [action] -> [filename].md`
 - Add to Files section if document created
 
 ## Signal
