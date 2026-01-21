@@ -16,20 +16,16 @@ Tests the specific feature or bug fix implemented in the current session. NOT fu
 
 ## Execution Steps
 
-1. **Get current time:**
-   - Run `date '+%m-%d-%H:%M'` for filename timestamp
-   - Run `date '+%H:%M'` for flow log entries
-
-2. **Read session context:**
+1. **Read session context:**
    - Read `_overview.md` to understand what was implemented
    - Review implementation docs to identify what needs testing
 
-3. **Determine test strategy:**
+2. **Determine test strategy:**
    - Frontend changes -> Browser testing
    - Backend changes -> API testing via curl/httpie
    - Full-stack -> Both approaches
 
-4. **Select browser testing tool** (if frontend testing needed):
+3. **Select browser testing tool** (if frontend testing needed):
 
    Choose the most suitable tool for your needs:
 
@@ -46,13 +42,13 @@ Tests the specific feature or bug fix implemented in the current session. NOT fu
 
    **If adding MCP:** After modifying `.mcp.json`, signal `continue` to restart Claude Code process (MCP doesn't hot-reload).
 
-5. **Start the application:**
+4. **Start the application:**
    - Read project's `.samocode` file or README for startup instructions
    - Follow project-specific setup commands
    - Verify app is running (check ports, health endpoints)
    - If fails to start -> document error, signal blocked
 
-6. **Execute feature tests:**
+5. **Execute feature tests:**
 
    **Browser testing:**
    - Navigate to relevant page
@@ -70,17 +66,17 @@ Tests the specific feature or bug fix implemented in the current session. NOT fu
    - Use project-specific auth if needed (check .samocode or README)
    - Verify response codes and data
 
-7. **Smoke test (side effect):**
+6. **Smoke test (side effect):**
    - App started successfully = smoke test passed
    - No crashes during feature test = smoke test passed
 
-8. **Document results:**
+7. **Document results:**
 
-   Create `[SESSION_PATH]/[MM-DD-HH:mm]-test-[feature-slug].md`:
+   Create `[SESSION_PATH]/[TIMESTAMP_FILE]-test-[feature-slug].md`:
 
    ```markdown
    # Test: [feature name]
-   Date: [timestamp]
+   Date: [TIMESTAMP_LOG]
 
    ## What Was Tested
    [Brief description of implemented feature]
@@ -103,13 +99,13 @@ Tests the specific feature or bug fix implemented in the current session. NOT fu
    [None or list of issues]
    ```
 
-9. **Update session:**
+8. **Update session:**
    - Edit `_overview.md`:
-     - Flow Log: `- [TIMESTAMP_LOG] Feature tested: [result] -> [filename].md`
+     - Flow Log: `- [TIMESTAMP_ITERATION] Feature tested: [result] -> [filename].md`
      - Files: `- [filename].md - Test report`
    - Commit (if git repo): `cd [SESSION_DIR] && git add . && git commit -m "Test: [feature]"`
 
-10. **Signal result:**
+9. **Signal result:**
     - Tests PASS -> signal `continue`, recommend quality phase
     - Tests FAIL -> signal `blocked` with failure details (don't auto-fix)
 

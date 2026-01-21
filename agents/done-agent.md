@@ -39,7 +39,7 @@ Session context is provided via --append-system-prompt by the orchestrator:
 
 ```markdown
 # Session Summary: [session-name]
-Completed: [timestamp]
+Completed: [TIMESTAMP_LOG]
 
 ## Overview
 [What was accomplished in 2-3 sentences]
@@ -70,7 +70,7 @@ Completed: [timestamp]
 
 Edit `_overview.md`:
 - Status: `Phase: done`, `Last Action: Session complete`, `Next: N/A`
-- Flow Log: `- [MM-DD HH:MM] Session completed -> [summary-filename].md`
+- Flow Log: `- [TIMESTAMP_ITERATION] Session completed -> [summary-filename].md`
 - Files: Add summary document
 
 ## Signal

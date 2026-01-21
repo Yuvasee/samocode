@@ -30,12 +30,12 @@ Session context is provided via --append-system-prompt by the orchestrator:
 ## Output Requirements
 
 Create a dive document at:
-`[SESSION_PATH]/[MM-DD-HH:mm]-dive-[topic-slug].md`
+`[SESSION_PATH]/[TIMESTAMP_FILE]-dive-[topic-slug].md`
 
 Structure:
 ```markdown
 # Deep Dive: [topic]
-Date: [timestamp]
+Date: [TIMESTAMP_LOG]
 
 ## Summary
 [Brief overview of findings]
@@ -60,7 +60,7 @@ Date: [timestamp]
 
 After creating dive document, edit `_overview.md`:
 - Update Status section: `Phase: requirements`, `Last Action: Investigation complete`, `Next: Generate Q&A`
-- Add to Flow Log: `- [MM-DD HH:MM] Deep dive: [topic] -> [filename].md`
+- Add to Flow Log: `- [TIMESTAMP_ITERATION] Deep dive: [topic] -> [filename].md`
 - Add to Files section: `- [filename].md - [brief description]`
 
 ## Signal

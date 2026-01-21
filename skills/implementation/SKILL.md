@@ -39,25 +39,18 @@ Execute a task directly with full implementation and documentation.
 
 #### Steps
 
-1. **Capture timestamps atomically:**
-   ```bash
-   TIMESTAMP_FILE=$(date '+%m-%d-%H:%M')    # For filenames: 01-09-21:30
-   TIMESTAMP_LOG=$(date '+%m-%d %H:%M')     # For flow logs: 01-09 21:30
-   ```
-   **CRITICAL:** Run at start, reuse throughout. Do NOT call `date` again.
-
-2. **Investigate and implement:**
+1. **Investigate and implement:**
    - Review session documents for context
    - Explore codebase as needed
    - Make all necessary code changes
    - Run pyright/ruff (Python) or tsc (TypeScript) - fix all errors
 
-3. **Document work:**
-   - Create `[SESSION_PATH]/[MM-DD-HH:mm]-do-[task-slug].md`:
+2. **Document work:**
+   - Create `[SESSION_PATH]/[TIMESTAMP_FILE]-do-[task-slug].md`:
 
    ```markdown
    # Task: [brief title]
-   Date: [timestamp]
+   Date: [TIMESTAMP_LOG]
 
    ## What was done
    [Description of changes]
@@ -72,20 +65,20 @@ Execute a task directly with full implementation and documentation.
    [Any important observations]
    ```
 
-4. **Update session:**
+3. **Update session:**
    - Edit `_overview.md`:
-     - Flow Log: `- [TIMESTAMP_LOG] Task: [title] -> [filename].md`
+     - Flow Log: `- [TIMESTAMP_ITERATION] Task: [title] -> [filename].md`
      - Files: `- [filename].md - [brief description]`
    - Commit session (if git repo): `cd [SESSION_DIR] && git add . && git commit -m "Task: [title]"`
 
-5. **Git workflow:**
+4. **Git workflow:**
    - Read Working Dir from session `_overview.md`
    - If Working Dir not set: check project `.samocode` file for `MAIN_REPO`, or use git root, or ask user
    - Check branch: `cd [WORKING_DIR] && git branch --show-current`
    - If on feature branch: commit with short message
    - If on main: warn user to create branch first
 
-6. **Report back:** Summary of what was done
+5. **Report back:** Summary of what was done
 
 ---
 
@@ -107,12 +100,6 @@ Both agents solve the **entire task independently** with different philosophies.
 **Session path:** [SESSION_PATH]
 **Task:** $ARGUMENTS
 
-**First:** Capture timestamps atomically:
-```bash
-TIMESTAMP_FILE=$(date '+%m-%d-%H:%M')    # For filenames
-TIMESTAMP_LOG=$(date '+%m-%d %H:%M')     # For flow logs
-```
-
 **Approach:** Smallest possible change surface.
 - Touch few files, prefer localized fixes
 - Avoid new abstractions
@@ -120,7 +107,7 @@ TIMESTAMP_LOG=$(date '+%m-%d %H:%M')     # For flow logs
 
 **Deliverables:**
 
-1. Create `[SESSION_PATH]/[TIMESTAMP_FILE]-solution-minimal.md`:
+1. Create `[SESSION_PATH]/[TIMESTAMP_FILE]-solution-minimal.md` (use TIMESTAMP_FILE from Session Context):
    ```markdown
    # Solution: Minimal Footprint
    Task: [description]
@@ -149,12 +136,6 @@ TIMESTAMP_LOG=$(date '+%m-%d %H:%M')     # For flow logs
 **Session path:** [SESSION_PATH]
 **Task:** $ARGUMENTS
 
-**First:** Capture timestamps atomically:
-```bash
-TIMESTAMP_FILE=$(date '+%m-%d-%H:%M')    # For filenames
-TIMESTAMP_LOG=$(date '+%m-%d %H:%M')     # For flow logs
-```
-
 **Approach:** The "right way" with time to do it properly.
 - Refactor for cleaner solution
 - Introduce helpful abstractions
@@ -162,7 +143,7 @@ TIMESTAMP_LOG=$(date '+%m-%d %H:%M')     # For flow logs
 
 **Deliverables:**
 
-1. Create `[SESSION_PATH]/[TIMESTAMP_FILE]-solution-clean.md`:
+1. Create `[SESSION_PATH]/[TIMESTAMP_FILE]-solution-clean.md` (use TIMESTAMP_FILE from Session Context):
    ```markdown
    # Solution: Clean Foundation
    Task: [description]
@@ -188,11 +169,7 @@ TIMESTAMP_LOG=$(date '+%m-%d %H:%M')     # For flow logs
 
 #### Synthesis (Parent does this)
 
-After both agents complete, capture timestamp if not already done:
-```bash
-TIMESTAMP_FILE=$(date '+%m-%d-%H:%M')
-TIMESTAMP_LOG=$(date '+%m-%d %H:%M')
-```
+After both agents complete:
 
 1. Review both solutions
 2. Create `[SESSION_PATH]/[TIMESTAMP_FILE]-comparison.md`:
@@ -215,7 +192,7 @@ TIMESTAMP_LOG=$(date '+%m-%d %H:%M')
    ```
 
 3. Update `_overview.md`:
-   - Flow Log: `- [TIMESTAMP_LOG] Dual analysis: [task] -> comparison.md`
+   - Flow Log: `- [TIMESTAMP_ITERATION] Dual analysis: [task] -> comparison.md`
    - Files: all three solution docs
 
 4. Commit session (if git repo): `cd [SESSION_DIR] && git add . && git commit -m "Dual analysis: [task]"`
@@ -252,29 +229,22 @@ IMPORTANT: Only work on this specific part. Don't do other parts of the plan.
 
 #### Steps
 
-1. **Capture timestamps atomically:**
-   ```bash
-   TIMESTAMP_FILE=$(date '+%m-%d-%H:%M')    # For filenames: 01-09-21:30
-   TIMESTAMP_LOG=$(date '+%m-%d %H:%M')     # For flow logs: 01-09 21:30
-   ```
-   **CRITICAL:** Run at start, reuse throughout. Do NOT call `date` again.
-
-2. **Find the plan:**
+1. **Find the plan:**
    - Check session `_overview.md` -> Plans section for plan file
    - Read the plan file from session folder
    - Locate the specific phase/section to implement
 
-3. **Implement:**
+2. **Implement:**
    - Make all necessary code changes for this phase only
    - Follow codebase best practices
    - Run pyright/ruff (Python) or tsc (TypeScript) - fix all errors
 
-4. **Document work:**
-   - Create `[SESSION_PATH]/[MM-DD-HH:mm]-dop-[phase-slug].md`:
+3. **Document work:**
+   - Create `[SESSION_PATH]/[TIMESTAMP_FILE]-dop-[phase-slug].md`:
 
    ```markdown
    # Phase: [phase name]
-   Date: [timestamp]
+   Date: [TIMESTAMP_LOG]
    Plan: [plan filename]
 
    ## Completed Items
@@ -291,31 +261,31 @@ IMPORTANT: Only work on this specific part. Don't do other parts of the plan.
    [Any issues or observations]
    ```
 
-5. **Update plan progress (MANDATORY):**
+4. **Update plan progress (MANDATORY):**
    - Read plan file from session folder
    - For each completed item in this phase:
      - Use Edit tool to change `- [ ]` to `- [x]`
    - Add phase completion note:
      ```markdown
-     **Phase completed** ([TIMESTAMP_LOG])
+     **Phase completed** ([TIMESTAMP_ITERATION])
      ```
    - Verify edits by reading plan file again
    - Remove obsolete info, keep plan clean
 
-6. **Update session:**
+5. **Update session:**
    - Edit `_overview.md`:
-     - Flow Log: `- [TIMESTAMP_LOG] Phase done: [phase] -> [filename].md`
+     - Flow Log: `- [TIMESTAMP_ITERATION] Phase done: [phase] -> [filename].md`
      - Files: `- [filename].md - [phase description]`
    - Commit session (if git repo): `cd [SESSION_DIR] && git add . && git commit -m "Phase: [phase]"`
 
-7. **Git workflow:**
+6. **Git workflow:**
    - Read Working Dir from session `_overview.md`
    - If not set: check project `.samocode` file for `MAIN_REPO`, or use git root, or ask user
    - Check branch: `cd [WORKING_DIR] && git branch --show-current`
    - If on feature branch: commit with short message
    - If on main: warn user
 
-8. **Report back:** Summary of completed items
+7. **Report back:** Summary of completed items
 
 ---
 
@@ -359,12 +329,6 @@ Spawn 2 sub-agents **in parallel** with the context below. Do NOT tell them abou
 **Session path:** [SESSION_PATH]
 **Task:** $ARGUMENTS
 
-**First:** Capture timestamps atomically:
-```bash
-TIMESTAMP_FILE=$(date '+%m-%d-%H:%M')    # For filenames
-TIMESTAMP_LOG=$(date '+%m-%d %H:%M')     # For flow logs
-```
-
 **Your approach:** Solve with the smallest possible change surface.
 
 **Guidelines:**
@@ -376,10 +340,10 @@ TIMESTAMP_LOG=$(date '+%m-%d %H:%M')     # For flow logs
 
 **Deliverables:**
 
-1. Create `[SESSION_PATH]/[MM-DD-HH:mm]-solution-minimal.md`:
+1. Create `[SESSION_PATH]/[TIMESTAMP_FILE]-solution-minimal.md`:
    ```markdown
    # Solution: Minimal Footprint
-   Date: [timestamp]
+   Date: [TIMESTAMP_LOG]
    Task: [description]
 
    ## Approach
@@ -401,7 +365,7 @@ TIMESTAMP_LOG=$(date '+%m-%d %H:%M')     # For flow logs
    ```
 
 2. Update `_overview.md`:
-   - Flow Log: `- [TIMESTAMP_LOG] Solution (minimal): [task] -> [filename].md`
+   - Flow Log: `- [TIMESTAMP_ITERATION] Solution (minimal): [task] -> [filename].md`
    - Files: `- [filename].md - Minimal solution`
 
 3. **DO NOT edit actual code files** - suggestions only
@@ -412,12 +376,6 @@ TIMESTAMP_LOG=$(date '+%m-%d %H:%M')     # For flow logs
 
 **Session path:** [SESSION_PATH]
 **Task:** $ARGUMENTS
-
-**First:** Capture timestamps atomically:
-```bash
-TIMESTAMP_FILE=$(date '+%m-%d-%H:%M')    # For filenames
-TIMESTAMP_LOG=$(date '+%m-%d %H:%M')     # For flow logs
-```
 
 **Your approach:** Solve the "right way" assuming time to do it properly.
 
@@ -430,10 +388,10 @@ TIMESTAMP_LOG=$(date '+%m-%d %H:%M')     # For flow logs
 
 **Deliverables:**
 
-1. Create `[SESSION_PATH]/[MM-DD-HH:mm]-solution-clean.md`:
+1. Create `[SESSION_PATH]/[TIMESTAMP_FILE]-solution-clean.md`:
    ```markdown
    # Solution: Clean Foundation
-   Date: [timestamp]
+   Date: [TIMESTAMP_LOG]
    Task: [description]
 
    ## Approach
@@ -455,7 +413,7 @@ TIMESTAMP_LOG=$(date '+%m-%d %H:%M')     # For flow logs
    ```
 
 2. Update `_overview.md`:
-   - Flow Log: `- [TIMESTAMP_LOG] Solution (clean): [task] -> [filename].md`
+   - Flow Log: `- [TIMESTAMP_ITERATION] Solution (clean): [task] -> [filename].md`
    - Files: `- [filename].md - Clean solution`
 
 3. **DO NOT edit actual code files** - suggestions only
@@ -464,13 +422,9 @@ TIMESTAMP_LOG=$(date '+%m-%d %H:%M')     # For flow logs
 
 #### Synthesis & Auto-Selection
 
-After both agents complete, capture timestamp if not already done:
-```bash
-TIMESTAMP_FILE=$(date '+%m-%d-%H:%M')
-TIMESTAMP_LOG=$(date '+%m-%d %H:%M')
-```
+After both agents complete:
 
-1. Create `[SESSION_PATH]/[MM-DD-HH:mm]-comparison-[task-slug].md`:
+1. Create `[SESSION_PATH]/[TIMESTAMP_FILE]-comparison-[task-slug].md`:
    ```markdown
    # Comparison: [task]
 
@@ -503,7 +457,7 @@ TIMESTAMP_LOG=$(date '+%m-%d %H:%M')
    - **Weight toward Clean** means: when in doubt, prefer clean approach
 
 3. Update `_overview.md`:
-   - Flow Log: `- [TIMESTAMP_LOG] Comparison: [task] -> [filename].md`
+   - Flow Log: `- [TIMESTAMP_ITERATION] Comparison: [task] -> [filename].md`
    - Files: `- [filename].md - Solution comparison`
 
 4. Commit session (if git repo): `cd [SESSION_DIR] && git add . && git commit -m "Dual analysis: [task]"`
@@ -527,7 +481,7 @@ TIMESTAMP_LOG=$(date '+%m-%d %H:%M')
      - Use Edit tool to change `- [ ]` to `- [x]`
    - Add phase completion note:
      ```markdown
-     **Phase completed** ([TIMESTAMP_LOG])
+     **Phase completed** ([TIMESTAMP_ITERATION])
      ```
    - Verify edits by reading plan file again
 4. **Git workflow:**
@@ -535,7 +489,7 @@ TIMESTAMP_LOG=$(date '+%m-%d %H:%M')
    - Ensure on feature branch (not main)
    - Commit code changes
 5. **Update session:**
-   - Edit `_overview.md` with Flow Log entry: `- [TIMESTAMP_LOG] Phase implemented: [name]`
+   - Edit `_overview.md` with Flow Log entry: `- [TIMESTAMP_ITERATION] Phase implemented: [name]`
    - Commit session changes
 
 IMPORTANT! If unsure about something, ask first.

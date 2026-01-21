@@ -19,16 +19,12 @@ Defines tasks through interactive Q&A, documenting requirements and decisions.
 
 ### Steps
 
-1. **Get current time:**
-   - Run `date '+%m-%d-%H:%M'` for filename timestamp
-   - Run `date '+%H:%M'` for flow log entries
-
-2. **Analyze the task:**
+1. **Analyze the task:**
    - Review recent dive/task documents in the session for context
    - Check project docs for related documentation
    - Understand scope and implications
 
-3. **Interactive clarification:**
+2. **Interactive clarification:**
    - Identify ambiguities, edge cases, implementation options
    - Check if `[SESSION_PATH]/_qa.md` exists with answers from previous run
    - If `_qa.md` exists and has answers: read them and continue to step 4
@@ -67,13 +63,12 @@ Defines tasks through interactive Q&A, documenting requirements and decisions.
    - When no more questions: "No more questions, we can move on!"
    - DO NOT start any code edits - wait for explicit instruction
 
-4. **Document the task (after Q&A complete):**
-   - Run `date '+%m-%d-%H:%M'` again for accurate timestamp
-   - Create file: `[SESSION_PATH]/[MM-DD-HH:mm]-task-[task-slug].md`
+3. **Document the task (after Q&A complete):**
+   - Create file: `[SESSION_PATH]/[TIMESTAMP_FILE]-task-[task-slug].md`
 
    ```markdown
    # Task: [title]
-   Date: [timestamp]
+   Date: [TIMESTAMP_LOG]
 
    ## Description
    [What needs to be accomplished]
@@ -95,11 +90,11 @@ Defines tasks through interactive Q&A, documenting requirements and decisions.
    [How we know it's done]
    ```
 
-5. **Update session:**
+4. **Update session:**
    - Edit `[SESSION_PATH]/_overview.md`:
-     - Add to Flow Log: `- [TIMESTAMP_LOG] Task defined: [title] -> [filename].md`
+     - Add to Flow Log: `- [TIMESTAMP_ITERATION] Task defined: [title] -> [filename].md`
      - Add to Files: `- [filename].md - Task: [title]`
    - Delete `_qa.md` if it exists
    - Commit (if git repo): `cd [SESSION_DIR] && git add . && git commit -m "Task: [title]"`
 
-6. **Suggest next steps:** /create-plan, /do, /dop2
+5. **Suggest next steps:** /create-plan, /do, /dop2

@@ -21,15 +21,11 @@ Analyze changed code for quality issues and technical debt.
 
 #### Steps
 
-1. **Get current time:**
-   - Run `date '+%m-%d-%H:%M'` for filename timestamp
-   - Run `date '+%H:%M'` for flow log entries
-
-2. **Determine scope:**
+1. **Determine scope:**
    - If $ARGUMENTS specifies files/scope, use that
    - Otherwise: `git diff main...HEAD` from current directory
 
-3. **Analyze for issues:**
+2. **Analyze for issues:**
    - Dead code - exported but never used functions/classes/constants
    - Duplicate code - similar logic in multiple places
    - Unclear patterns - confusing imports, magic numbers, missing comments
@@ -39,12 +35,12 @@ Analyze changed code for quality issues and technical debt.
    - Documentation - missing docstrings, unclear parameter purposes
    - TODOs/FIXMEs - should they be tracked issues instead?
 
-4. **Create cleanup report:**
-   - File: `[timestamp]-cleanup.md` in current directory
+3. **Create cleanup report:**
+   - File: `[TIMESTAMP_FILE]-cleanup.md` in current directory
 
    ```markdown
    # Cleanup Analysis
-   Date: [timestamp]
+   Date: [TIMESTAMP_LOG]
    Scope: [what was analyzed]
 
    ## Issues Found
@@ -84,7 +80,7 @@ Analyze changed code for quality issues and technical debt.
    - [ ] [Action item]
    ```
 
-5. **Report back:** Summary of issues found by priority
+4. **Report back:** Summary of issues found by priority
 
 ---
 

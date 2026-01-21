@@ -46,6 +46,7 @@ from .timestamps import (
     file_timestamp,
     folder_timestamp,
     full_timestamp,
+    iteration_timestamp,
     jsonl_timestamp,
     log_timestamp,
 )
@@ -98,6 +99,7 @@ __all__ = [
     "file_timestamp",
     "folder_timestamp",
     "full_timestamp",
+    "iteration_timestamp",
     "jsonl_timestamp",
     "log_timestamp",
 ]

@@ -13,7 +13,7 @@ from pathlib import Path
 
 from .config import SamocodeConfig
 from .phases import Phase, get_agent_for_phase
-from .timestamps import jsonl_timestamp
+from .timestamps import file_timestamp, iteration_timestamp, jsonl_timestamp, log_timestamp
 
 logger = logging.getLogger("samocode")
 
@@ -313,6 +313,16 @@ def build_session_context(
         lines.append(f"**Phase:** {phase}")
     if iteration:
         lines.append(f"**Iteration:** {iteration}")
+
+    # Add injected timestamps section
+    lines.append("")
+    lines.append("## Injected Timestamps")
+    lines.append(f"- `TIMESTAMP_FILE`: `{file_timestamp()}`")
+    lines.append(f"- `TIMESTAMP_LOG`: `{log_timestamp()}`")
+    if iteration:
+        lines.append(f"- `TIMESTAMP_ITERATION`: `{iteration_timestamp(iteration)}`")
+    else:
+        lines.append(f"- `TIMESTAMP_ITERATION`: `{iteration_timestamp(1)}`")
 
     lines.append("")
     lines.extend(_build_config_section(session_path, config))
