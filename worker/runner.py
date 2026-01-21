@@ -325,10 +325,14 @@ def build_session_context(
 
 
 def generate_log_filename(session_path: Path, phase: str | None) -> Path:
-    """Generate timestamped JSONL filename for this invocation."""
+    """Generate timestamped JSONL filename for this invocation.
+
+    Logs are stored in _logs/ subfolder to keep session root clean.
+    """
     timestamp = jsonl_timestamp()
     phase_slug = phase.lower() if phase else "unknown"
-    return session_path / f"{timestamp}-{phase_slug}.jsonl"
+    logs_dir = session_path / "_logs"
+    return logs_dir / f"{timestamp}-{phase_slug}.jsonl"
 
 
 # =============================================================================

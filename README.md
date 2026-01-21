@@ -301,6 +301,9 @@ Pause for human input. Check `_qa.md` for questions.
 ├── _overview.md          # Session state (Status section)
 ├── _qa.md                # Q&A questions/answers (temporary)
 ├── _signal.json          # Flow control signal
+├── _logs/                # Agent iteration logs (JSONL)
+│   ├── 01-08-100532-investigation.jsonl
+│   └── 01-08-103045-implementation.jsonl
 ├── 01-08-10:00-dive-*.md # Investigation documents
 ├── 01-08-10:30-task-*.md # Task definition
 ├── 01-08-11:00-plan-*.md # Implementation plan
