@@ -132,11 +132,6 @@ Examples:
         "--task",
         help="Initial task definition (optional, for first run)",
     )
-    parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Show what would execute without running Claude",
-    )
 
     return parser.parse_args()
 
@@ -209,18 +204,11 @@ def main() -> None:
     logger.info(f"Model: {config.claude_model}")
     logger.info(f"Max turns: {config.claude_max_turns}")
     logger.info(f"Timeout: {config.claude_timeout}s")
-    logger.info(f"Dry run: {args.dry_run}")
     if args.dive:
         logger.info(f"Initial dive: {args.dive}")
     if args.task:
         logger.info(f"Initial task: {args.task}")
     logger.info("=" * 70)
-
-    if args.dry_run:
-        logger.info("DRY RUN: Would start orchestrator loop")
-        logger.info(f"  - Session: {session_path}")
-        logger.info(f"  - Config: {config.to_log_string()}")
-        return
 
     iteration = 0
     cumulative_iterations = extract_total_iterations(session_path)

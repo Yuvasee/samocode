@@ -231,7 +231,6 @@ The worker is normally started by samocode-parent, but can be run directly for d
 | `--session` | **Yes** | Session name (not full path) |
 | `--dive` | No | Initial dive topic (first run only) |
 | `--task` | No | Initial task definition (first run only) |
-| `--dry-run` | No | Show config without executing |
 
 ### Starting a New Session
 
@@ -251,12 +250,6 @@ Session resolution:
 1. Exact match: `{SESSIONS}/my-task/`
 2. Dated match: `{SESSIONS}/*-my-task/` (most recent)
 3. New session: `{SESSIONS}/{YY-MM-DD}-my-task/`
-
-### Dry Run
-
-```bash
-python main.py --config ~/project/.samocode --session test --dry-run
-```
 
 ### Session Naming
 
