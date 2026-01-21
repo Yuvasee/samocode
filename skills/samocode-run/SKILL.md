@@ -54,54 +54,34 @@ Do NOT assume samocode should run just because a session exists.
 
 ## Execution
 
-**Arguments:** $ARGUMENTS (session path or project path)
+**Arguments:** $ARGUMENTS (session name or project path with session name)
 
 ### Steps
 
-1. **Find session:**
-   - If `$ARGUMENTS` is a full path to a session folder or `_overview.md`, use it
-   - If `$ARGUMENTS` is a project path, look for `.samocode` file to find SESSIONS dir
-   - If no argument, check current working dir for `.samocode` config
-   - Session folders are in SESSIONS dir (from `.samocode` file), NOT nested in project
+1. **Find .samocode config:**
+   - Look for `.samocode` file in current working dir or project path
+   - Extract the full path to the `.samocode` file (e.g., `~/project/.samocode`)
+   - **If `.samocode` file is missing:** ERROR and ask user to create it
 
-2. **Read project paths from `.samocode` file:**
+2. **Determine session name:**
+   - If `$ARGUMENTS` is a session name (e.g., "my-task"), use it directly
+   - If `$ARGUMENTS` includes a path, extract session name from it
+   - Session will be resolved: exact match → dated match → new session
 
-   Look for `.samocode` in PROJECT_PATH (or its parent if needed). Parse key=value format:
-
-   ```
-   MAIN_REPO=~/project/repo
-   WORKTREES=~/project/worktrees/
-   SESSIONS=~/project/_sessions/
-   ```
-
-   Extract values:
-   - `MAIN_REPO` from MAIN_REPO line (**REQUIRED** - this is the working directory)
-   - `SESSIONS_DIR` from SESSIONS line
-   - `WORKTREES_DIR` from WORKTREES line
-
-   **If `.samocode` file is missing or MAIN_REPO is not set:**
-   - ERROR: Tell user they need to create `.samocode` file with MAIN_REPO
-   - Show them the required format (see below)
-   - Do NOT proceed without MAIN_REPO
-
-3. **Verify session exists:**
-   ```bash
-   cat [SESSION_PATH]/_overview.md
-   ```
-   - Show user the current Status section (Phase, Blocked, Last Action, Next)
+3. **Verify session exists (if continuing):**
+   - Parse SESSIONS path from `.samocode` file
+   - Check for existing session: `{SESSIONS}/*-{session_name}/_overview.md`
+   - If found, show user the current Status section (Phase, Blocked, Last Action, Next)
    - If blocked, ask user how to proceed
 
 4. **Start samocode:**
    ```bash
-   cd ~/samocode && \
-     SESSIONS_DIR=[extracted value] \
-     WORKTREES_DIR=[extracted value] \
-     python main.py --session [SESSION_PATH] 2>&1
+   cd ~/samocode && python main.py \
+     --config [PATH_TO_.SAMOCODE] \
+     --session [SESSION_NAME] 2>&1
    ```
 
    Default timeout is 30 min, max turns 300. Override with CLAUDE_TIMEOUT and CLAUDE_MAX_TURNS env vars if needed.
-
-   If MAIN_REPO was found and session is repo-based, add `--repo [MAIN_REPO]`
 
    Run this in background using `run_in_background: true`
 
@@ -142,10 +122,10 @@ WORKTREES=~/path/to/worktrees/
 SESSIONS=~/path/to/_sessions/
 ```
 
-**Keys:**
-- `MAIN_REPO`: **REQUIRED** - The main working directory (where Claude runs)
+**All three keys are REQUIRED:**
+- `MAIN_REPO`: The main working directory (where Claude runs)
 - `SESSIONS`: Where samocode session folders are stored
-- `WORKTREES`: Where git worktrees are created for repo-based sessions
+- `WORKTREES`: Where git worktrees are created
 
 ## Session Structure
 
@@ -221,15 +201,15 @@ If samocode exhibits bugs or weird behavior (loops, wrong decisions, missing ste
 
 ```
 User: "Run samocode on the hvac project"
-→ Read ~/code/hvac-voice-agent/.samocode for paths (SESSIONS=~/code/hvac/_sessions/)
-→ Find session in SESSIONS dir (e.g., ~/code/hvac/_sessions/26-01-15-voice-agent/)
-→ Run: python main.py --session [SESSION_PATH]
+→ Find ~/code/hvac-voice-agent/.samocode file
+→ Determine session name from context (e.g., "voice-agent")
+→ Run: python main.py --config ~/code/hvac-voice-agent/.samocode --session voice-agent
 → Monitor iterations, report progress
 
 User: "Continue the samocode session"
-→ Find session from context or ask user
-→ Read project's .samocode for paths
-→ Run: python main.py --session [SESSION_PATH]
+→ Find session name from context or ask user
+→ Find .samocode file path
+→ Run: python main.py --config [CONFIG_PATH] --session [SESSION_NAME]
 → Monitor iterations, report progress
 ```
 

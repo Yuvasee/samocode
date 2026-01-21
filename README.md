@@ -189,13 +189,20 @@ Parent Claude handles these gates on your behalf - answering questions, approvin
 
 ### `.samocode` File (Required per project)
 
-Create a `.samocode` file in each project root. Samocode-parent reads this and passes paths to worker:
+Create a `.samocode` file in each project root. **All three fields are required:**
 
 | Key | Description |
 |-----|-------------|
-| `SESSIONS` | Where session folders are stored |
-| `WORKTREES` | Where git worktrees are created (repo-based sessions) |
-| `MAIN_REPO` | Main git repository path (optional, for --repo flag) |
+| `MAIN_REPO` | Main git repository path (**required**) |
+| `WORKTREES` | Where git worktrees are created (**required**) |
+| `SESSIONS` | Where session folders are stored (**required**) |
+
+Example:
+```
+MAIN_REPO=~/project/repo
+WORKTREES=~/project/worktrees/
+SESSIONS=~/project/_sessions/
+```
 
 ### Environment Variables (`.env` file)
 
@@ -210,54 +217,46 @@ Create a `.samocode` file in each project root. Samocode-parent reads this and p
 | `SAMOCODE_MAX_RETRIES` | `3` | Retry attempts on failure |
 | `SAMOCODE_RETRY_DELAY` | `5` | Delay between retries (seconds) |
 
-**Note:** `SESSIONS_DIR` and `WORKTREES_DIR` are NOT in `.env`. They are read by samocode-parent from the project's `.samocode` file.
+**Note:** All project paths (MAIN_REPO, WORKTREES, SESSIONS) come from the `.samocode` file, not environment variables.
 
 ## Worker CLI Reference
 
 The worker is normally started by samocode-parent, but can be run directly for debugging or advanced use.
 
+### CLI Arguments
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `--config` | **Yes** | Path to `.samocode` config file |
+| `--session` | **Yes** | Session name (not full path) |
+| `--dive` | No | Initial dive topic (first run only) |
+| `--task` | No | Initial task definition (first run only) |
+| `--dry-run` | No | Show config without executing |
+
 ### Starting a New Session
 
-**Repo-based session** (creates git worktree):
-
 ```bash
-SESSIONS_DIR=~/project/_sessions WORKTREES_DIR=~/project/worktrees \
-python main.py --session api-redesign \
-  --repo ~/my-repo \
-  --dive "current API structure and pain points" \
-  --task "Redesign the REST API to use consistent naming"
+python main.py --config ~/project/.samocode --session my-task \
+  --dive "current API structure" \
+  --task "Redesign the REST API"
 ```
 
-**Path-based session** (session in project folder):
+### Continuing an Existing Session
 
 ```bash
-SESSIONS_DIR=~/project/_sessions WORKTREES_DIR=~/project/worktrees \
-python main.py --session ~/code/my-project/_samocode \
-  --dive "understand existing code" \
-  --task "Add new feature"
+python main.py --config ~/project/.samocode --session my-task
 ```
 
-**Dry run** (show config without executing):
+Session resolution:
+1. Exact match: `{SESSIONS}/my-task/`
+2. Dated match: `{SESSIONS}/*-my-task/` (most recent)
+3. New session: `{SESSIONS}/{YY-MM-DD}-my-task/`
+
+### Dry Run
 
 ```bash
-python main.py --session test --dry-run
+python main.py --config ~/project/.samocode --session test --dry-run
 ```
-
-**Required for new sessions:** Both `--dive` and `--task` must be provided.
-
-### Continuing After Q&A
-
-When the agent signals `waiting` for Q&A answers:
-1. You receive Telegram notification
-2. Edit `_qa.md` in session folder with your answers
-3. Re-run with same session name:
-
-```bash
-SESSIONS_DIR=~/project/_sessions WORKTREES_DIR=~/project/worktrees \
-python main.py --session my-task --repo ~/my-repo
-```
-
-**Note:** `--dive` and `--task` are only used on first run. On subsequent runs, agent reads state from `_overview.md`.
 
 ### Session Naming
 

@@ -402,24 +402,18 @@ def _build_config_section(session_path: Path, config: SamocodeConfig) -> list[st
     """Build configuration section for prompts."""
     lines: list[str] = []
 
-    if config.repo_path:
-        session_name = session_path.name
-        worktree_path = config.worktrees_dir / session_name
-        branch_prefix = os.getenv("GIT_BRANCH_PREFIX", "")
-        branch_name = session_name.split("-", 3)[-1]
+    session_name = session_path.name
+    worktree_path = config.worktrees_dir / session_name
+    branch_prefix = os.getenv("GIT_BRANCH_PREFIX", "")
+    branch_name = session_name.split("-", 3)[-1]
 
-        lines.append("## Worktree Configuration")
-        lines.append(f"- Base repo: `{config.repo_path}`")
-        lines.append(f"- Worktree path: `{worktree_path}`")
-        if branch_prefix:
-            lines.append(f"- Branch name: `{branch_prefix}/{branch_name}`")
-        else:
-            lines.append(f"- Branch name: `{branch_name}`")
+    lines.append("## Worktree Configuration")
+    lines.append(f"- Base repo: `{config.repo_path}`")
+    lines.append(f"- Worktree path: `{worktree_path}`")
+    if branch_prefix:
+        lines.append(f"- Branch name: `{branch_prefix}/{branch_name}`")
     else:
-        project_path = session_path.parent
-        lines.append("## Standalone Project Configuration")
-        lines.append(f"- Project folder: `{project_path}`")
-        lines.append("- No git worktree (standalone project)")
+        lines.append(f"- Branch name: `{branch_name}`")
 
     return lines
 
