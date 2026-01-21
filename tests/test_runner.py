@@ -247,24 +247,35 @@ class TestExtractIteration:
 class TestGenerateLogFilename:
     """Tests for generate_log_filename - timestamped log paths."""
 
-    def test_format_with_phase(self, tmp_path: Path) -> None:
-        """Generates MM-DD-HHMMSS-phase.jsonl format in _logs/ subfolder."""
+    def test_format_with_phase_and_iteration(self, tmp_path: Path) -> None:
+        """Generates MM-DD-HHMM-NNN-phase.jsonl format in _logs/ subfolder."""
         session = tmp_path / "session"
 
-        filename = generate_log_filename(session, "testing")
+        filename = generate_log_filename(session, "testing", iteration=5)
 
         assert filename.suffix == ".jsonl"
         assert "testing" in filename.name
+        assert "-005-" in filename.name  # Iteration formatted as 3 digits
         assert filename.parent == session / "_logs"
 
     def test_none_phase_becomes_unknown(self, tmp_path: Path) -> None:
         """None phase becomes 'unknown' in filename."""
         session = tmp_path / "session"
 
-        filename = generate_log_filename(session, None)
+        filename = generate_log_filename(session, None, iteration=1)
 
         assert "unknown" in filename.name
+        assert "-001-" in filename.name
         assert filename.parent == session / "_logs"
+
+    def test_none_iteration_becomes_000(self, tmp_path: Path) -> None:
+        """None iteration becomes '000' in filename."""
+        session = tmp_path / "session"
+
+        filename = generate_log_filename(session, "init", iteration=None)
+
+        assert "-000-" in filename.name
+        assert "init" in filename.name
 
 
 class TestRunClaudeOnce:

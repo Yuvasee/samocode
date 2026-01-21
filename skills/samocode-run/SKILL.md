@@ -138,7 +138,7 @@ Sessions are stored in SESSIONS dir (from `.samocode` file), NOT nested inside p
     ├── _signal.json              # Control signal
     ├── _qa.md                    # Q&A when waiting for human input
     ├── _logs/                    # Agent iteration logs (JSONL)
-    │   └── [MM-DD-HHMMSS]-[phase].jsonl
+    │   └── [MM-DD-HHMM]-[NNN]-[phase].jsonl
     ├── [MM-DD-HH:mm]-plan-*.md   # Implementation plans
     ├── [MM-DD-HH:mm]-dive-*.md   # Investigation reports
     └── [MM-DD-HH:mm]-*.md        # Other artifacts
