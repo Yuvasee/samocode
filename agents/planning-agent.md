@@ -55,7 +55,7 @@ Session context is provided via --append-system-prompt by the orchestrator:
      - `serena` - Code intelligence (go-to-definition, find-references)
    - If MCP was added, signal `continue` to restart Claude for MCP pickup
 
-4. **Create plan document** at `[SESSION_PATH]/[MM-DD-HH:mm]-plan-[slug].md`
+4. **Create plan document** at `[SESSION_PATH]/[TIMESTAMP_FILE]-plan-[slug].md`
 
 5. **Update session state** and signal continue
 
@@ -63,7 +63,7 @@ Session context is provided via --append-system-prompt by the orchestrator:
 
 ```markdown
 # Plan: [task name]
-Created: [timestamp]
+Created: [TIMESTAMP_LOG]
 
 ## Task Definition
 [Clear statement of what will be built]
@@ -103,7 +103,7 @@ Created: [timestamp]
 
 Edit `_overview.md`:
 - Status: `Phase: planning`, `Blocked: waiting_human`, `Last Action: Plan created`, `Next: Await plan approval`
-- Flow Log: `- [MM-DD HH:MM] Plan created -> [filename].md`
+- Flow Log: `- [TIMESTAMP_ITERATION] Plan created -> [filename].md`
 - Files: `- [filename].md - Implementation plan`
 
 After human approves, they will update signal to continue and phase will move to implementation.

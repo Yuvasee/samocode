@@ -157,7 +157,7 @@ Last Action: [what happened]
 Next: [what to do next]
 
 ## Flow Log
-- [MM-DD HH:MM] Event description → optional-file.md
+- [NNN @ MM-DD HH:MM] Event description -> optional-file.md
 ```
 
 ## Common Issues

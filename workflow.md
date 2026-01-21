@@ -69,10 +69,10 @@ Write `_signal.json` with current phase before exiting:
 ## Flow Log Format
 
 ```
-- [MM-DD HH:MM] Event description -> optional-file.md
+- [NNN @ MM-DD HH:MM] Event description -> optional-file.md
 ```
 
-Capture timestamp once at start of skill execution, reuse throughout.
+Use `TIMESTAMP_ITERATION` from Session Context (injected by orchestrator).
 
 ## Error Handling
 

@@ -26,7 +26,7 @@ Session context is provided via --append-system-prompt by the orchestrator:
 1. **Use `cleanup` skill** to analyze changed code
 2. **Use `multi-review` skill** to get multiple review perspectives
 3. **Set `Quality Iteration: 1`** in Status section
-4. **Create quality document:** `[SESSION_PATH]/[MM-DD-HH:mm]-quality-review.md`
+4. **Create quality document:** `[SESSION_PATH]/[TIMESTAMP_FILE]-quality-review.md`
 
 ### Triage Blocking Issues
 
@@ -60,7 +60,7 @@ Parse review documents for:
 
 ```markdown
 # Quality Review
-Date: [timestamp]
+Date: [TIMESTAMP_LOG]
 Session: [session-name]
 Iteration: [N]
 
@@ -93,7 +93,7 @@ Iteration: [N]
 Edit `_overview.md`:
 - Status: Update `Quality Iteration`, `Last Action`, `Next`
 - When clean: `Phase: testing`, `Last Action: Quality review complete`
-- Flow Log: `- [MM-DD HH:MM] Quality review (iter N) -> [filename].md`
+- Flow Log: `- [TIMESTAMP_ITERATION] Quality review (iter N) -> [filename].md`
 
 ## Signals
 

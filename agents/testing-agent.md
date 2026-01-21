@@ -45,7 +45,7 @@ Check `_overview.md` to determine which run this is:
    - Smoke test (app starts, no crashes)
 
 4. **Create test report:**
-   - `[SESSION_PATH]/[MM-DD-HH:mm]-test-report.md`
+   - `[SESSION_PATH]/[TIMESTAMP_FILE]-test-report.md`
 
 5. **Update state and signal**
 
@@ -53,7 +53,7 @@ Check `_overview.md` to determine which run this is:
 
 ```markdown
 # Test Report
-Date: [timestamp]
+Date: [TIMESTAMP_LOG]
 Session: [session-name]
 Run: [1st (post-implementation) | 2nd (post-quality)]
 
@@ -86,7 +86,7 @@ Edit `_overview.md`:
   - First run: `Phase: quality`, `Last Action: Tests passed`, `Next: Quality review`
   - Second run: `Phase: done`, `Last Action: Regression tests passed`, `Next: Generate summary`
 - If tests fail: Keep `Phase: testing`, document failures
-- Flow Log: `- [MM-DD HH:MM] Testing: [pass/fail] -> [filename].md`
+- Flow Log: `- [TIMESTAMP_ITERATION] Testing: [pass/fail] -> [filename].md`
 
 ## Signals
 

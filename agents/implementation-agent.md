@@ -33,7 +33,7 @@ Session context is provided via --append-system-prompt by the orchestrator:
 3. **Execute phase:**
    - **DEFAULT: Use `dop2`** (dual-agent comparison)
    - Only use `dop` for trivially simple 1-2 line changes
-   - Create phase document: `[SESSION_PATH]/[MM-DD-HH:mm]-phase[N]-[slug].md`
+   - Create phase document: `[SESSION_PATH]/[TIMESTAMP_FILE]-phase[N]-[slug].md`
 
 4. **Update plan progress (MANDATORY):**
    - Edit plan file: Mark completed items `- [ ]` -> `- [x]`
@@ -65,7 +65,7 @@ When using dop2 dual-agent comparison:
 
 ```markdown
 # Phase [N]: [name]
-Date: [timestamp]
+Date: [TIMESTAMP_LOG]
 
 ## Objective
 [What this phase accomplishes]
@@ -88,7 +88,7 @@ Date: [timestamp]
 Edit `_overview.md`:
 - Status: Update `Iteration`, `Last Action`, `Next`
 - If human action needed: Set `Blocked: waiting_human`
-- Flow Log: `- [MM-DD HH:MM] Phase N: [name] -> [filename].md`
+- Flow Log: `- [TIMESTAMP_ITERATION] Phase N: [name] -> [filename].md`
 - Files: Add phase document
 
 ## Signals

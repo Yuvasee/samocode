@@ -35,35 +35,25 @@ Create a new work session.
    - If only name provided: check project `.samocode` file for `SESSIONS` path
    - If neither: **STOP and ask user** for session directory path
 
-2. **Capture timestamps atomically:**
-   ```bash
-   TIMESTAMP_FILE=$(date '+%m-%d-%H:%M')    # For filenames: 01-09-21:30
-   TIMESTAMP_LOG=$(date '+%m-%d %H:%M')     # For flow logs: 01-09 21:30
-   TIMESTAMP_FULL=$(date '+%Y-%m-%d %H:%M') # For headers: 2026-01-09 21:30
-   TIMESTAMP_FOLDER=$(date '+%y-%m-%d')     # For folder name: 26-01-09
-   ```
-   **CRITICAL:** Run all at once, reuse throughout. Do NOT call `date` again.
-
-3. **Parse session name:**
+2. **Parse session name:**
    - Take session name from arguments after "start"
    - If empty, ERROR: "Session name required. Usage: start [session-name]"
    - Sanitize name (lowercase, replace spaces with hyphens)
 
-4. **Create session folder:**
-   - Path: `[SESSIONS_DIR]/[YY-MM-DD]-[session-name]/`
-   - Use current date
+3. **Create session folder:**
+   - Path: `[SESSIONS_DIR]/[YY-MM-DD]-[session-name]/` (use current date for folder name)
    - If folder exists, ERROR: "Session already exists"
 
-5. **Detect Working Dir:**
+4. **Detect Working Dir:**
    - Check project `.samocode` file for `MAIN_REPO` path
    - Or use git root: `git rev-parse --show-toplevel`
    - Or use current working directory
    - If unclear: leave as "TBD" and note to set it
 
-6. **Create _overview.md:**
+5. **Create _overview.md:**
    ```markdown
    # Session: [session-name]
-   Started: [TIMESTAMP_FULL]
+   Started: [TIMESTAMP_LOG]
    Working Dir: [detected or TBD]
 
    ## Status
@@ -74,7 +64,7 @@ Create a new work session.
    Next: Ready to work
 
    ## Flow Log
-   - [TIMESTAMP_LOG] Session created
+   - [TIMESTAMP_ITERATION] Session created
 
    ## Files
    (none yet)
@@ -86,10 +76,10 @@ Create a new work session.
    (none yet)
    ```
 
-7. **Commit (if sessions dir is a git repo):**
+6. **Commit (if sessions dir is a git repo):**
    - `cd [SESSIONS_DIR] && git add . && git commit -m "Start session: [session-name]"`
 
-8. **Confirm to user:**
+7. **Confirm to user:**
    ```
    Session created: [YY-MM-DD]-[session-name]
    Path: [full-path]
@@ -122,9 +112,8 @@ Load and continue working in an existing session.
    - **Multiple matches:** List them with dates and ask user to specify
 
 4. **Load session:**
-   - Capture timestamp: `TIMESTAMP_LOG=$(date '+%m-%d %H:%M')`
    - Read `_overview.md` from the session folder
-   - Add Flow Log entry: `- [TIMESTAMP_LOG] Session resumed`
+   - Add Flow Log entry: `- [TIMESTAMP_ITERATION] Session resumed`
    - Commit if git repo: `git add . && git commit -m "Resume session: [session-name]"`
 
 5. **Present summary:**

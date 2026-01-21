@@ -30,6 +30,16 @@ def log_timestamp(dt: datetime | None = None) -> str:
     return dt.strftime("%m-%d %H:%M")
 
 
+def iteration_timestamp(iteration: int, dt: datetime | None = None) -> str:
+    """Generate combined iteration and timestamp: [NNN @ MM-DD HH:MM]
+
+    Example: [001 @ 01-15 14:30]
+    """
+    if dt is None:
+        dt = datetime.now()
+    return f"[{iteration:03d} @ {dt.strftime('%m-%d %H:%M')}]"
+
+
 def full_timestamp(dt: datetime | None = None) -> str:
     """Generate full timestamp for headers: YYYY-MM-DD HH:MM
 

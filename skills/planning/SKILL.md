@@ -19,22 +19,18 @@ Creates detailed implementation plans with phases, stored within the session fol
 
 ### Steps
 
-1. **Get current time:**
-   - Run `date '+%m-%d-%H:%M'` for filename timestamp
-   - Run `date '+%H:%M'` for flow log entries
-
-2. **Gather context:**
+1. **Gather context:**
    - Read recent dive/task documents from session
    - Review project documentation if available
    - Understand current codebase state
 
-3. **Create plan file:**
-   - Location: `[SESSION_PATH]/[MM-DD-HH:mm]-plan-[plan-slug].md`
+2. **Create plan file:**
+   - Location: `[SESSION_PATH]/[TIMESTAMP_FILE]-plan-[plan-slug].md`
 
    Structure:
    ```markdown
    # Plan: [Title]
-   Created: [timestamp]
+   Created: [TIMESTAMP_LOG]
 
    ## Task Definition
    [Concise summary]
@@ -66,11 +62,11 @@ Creates detailed implementation plans with phases, stored within the session fol
    [Important context from task definition]
    ```
 
-4. **Update session:**
+3. **Update session:**
    - Edit `[SESSION_PATH]/_overview.md`:
-     - Add to Flow Log: `- [TIMESTAMP_LOG] Plan created -> [filename].md`
+     - Add to Flow Log: `- [TIMESTAMP_ITERATION] Plan created -> [filename].md`
      - Add to Plans: `- [filename].md - [brief description]`
      - Add to Files: `- [filename].md - Plan: [brief description]`
    - Commit (if git repo): `cd [SESSION_DIR] && git add . && git commit -m "Plan: [title]"`
 
-5. **Report back:** Plan summary and file location
+4. **Report back:** Plan summary and file location

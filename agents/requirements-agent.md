@@ -37,7 +37,7 @@ Session context is provided via --append-system-prompt by the orchestrator:
 ### If `_qa.md` has answers:
 
 1. **Parse answers** from `_qa.md`
-2. **Create requirements document** at `[SESSION_PATH]/[MM-DD-HH:mm]-requirements.md`
+2. **Create requirements document** at `[SESSION_PATH]/[TIMESTAMP_FILE]-requirements.md`
 3. **Update `_overview.md`**: Phase: planning
 4. **Signal `continue`**
 

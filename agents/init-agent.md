@@ -59,7 +59,7 @@ Set `Working Dir` based on configuration:
 
 ```markdown
 # Session: [session-name]
-Started: [timestamp]
+Started: [TIMESTAMP_LOG]
 Working Dir: [worktree_path or project_folder]
 
 ## Task
@@ -73,7 +73,7 @@ Last Action: Session initialized
 Next: Run dive skill
 
 ## Flow Log
-- [MM-DD HH:MM] Session initialized
+- [TIMESTAMP_ITERATION] Session initialized
 
 ## Files
 (none yet)

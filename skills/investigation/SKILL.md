@@ -19,24 +19,19 @@ Conducts deep-dive investigations on specific topics and produces detailed docum
 
 ### Steps
 
-1. **Get current time:**
-   - Run `date '+%m-%d-%H:%M'` for filename timestamp
-   - Run `date '+%H:%M'` for flow log entries
-
-2. **Investigate thoroughly:**
+1. **Investigate thoroughly:**
    - Check project docs folder for related documents (if exists)
    - Explore the codebase to understand the topic
    - Identify key files, patterns, dependencies
    - Note potential issues or concerns
 
-3. **Create documentation:**
-   - File: `[SESSION_PATH]/[MM-DD-HH:mm]-dive-[topic-slug].md`
-   - Example: `01-08-14:30-dive-auth-flow.md`
+2. **Create documentation:**
+   - File: `[SESSION_PATH]/[TIMESTAMP_FILE]-dive-[topic-slug].md`
 
    Structure:
    ```markdown
    # Deep Dive: [topic]
-   Date: [timestamp]
+   Date: [TIMESTAMP_LOG]
 
    ## Summary
    [Brief overview of findings]
@@ -57,10 +52,10 @@ Conducts deep-dive investigations on specific topics and produces detailed docum
    [Suggested next steps]
    ```
 
-4. **Update session:**
+3. **Update session:**
    - Edit `[SESSION_PATH]/_overview.md`:
-     - Add to Flow Log: `- [TIMESTAMP_LOG] Deep dive: [topic] -> [filename].md`
+     - Add to Flow Log: `- [TIMESTAMP_ITERATION] Deep dive: [topic] -> [filename].md`
      - Add to Files: `- [filename].md - Deep dive: [topic]`
    - Commit (if git repo): `cd [SESSION_DIR] && git add . && git commit -m "Deep dive: [topic]"`
 
-5. **Report back:** Provide concise summary of key findings with filename
+4. **Report back:** Provide concise summary of key findings with filename
