@@ -68,24 +68,16 @@ Do NOT assume samocode should run just because a session exists.
    - If `$ARGUMENTS` includes a path, extract session name from it
    - Session will be resolved: exact match → dated match → new session
 
-3. **Verify session exists (if continuing):**
-   - Parse SESSIONS path from `.samocode` file
-   - Check for existing session: `{SESSIONS}/*-{session_name}/_overview.md`
-   - If found, show user the current Status section (Phase, Blocked, Last Action, Next)
-   - If blocked, ask user how to proceed
-
-4. **Start samocode:**
+3. **Start samocode:**
    ```bash
    cd ~/samocode && python main.py \
      --config [PATH_TO_.SAMOCODE] \
      --session [SESSION_NAME] 2>&1
    ```
 
-   Default timeout is 30 min, max turns 300. Override with CLAUDE_TIMEOUT and CLAUDE_MAX_TURNS env vars if needed.
-
    Run this in background using `run_in_background: true`
 
-5. **Monitor loop using background sleep triggers:**
+4. **Monitor loop using background sleep triggers:**
 
    Since you can't poll automatically, use background bash with sleep:
 
@@ -107,7 +99,7 @@ Do NOT assume samocode should run just because a session exists.
    - Set next timer (adjust sleep based on phase)
    - Stop when `done`, alert on `blocked`
 
-6. **On completion or block:**
+5. **On completion or block:**
    - Read final `_overview.md` status
    - Summarize what was accomplished
    - If blocked, explain what's needed
@@ -144,8 +136,6 @@ Sessions are stored in SESSIONS dir (from `.samocode` file), NOT nested inside p
     └── [MM-DD-HH:mm]-*.md        # Other artifacts
 ```
 
-**IMPORTANT:** Do NOT create `_samocode/` subfolders inside sessions. All files go directly in the session folder.
-
 ## Key Files in _overview.md
 
 ```markdown
@@ -165,9 +155,6 @@ Next: [what to do next]
 1. **Missing .samocode file**: Create `.samocode` file in project root with SESSIONS, WORKTREES, MAIN_REPO
 2. **Telegram errors**: Check `~/samocode/.env` has TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID
 3. **Timeout**: Default is 30 min. Increase CLAUDE_TIMEOUT env var if iterations need more
-4. **ngrok needed**: For webhooks (Vapi, Stripe), run `ngrok http [PORT]` first
-5. **Session not found**: Ensure session folder with `_overview.md` exists in SESSIONS dir
-6. **Nested _samocode/ error**: Sessions must NOT have `_samocode/` subfolder - migrate files to session root
 
 ## Debugging Samocode Bugs
 
@@ -186,7 +173,7 @@ If samocode exhibits bugs or weird behavior (loops, wrong decisions, missing ste
    - **WAIT FOR USER CONFIRMATION before making any changes**
 
 3. **Samocode source locations:**
-   - Worker/orchestrator: `~/samocode/main.py`, `claude_runner.py`, `config.py`
+   - Worker/orchestrator: `~/samocode/main.py`, `~/samocode/worker/`
    - Workflow prompt: `~/samocode/workflow.md`
    - Skills: `~/samocode/skills/*/SKILL.md`
    - Commands: `~/samocode/commands/*.md`
