@@ -346,7 +346,8 @@ def main() -> None:
                 config.telegram_bot_token,
                 config.telegram_chat_id,
             )
-        except Exception:
+        except (OSError, RuntimeError):
+            # Network/system errors during notification are non-critical
             pass
         sys.exit(1)
 
