@@ -212,8 +212,8 @@ SESSIONS=~/project/_sessions/
 | `TELEGRAM_BOT_TOKEN` | - | (Optional) Telegram bot token for notifications |
 | `TELEGRAM_CHAT_ID` | - | (Optional) Telegram chat ID for notifications |
 | `CLAUDE_MODEL` | `opus` | Model to use |
-| `CLAUDE_MAX_TURNS` | `120` | Max turns per iteration |
-| `CLAUDE_TIMEOUT` | `600` | Timeout in seconds |
+| `CLAUDE_MAX_TURNS` | `300` | Max turns per iteration |
+| `CLAUDE_TIMEOUT` | `1800` | Timeout in seconds |
 | `SAMOCODE_MAX_RETRIES` | `3` | Retry attempts on failure |
 | `SAMOCODE_RETRY_DELAY` | `5` | Delay between retries (seconds) |
 

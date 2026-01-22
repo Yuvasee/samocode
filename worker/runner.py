@@ -10,6 +10,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
+from typing import IO, TextIO
 
 from .config import SamocodeConfig
 from .phases import Phase, get_agent_for_phase
@@ -551,18 +552,18 @@ def _execute_process(
 
 
 def _drain_remaining(
-    stdout_pipe: object,
-    stderr_pipe: object,
+    stdout_pipe: IO[str],
+    stderr_pipe: IO[str],
     stdout_lines: list[str],
     stderr_lines: list[str],
-    f: object,
+    log_file: TextIO,
     on_line: Callable[[str], None] | None,
 ) -> None:
     """Drain remaining output from pipes after process finishes."""
-    for line in stdout_pipe:  # type: ignore[union-attr]
+    for line in stdout_pipe:
         stdout_lines.append(line)
-        f.write(line)  # type: ignore[union-attr]
+        log_file.write(line)
         if on_line:
             on_line(line)
-    for line in stderr_pipe:  # type: ignore[union-attr]
+    for line in stderr_pipe:
         stderr_lines.append(line)

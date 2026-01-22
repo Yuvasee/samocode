@@ -7,17 +7,18 @@ Autonomous session orchestrator for Claude Code. Python spawns Claude CLI in a l
 ```
 main.py              # Orchestrator entry point - main loop
 workflow.md          # Master prompt template for Claude iterations
-worker/              # Core package (~1,400 lines)
+worker/              # Core package (~1,600 lines)
   config.py          # Configuration from .samocode + .env
   phases.py          # Phase enum, config registry, transition validation
   runner.py          # Claude CLI execution with retry
   signal_history.py  # Signal history tracking for debugging
   signals.py         # Signal file I/O (continue/done/blocked/waiting)
+  timestamps.py      # Centralized timestamp formatting
   logging.py         # Rotating file + console logging
   notifications.py   # Telegram notifications
 agents/              # Phase-specific agent instructions (md files)
 skills/              # Claude Code skills (9 total)
-commands/            # Standalone Claude commands (14 total)
+commands/            # Standalone Claude commands (13 total)
 tests/               # pytest suite - one file per worker module
 ```
 
