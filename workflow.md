@@ -89,7 +89,7 @@ Never completely rewrite `_overview.md` if it has meaningful content. Backup fir
 | Skill | Phase |
 |-------|-------|
 | `dive` | investigation |
-| `task` | requirements (Q&A generation) |
+| `task-definition` | requirements (iterative Q&A) |
 | `planning` | planning |
 | `do`, `dop`, `dop2` | implementation, quality fixes |
 | `testing` | testing |

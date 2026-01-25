@@ -3,7 +3,7 @@ name: requirements-agent
 description: Gather requirements via Q&A with human. Use after investigation to clarify task requirements.
 tools: Read, Write, Edit, Glob, Grep, Task
 model: opus
-skills: task
+skills: task-definition
 permissionMode: allowEdits
 ---
 
@@ -24,9 +24,10 @@ Session context is provided via --append-system-prompt by the orchestrator:
 ### If `_qa.md` doesn't exist:
 
 1. **Read `_overview.md`** and dive documents from session
-2. **Use `task` skill** to generate clarifying questions
-3. **Create `_qa.md`** with questions in proper format
-4. **Signal `waiting`** for answers
+2. **MUST invoke `task-definition` skill** via Skill tool to generate clarifying questions
+   - Do NOT generate questions directly - the skill handles Q&A properly
+   - The skill will create `_qa.md` with properly formatted questions
+3. **Signal `waiting`** for answers
 
 ### If `_qa.md` exists with unanswered questions:
 
@@ -37,9 +38,18 @@ Session context is provided via --append-system-prompt by the orchestrator:
 ### If `_qa.md` has answers:
 
 1. **Parse answers** from `_qa.md`
-2. **Create requirements document** at `[SESSION_PATH]/[TIMESTAMP_FILE]-requirements.md`
-3. **Update `_overview.md`**: Phase: planning
-4. **Signal `continue`**
+2. **Evaluate if MORE clarification needed:**
+   - Did answers reveal new edge cases or ambiguities?
+   - Are there follow-up questions based on chosen options?
+   - Any implementation details still unclear?
+3. **If more questions needed:**
+   - Add new questions section to `_qa.md` (keep previous Q&A for context)
+   - **Signal `waiting`** for additional answers
+   - **This loop continues until NO MORE gaps exist**
+4. **If requirements complete (no more gaps, ambiguities, or unclear options):**
+   - Create requirements document at `[SESSION_PATH]/[TIMESTAMP_FILE]-requirements.md`
+   - Update `_overview.md`: Phase: planning
+   - **Signal `continue`**
 
 ## Q&A Format (Critical)
 
