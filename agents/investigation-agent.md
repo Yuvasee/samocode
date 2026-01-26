@@ -63,6 +63,13 @@ After creating dive document, edit `_overview.md`:
 - Add to Flow Log: `- [TIMESTAMP_ITERATION] Deep dive: [topic] -> [filename].md`
 - Add to Files section: `- [filename].md - [brief description]`
 
+## Commits
+
+**Commit session files before signaling:**
+```bash
+cd [SESSION_PATH] && git add -A && git commit -m "investigation: Deep dive [topic]"
+```
+
 ## Signal
 
 Write `_signal.json` to session path:

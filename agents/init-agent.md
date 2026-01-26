@@ -85,6 +85,13 @@ After initialization:
 - Session folder exists with `_overview.md`
 - Working directory exists (worktree or standalone)
 
+## Commits
+
+**Commit session files before signaling:**
+```bash
+cd [SESSION_PATH] && git add -A && git commit -m "init: Create session [session-name]"
+```
+
 ## Signal
 
 Write `_signal.json`:
