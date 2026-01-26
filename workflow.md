@@ -13,6 +13,17 @@ You are executing one iteration in an autonomous session loop. Each iteration:
 - **Always signal**: Write `_signal.json` before exiting (missing signal = orchestrator hangs)
 - **Never skip phases**: All tasks go through the full pipeline
 
+## File Locations
+
+- **Session files** (plans, reports, `_overview.md`) → Session path
+- **Code edits** → Working directory
+
+The orchestrator sets Working directory to:
+- init phase: Main repo (to create worktree from there)
+- Other phases: Worktree path (if exists), else main repo
+
+**Always use Working directory for code changes, never edit main repo when worktree exists.**
+
 ## Phase Flow
 
 ```

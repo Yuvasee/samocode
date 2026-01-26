@@ -307,8 +307,19 @@ def build_session_context(
     lines.append("\n\n# Session Context")
     lines.append(f"**Session path:** {session_path}")
 
-    if config.repo_path:
-        lines.append(f"**Working directory:** {config.repo_path}")
+    # Determine working directory: worktree if exists, else main repo
+    # init phase needs main repo to create worktree FROM there
+    session_name = session_path.name
+    worktree_path = config.worktrees_dir / session_name
+    if phase == "init":
+        working_dir = config.repo_path
+    elif worktree_path.exists():
+        working_dir = worktree_path
+    else:
+        working_dir = config.repo_path
+
+    if working_dir:
+        lines.append(f"**Working directory:** {working_dir}")
 
     if phase:
         lines.append(f"**Phase:** {phase}")
