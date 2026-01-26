@@ -8,6 +8,7 @@ Claude reads session state, decides actions via skills, updates state, signals n
 import argparse
 import logging
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 from worker import (
@@ -132,6 +133,11 @@ Examples:
         "--task",
         help="Initial task definition (optional, for first run)",
     )
+    parser.add_argument(
+        "--timeout",
+        type=int,
+        help="Override timeout in seconds (default: 1800 = 30 min)",
+    )
 
     return parser.parse_args()
 
@@ -154,6 +160,11 @@ def load_config(args: argparse.Namespace) -> SamocodeConfig:
 
     # Load runtime config from environment
     runtime = RuntimeConfig.from_env()
+
+    # Override timeout if provided via CLI
+    if args.timeout:
+        runtime = replace(runtime, claude_timeout=args.timeout)
+
     runtime_errors = runtime.validate()
     errors.extend(runtime_errors)
 

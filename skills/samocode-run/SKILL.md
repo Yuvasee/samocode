@@ -89,6 +89,12 @@ Do NOT assume samocode should run just because a session exists.
      --session [SESSION_NAME] 2>&1
    ```
 
+   **Optional:** Add `--timeout SECONDS` for per-iteration time limit (default: 1800s = 30 min).
+   Each child Claude iteration is killed if it exceeds this. Increase for complex phases:
+   ```bash
+   python main.py --config ... --session ... --timeout 3600  # 1 hour per iteration
+   ```
+
    Run this in background using `run_in_background: true`
 
 5. **Monitor loop using Bash + TaskOutput (CRITICAL):**
