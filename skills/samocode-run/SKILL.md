@@ -68,7 +68,21 @@ Do NOT assume samocode should run just because a session exists.
    - If `$ARGUMENTS` includes a path, extract session name from it
    - Session will be resolved: exact match → dated match → new session
 
-3. **Start samocode:**
+3. **Check session state (if exists):**
+   - Read `_overview.md` Status section
+   - **If `Phase: done`:**
+     - Ask user: "Session is complete. What new work do you want to do?"
+     - Update `_overview.md`:
+       - `Phase: investigation`
+       - `Last Action: Resuming session for: [user's goal]`
+       - `Next: Investigate approach for [user's goal]`
+     - Add to Flow Log: `- [MM-DD HH:MM] Resuming: [user's goal]`
+   - **If `Blocked: yes` or `blocked`:**
+     - Show user the current status (Last Action, Next, reason if available)
+     - Ask how to proceed
+     - Update status based on user's direction
+
+4. **Start samocode:**
    ```bash
    cd ~/samocode && python main.py \
      --config [PATH_TO_.SAMOCODE] \
@@ -77,7 +91,7 @@ Do NOT assume samocode should run just because a session exists.
 
    Run this in background using `run_in_background: true`
 
-4. **Monitor loop using Bash + TaskOutput (CRITICAL):**
+5. **Monitor loop using Bash + TaskOutput (CRITICAL):**
 
    **IMPORTANT:** Always use `TaskOutput(block=true)` immediately after starting a background monitor.
    Do NOT rely on system notifications - they can be missed if you're mid-response or user sends a message.
@@ -117,7 +131,7 @@ Do NOT assume samocode should run just because a session exists.
    - Multiple monitors pile up
    - System notifications arrive during your response
 
-5. **On completion or block:**
+6. **On completion or block:**
    - Read final `_overview.md` status
    - Summarize what was accomplished
    - If blocked, explain what's needed
