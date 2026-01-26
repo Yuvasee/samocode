@@ -77,14 +77,28 @@ Do NOT assume samocode should run just because a session exists.
 
    Run this in background using `run_in_background: true`
 
-4. **Monitor loop using background sleep triggers:**
+4. **Monitor loop using Bash + TaskOutput (CRITICAL):**
 
-   Since you can't poll automatically, use background bash with sleep:
+   **IMPORTANT:** Always use `TaskOutput(block=true)` immediately after starting a background monitor.
+   Do NOT rely on system notifications - they can be missed if you're mid-response or user sends a message.
 
-   ```bash
-   sleep 60 && tail -20 /tmp/claude/.../tasks/[TASK_ID].output
+   **Reliable monitoring pattern:**
+   ```python
+   # Step 1: Start background sleep + check
+   Bash(
+     command="sleep 60 && grep -E '^(Phase|Iteration|Blocked):' [SESSION]/_overview.md",
+     run_in_background=true
+   )
+   # Returns task_id (e.g., "b155903")
+
+   # Step 2: IMMEDIATELY block on result - DO NOT SKIP THIS
+   TaskOutput(task_id="b155903", block=true, timeout=120000)
+   # This guarantees you see the result
+
+   # Step 3: Report progress to user
+
+   # Step 4: If not done/blocked, repeat from Step 1
    ```
-   Run with `run_in_background: true`. When complete, you get a notification with output.
 
    **Sleep duration by phase:**
    - Investigation/planning: 60s (fast iterations)
@@ -92,12 +106,16 @@ Do NOT assume samocode should run just because a session exists.
    - Quality review: 120s (multi-review takes time)
    - Testing: 60s (usually quick)
 
-   On each notification:
-   - Parse the output to see current iteration and signal
-   - Check `_overview.md` for phase: `grep -E "^(Phase|Last Action):" [SESSION]/_overview.md`
+   **On each TaskOutput result:**
+   - Parse the status (Phase, Iteration, Blocked)
    - Report progress to user
-   - Set next timer (adjust sleep based on phase)
-   - Stop when `done`, alert on `blocked`
+   - If `done` or `blocked` → stop monitoring
+   - Otherwise → start next monitor iteration (goto Step 1)
+
+   **Why this matters:** Without `block=true`, you may lose track of monitors when:
+   - User sends a message while you're waiting
+   - Multiple monitors pile up
+   - System notifications arrive during your response
 
 5. **On completion or block:**
    - Read final `_overview.md` status
