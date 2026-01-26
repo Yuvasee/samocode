@@ -115,6 +115,7 @@ Update `Phase: testing` then:
 
 ## Important Notes
 
+- **Code edits use Working Directory** from Session Context, NOT main repo
 - Only fix blocking issues - don't gold-plate
 - Non-blocking suggestions are logged but not actioned
 - Max 3 fix iterations to prevent infinite loops
