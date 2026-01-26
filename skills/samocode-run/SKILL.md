@@ -95,6 +95,9 @@ Do NOT assume samocode should run just because a session exists.
    python main.py --config ... --session ... --timeout 3600  # 1 hour per iteration
    ```
 
+   **Do NOT wrap with bash `timeout`** - The orchestrator manages its own timeouts via `--timeout`.
+   External timeouts can kill iterations mid-work and corrupt session state.
+
    Run this in background using `run_in_background: true`
 
 5. **Monitor loop using Bash + TaskOutput (CRITICAL):**
