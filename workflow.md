@@ -24,6 +24,12 @@ The orchestrator sets Working directory to:
 
 **Always use Working directory for code changes, never edit main repo when worktree exists.**
 
+## Time Limit
+
+Each iteration has a time limit (shown in Session Context, default 30 min).
+If you're running long operations, check progress and signal before timeout.
+Prefer smaller, incremental actions over large operations that might timeout.
+
 ## Phase Flow
 
 ```

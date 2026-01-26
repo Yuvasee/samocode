@@ -326,6 +326,10 @@ def build_session_context(
     if iteration:
         lines.append(f"**Iteration:** {iteration}")
 
+    # Add time limit so agent knows constraints
+    timeout = config.runtime.claude_timeout
+    lines.append(f"**Time limit:** {timeout}s ({timeout // 60} min)")
+
     # Add injected timestamps section
     lines.append("")
     lines.append("## Injected Timestamps")
