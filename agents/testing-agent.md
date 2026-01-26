@@ -106,6 +106,11 @@ Update `Phase: done` then:
 {"status": "blocked", "phase": "testing", "reason": "Tests failed: [brief description]", "needs": "error_resolution"}
 ```
 
+**State inconsistency or unexpected issue:**
+```json
+{"status": "blocked", "phase": "testing", "reason": "[what's wrong]", "needs": "human_decision"}
+```
+
 ## Important Notes
 
 - Don't auto-fix failures - document and signal blocked

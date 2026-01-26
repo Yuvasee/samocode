@@ -111,6 +111,9 @@ Update `_overview.md` with `Phase: testing` then signal:
 
 ## Important Notes
 
+- **Code edits use Working Directory** from Session Context, NOT main repo
+  - Session files (plans, reports) → Session folder
+  - Code files → Working Directory (may be worktree)
 - Run pyright/ruff (Python) or tsc (TypeScript) after code changes
 - Fix all linting/type errors before committing
 - Never skip plan progress updates
