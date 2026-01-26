@@ -30,6 +30,28 @@ Each iteration has a time limit (shown in Session Context, default 30 min).
 If you're running long operations, check progress and signal before timeout.
 Prefer smaller, incremental actions over large operations that might timeout.
 
+## Commits (MANDATORY)
+
+**Every iteration that changes files MUST commit before signaling.**
+
+Two separate commits may be needed (they can be different repos):
+
+1. **Code changes** → commit in Working directory
+   ```bash
+   cd [WORKING_DIR] && git add -A && git commit -m "[phase]: [description]"
+   ```
+
+2. **Session files** → commit in Session folder
+   ```bash
+   cd [SESSION_PATH] && git add -A && git commit -m "[phase]: [description]"
+   ```
+
+**Rules:**
+- Better to make an extra commit than miss one
+- Commit BEFORE writing `_signal.json`
+- Use descriptive messages: `"Phase 2: Add user auth"`, `"Testing: API verification"`
+- If commit fails (nothing to commit), that's OK - continue
+
 ## Phase Flow
 
 ```

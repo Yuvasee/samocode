@@ -88,6 +88,13 @@ Edit `_overview.md`:
 - If tests fail: Keep `Phase: testing`, document failures
 - Flow Log: `- [TIMESTAMP_ITERATION] Testing: [pass/fail] -> [filename].md`
 
+## Commits
+
+**Commit session files before signaling:**
+```bash
+cd [SESSION_PATH] && git add -A && git commit -m "testing: [pass/fail] - [brief description]"
+```
+
 ## Signals
 
 **Tests pass (first run -> quality):**

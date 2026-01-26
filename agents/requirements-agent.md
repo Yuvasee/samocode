@@ -97,6 +97,13 @@ Edit `_overview.md`:
 - Flow Log: Add entry for Q&A creation or requirements finalization
 - Files: Add requirements document
 
+## Commits
+
+**Commit session files before signaling:**
+```bash
+cd [SESSION_PATH] && git add -A && git commit -m "requirements: [Q&A created | Requirements finalized]"
+```
+
 ## Signals
 
 **Creating Q&A:**

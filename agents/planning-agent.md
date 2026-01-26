@@ -108,6 +108,17 @@ Edit `_overview.md`:
 
 After human approves, they will update signal to continue and phase will move to implementation.
 
+## Commits
+
+**Commit before signaling (both may apply):**
+```bash
+# If .mcp.json was created/modified:
+cd [WORKING_DIR] && git add -A && git commit -m "planning: Add MCP config"
+
+# Session files:
+cd [SESSION_PATH] && git add -A && git commit -m "planning: Create implementation plan"
+```
+
 ## Signal
 
 After creating the plan, signal waiting for human approval:

@@ -73,6 +73,13 @@ Edit `_overview.md`:
 - Flow Log: `- [TIMESTAMP_ITERATION] Session completed -> [summary-filename].md`
 - Files: Add summary document
 
+## Commits
+
+**Commit session files before signaling:**
+```bash
+cd [SESSION_PATH] && git add -A && git commit -m "done: Session complete - [brief summary]"
+```
+
 ## Signal
 
 ```json
