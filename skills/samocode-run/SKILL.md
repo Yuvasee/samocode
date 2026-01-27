@@ -109,7 +109,7 @@ Do NOT assume samocode should run just because a session exists.
    ```python
    # Step 1: Start background sleep + check
    Bash(
-     command="sleep 60 && grep -E '^(Phase|Iteration|Blocked):' [SESSION]/_overview.md",
+     command="sleep 60 && cat [SESSION]/_overview.md",
      run_in_background=true
    )
    # Returns task_id (e.g., "b155903")
@@ -118,9 +118,9 @@ Do NOT assume samocode should run just because a session exists.
    TaskOutput(task_id="b155903", block=true, timeout=120000)
    # This guarantees you see the result
 
-   # Step 3: Report progress to user
+   # Step 3: Report progress to user (see format below)
 
-   # Step 4: If not done/blocked, repeat from Step 1
+   # Step 4: If done/blocked/waiting, handle accordingly. Otherwise repeat from Step 1
    ```
 
    **Sleep duration by phase:**
@@ -129,16 +129,29 @@ Do NOT assume samocode should run just because a session exists.
    - Quality review: 120s (multi-review takes time)
    - Testing: 60s (usually quick)
 
-   **On each TaskOutput result:**
-   - Parse the status (Phase, Iteration, Blocked)
-   - Report progress to user
-   - If `done` or `blocked` → stop monitoring
-   - Otherwise → start next monitor iteration (goto Step 1)
+   **Progress report format:**
+   ```
+   Samocode Progress [HH:MM elapsed]
+   --------------------------------
+   Phase: [phase] (Iteration N/Total)
+   Last: [Last Action from _overview.md]
+   Next: [Next from _overview.md]
 
-   **Why this matters:** Without `block=true`, you may lose track of monitors when:
-   - User sends a message while you're waiting
-   - Multiple monitors pile up
-   - System notifications arrive during your response
+   Recent commits:
+   - [hash] [message]
+   - [hash] [message]
+
+   Flow:
+   - [last 2-3 Flow Log entries]
+   ```
+
+   Get recent commits: `git -C [WORKING_DIR] log --oneline -3`
+
+   **Stop conditions:**
+   - `Phase: done` → report final summary
+   - `Blocked: yes` or non-empty blocked reason → report and stop
+   - `waiting` in Blocked field → handle waiting state (see below)
+   - Otherwise → continue monitoring loop
 
 6. **On completion or block:**
    - Read final `_overview.md` status
