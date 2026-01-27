@@ -26,6 +26,7 @@ from .runner import (
     extract_total_iterations,
     increment_total_iterations,
     run_claude_with_retry,
+    update_phase,
     validate_session_structure,
 )
 from .signal_history import (
@@ -82,6 +83,7 @@ __all__ = [
     "extract_total_iterations",
     "increment_total_iterations",
     "run_claude_with_retry",
+    "update_phase",
     "validate_session_structure",
     # Signal history
     "SignalHistoryEntry",

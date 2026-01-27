@@ -34,6 +34,7 @@ from worker import (
     resolve_session_path,
     run_claude_with_retry,
     setup_logging,
+    update_phase,
     validate_signal_for_phase,
     validate_transition,
 )
@@ -87,13 +88,16 @@ def validate_and_process_signal(
     if signal.phase and current_phase and signal.phase.lower() != current_phase.lower():
         is_valid, error = validate_transition(current_phase, signal.phase)
         if not is_valid:
-            logger.error(f"Invalid transition: {error}")
+            logger.error(error)
             return Signal(
                 status=SignalStatus.BLOCKED,
                 phase=current_phase,
-                reason=f"Invalid transition: {error}",
+                reason=error,
                 needs="investigation",
             )
+        # Update _overview.md Phase field to match signal (single source of truth)
+        if update_phase(session_path, signal.phase):
+            logger.info(f"Phase updated: {current_phase} -> {signal.phase}")
 
     return signal
 
