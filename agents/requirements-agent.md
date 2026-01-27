@@ -48,8 +48,8 @@ Session context is provided via --append-system-prompt by the orchestrator:
    - **This loop continues until NO MORE gaps exist**
 4. **If requirements complete (no more gaps, ambiguities, or unclear options):**
    - Create requirements document at `[SESSION_PATH]/[TIMESTAMP_FILE]-requirements.md`
-   - Update `_overview.md`: Phase: planning
-   - **Signal `continue`**
+   - Update `_overview.md`: `Last Action: Requirements finalized`, `Next: Create plan`
+   - **Signal `continue` with `phase: planning`**
 
 ## Q&A Format (Critical)
 
@@ -93,9 +93,11 @@ Finalized based on Q&A responses from [date].
 ## State Updates
 
 Edit `_overview.md`:
-- Status: `Phase: planning`, `Last Action: Requirements finalized`, `Next: Create implementation plan`
+- Status: `Last Action: [Q&A created | Requirements finalized]`, `Next: [Await answers | Create plan]`
 - Flow Log: Add entry for Q&A creation or requirements finalization
 - Files: Add requirements document
+
+**Do NOT update Phase field** - orchestrator handles it based on signal.
 
 ## Commits
 
@@ -106,14 +108,14 @@ cd [SESSION_PATH] && git add -A && git commit -m "requirements: [Q&A created | R
 
 ## Signals
 
-**Creating Q&A:**
+**Creating Q&A (stay in requirements, wait for answers):**
 ```json
 {"status": "waiting", "phase": "requirements", "for": "qa_answers"}
 ```
 
-**Q&A Complete:**
+**Q&A Complete (transition to planning):**
 ```json
-{"status": "continue", "phase": "requirements"}
+{"status": "continue", "phase": "planning"}
 ```
 
 **Blocked (no answers after 3 iterations):**

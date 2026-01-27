@@ -92,8 +92,10 @@ Iteration: [N]
 
 Edit `_overview.md`:
 - Status: Update `Quality Iteration`, `Last Action`, `Next`
-- When clean: `Phase: testing`, `Last Action: Quality review complete`
+- When clean: `Last Action: Quality review complete`, `Next: Regression testing`
 - Flow Log: `- [TIMESTAMP_ITERATION] Quality review (iter N) -> [filename].md`
+
+**Do NOT update Phase field** - orchestrator handles it based on signal.
 
 ## Signals
 
@@ -103,9 +105,8 @@ Edit `_overview.md`:
 ```
 
 **Transition to testing (clean):**
-Update `Phase: testing` then:
 ```json
-{"status": "continue", "phase": "quality"}
+{"status": "continue", "phase": "testing"}
 ```
 
 **Blocked (max iterations reached):**
