@@ -100,63 +100,45 @@ Do NOT assume samocode should run just because a session exists.
 
    Run this in background using `run_in_background: true`
 
-5. **Monitor loop using Bash + TaskOutput (CRITICAL):**
+5. **Monitor loop (repeat until stopped):**
 
-   **IMPORTANT:** Always use `TaskOutput(block=true)` immediately after starting a background monitor.
-   Do NOT rely on system notifications - they can be missed if you're mid-response or user sends a message.
+   5.1. Start background check (sleep duration by phase: investigation/planning 60s, implementation 120-180s, quality 120s, testing 60s):
+   ```bash
+   Bash(command="sleep 60 && cat [SESSION]/_overview.md", run_in_background=true)
+   ```
+   Returns task_id (e.g., "b155903")
 
-   **Reliable monitoring pattern:**
-   ```python
-   # Step 1: Start background sleep + check
-   Bash(
-     command="sleep 60 && cat [SESSION]/_overview.md",
-     run_in_background=true
-   )
-   # Returns task_id (e.g., "b155903")
-
-   # Step 2: IMMEDIATELY block on result - DO NOT SKIP THIS
+   5.2. Wait for result - **DO NOT SKIP, do immediately after 5.1:**
+   ```bash
    TaskOutput(task_id="b155903", block=true, timeout=120000)
-   # This guarantees you see the result
-
-   # Step 3: Report progress to user (see format below)
-
-   # Step 4: If done/blocked/waiting, handle accordingly. Otherwise repeat from Step 1
    ```
 
-   **Sleep duration by phase:**
-   - Investigation/planning: 60s (fast iterations)
-   - Implementation: 120-180s (longer iterations)
-   - Quality review: 120s (multi-review takes time)
-   - Testing: 60s (usually quick)
+   5.3. Extract from result: Phase, Iteration, Total Iterations, Blocked, Last Action, Next, last 3 Flow Log entries
 
-   **Progress report format:**
+   5.4. Get recent commits:
+   ```bash
+   git -C [WORKING_DIR] log --oneline -3
+   ```
+
+   5.5. Report to user:
    ```
    Samocode Progress [HH:MM elapsed]
    --------------------------------
    Phase: [phase] (Iteration N/Total)
-   Last: [Last Action from _overview.md]
-   Next: [Next from _overview.md]
+   Last: [Last Action]
+   Next: [Next]
 
    Recent commits:
-   - [hash] [message]
    - [hash] [message]
 
    Flow:
    - [last 2-3 Flow Log entries]
    ```
 
-   Get recent commits: `git -C [WORKING_DIR] log --oneline -3`
-
-   **Stop conditions:**
-   - `Phase: done` → report final summary
-   - `Blocked: yes` or non-empty blocked reason → report and stop
-   - `waiting` in Blocked field → handle waiting state (see below)
-   - Otherwise → continue monitoring loop
-
-6. **On completion or block:**
-   - Read final `_overview.md` status
-   - Summarize what was accomplished
-   - If blocked, explain what's needed
+   5.6. Check stop condition:
+   - `Phase: done` → report final summary, STOP
+   - `Blocked:` contains `yes` or `waiting` → handle accordingly (see Handling Waiting States), STOP
+   - Otherwise → goto step 5.1
 
 ## Handling Waiting States
 
