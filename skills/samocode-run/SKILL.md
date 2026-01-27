@@ -145,6 +145,32 @@ Do NOT assume samocode should run just because a session exists.
    - Summarize what was accomplished
    - If blocked, explain what's needed
 
+## Handling Waiting States
+
+When samocode signals `waiting`:
+
+**Auto-approve/answer ONLY if user explicitly requested it** (e.g., "run samocode and approve", "accept suggestions", "auto-approve"). Otherwise, report the waiting state and wait for user decision.
+
+**For `waiting_for: plan_approval`:**
+1. Report: "Plan ready for review: [full path to plan file]"
+2. If user requested auto-approve: proceed to approval
+3. Otherwise: Ask "Approve this plan?" and wait
+4. On approval, update `_overview.md` (NOT `_signal.json`):
+   - `Phase: implementation`
+   - `Blocked: no`
+   - `Last Action: Plan approved by human`
+5. Then restart samocode
+
+**For `waiting_for: qa_answers`:**
+1. Report: "Q&A ready: [full path to _qa.md]" (includes suggestions)
+2. If user requested to accept suggestions: fill in suggested answers
+3. Otherwise: Wait for user to provide/confirm answers
+4. Update `_qa.md` with answers
+5. Then restart samocode
+
+**CRITICAL: Update `_overview.md`, not `_signal.json`**
+The orchestrator reads phase from `_overview.md`. Writing to `_signal.json` alone will cause loops.
+
 ## Required `.samocode` File
 
 Every project using samocode MUST have a `.samocode` file in its root:
