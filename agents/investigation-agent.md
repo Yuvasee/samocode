@@ -59,9 +59,11 @@ Date: [TIMESTAMP_LOG]
 ## State Updates
 
 After creating dive document, edit `_overview.md`:
-- Update Status section: `Phase: requirements`, `Last Action: Investigation complete`, `Next: Generate Q&A`
+- Update Status section: `Last Action: Investigation complete`, `Next: Generate Q&A`
 - Add to Flow Log: `- [TIMESTAMP_ITERATION] Deep dive: [topic] -> [filename].md`
 - Add to Files section: `- [filename].md - [brief description]`
+
+**Do NOT update Phase field** - orchestrator handles it based on signal.
 
 ## Commits
 
@@ -72,12 +74,11 @@ cd [SESSION_PATH] && git add -A && git commit -m "investigation: Deep dive [topi
 
 ## Signal
 
-Write `_signal.json` to session path:
 ```json
-{"status": "continue", "phase": "investigation"}
+{"status": "continue", "phase": "requirements"}
 ```
 
-This signals the orchestrator to proceed to requirements phase.
+Signal `phase: requirements` to transition. Orchestrator auto-updates `_overview.md` Phase.
 
 ## Important Notes
 

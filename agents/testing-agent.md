@@ -83,10 +83,12 @@ Run: [1st (post-implementation) | 2nd (post-quality)]
 
 Edit `_overview.md`:
 - If tests pass:
-  - First run: `Phase: quality`, `Last Action: Tests passed`, `Next: Quality review`
-  - Second run: `Phase: done`, `Last Action: Regression tests passed`, `Next: Generate summary`
-- If tests fail: Keep `Phase: testing`, document failures
+  - First run: `Last Action: Tests passed`, `Next: Quality review`
+  - Second run: `Last Action: Regression tests passed`, `Next: Generate summary`
+- If tests fail: `Last Action: Tests failed`, document failures
 - Flow Log: `- [TIMESTAMP_ITERATION] Testing: [pass/fail] -> [filename].md`
+
+**Do NOT update Phase field** - orchestrator handles it based on signal.
 
 ## Commits
 
@@ -99,13 +101,12 @@ cd [SESSION_PATH] && git add -A && git commit -m "testing: [pass/fail] - [brief 
 
 **Tests pass (first run -> quality):**
 ```json
-{"status": "continue", "phase": "testing"}
+{"status": "continue", "phase": "quality"}
 ```
 
 **Tests pass (second run -> done):**
-Update `Phase: done` then:
 ```json
-{"status": "continue", "phase": "testing"}
+{"status": "continue", "phase": "done"}
 ```
 
 **Tests fail:**

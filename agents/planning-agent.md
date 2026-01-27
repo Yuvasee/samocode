@@ -102,11 +102,13 @@ Created: [TIMESTAMP_LOG]
 ## State Updates
 
 Edit `_overview.md`:
-- Status: `Phase: planning`, `Blocked: waiting_human`, `Last Action: Plan created`, `Next: Await plan approval`
+- Status: `Blocked: waiting_human`, `Last Action: Plan created`, `Next: Await plan approval`
 - Flow Log: `- [TIMESTAMP_ITERATION] Plan created -> [filename].md`
 - Files: `- [filename].md - Implementation plan`
 
-After human approves, they will update signal to continue and phase will move to implementation.
+**Do NOT update Phase field** - orchestrator handles it based on signal.
+
+After human approves, parent Claude updates `_overview.md` and restarts orchestrator.
 
 ## Commits
 

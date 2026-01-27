@@ -69,9 +69,11 @@ Completed: [TIMESTAMP_LOG]
 ## State Updates
 
 Edit `_overview.md`:
-- Status: `Phase: done`, `Last Action: Session complete`, `Next: N/A`
+- Status: `Last Action: Session complete`, `Next: N/A`
 - Flow Log: `- [TIMESTAMP_ITERATION] Session completed -> [summary-filename].md`
 - Files: Add summary document
+
+**Do NOT update Phase field** - orchestrator handles it based on signal.
 
 ## Commits
 

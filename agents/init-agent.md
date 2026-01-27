@@ -94,12 +94,11 @@ cd [SESSION_PATH] && git add -A && git commit -m "init: Create session [session-
 
 ## Signal
 
-Write `_signal.json`:
 ```json
-{"status": "continue", "phase": "init"}
+{"status": "continue", "phase": "investigation"}
 ```
 
-This signals the orchestrator to proceed to investigation phase.
+Signal `phase: investigation` to transition. Orchestrator auto-updates `_overview.md` Phase.
 
 ## Error Handling
 

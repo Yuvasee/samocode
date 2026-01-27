@@ -82,7 +82,7 @@ Next: [what should happen next]
 
 ## Signal Protocol
 
-Write `_signal.json` with current phase before exiting:
+Write `_signal.json` before exiting. The `phase` field controls transitions:
 
 | Status | When | Required Fields |
 |--------|------|-----------------|
@@ -90,6 +90,9 @@ Write `_signal.json` with current phase before exiting:
 | `done` | All phases complete | `phase`, `summary` |
 | `blocked` | Error or need human decision | `phase`, `reason`, `needs` |
 | `waiting` | Paused for human input | `phase`, `for` |
+
+**Phase field**: Set to the NEXT phase you want to run. Orchestrator auto-updates `_overview.md` Phase.
+**Do NOT manually update Phase in `_overview.md`** - only update Last Action, Next, Blocked, Flow Log.
 
 **`needs` values**: `human_decision`, `clarification`, `error_resolution`
 **`for` values**: `qa_answers`, `plan_approval`, `file_update`, `human_action`

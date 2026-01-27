@@ -91,9 +91,11 @@ Edit `_overview.md`:
 - Flow Log: `- [TIMESTAMP_ITERATION] Phase N: [name] -> [filename].md`
 - Files: Add phase document
 
+**Do NOT update Phase field** - orchestrator handles it based on signal.
+
 ## Signals
 
-**Continue (more phases):**
+**Continue (more phases remain):**
 ```json
 {"status": "continue", "phase": "implementation"}
 ```
@@ -104,9 +106,8 @@ Edit `_overview.md`:
 ```
 
 **Transition to testing (all phases done):**
-Update `_overview.md` with `Phase: testing` then signal:
 ```json
-{"status": "continue", "phase": "implementation"}
+{"status": "continue", "phase": "testing"}
 ```
 
 ## Important Notes
