@@ -26,6 +26,7 @@ from worker.runner import (
     generate_log_filename,
     run_claude_once,
     run_claude_with_retry,
+    update_phase,
 )
 
 
@@ -209,6 +210,69 @@ class TestExtractPhase:
         result = extract_phase(session)
 
         assert result == "implementation"
+
+
+class TestUpdatePhase:
+    """Tests for update_phase - updating phase in _overview.md."""
+
+    def test_overview_not_exists(self, tmp_path: Path) -> None:
+        """Returns False when _overview.md doesn't exist."""
+        session = tmp_path / "session"
+        session.mkdir()
+
+        result = update_phase(session, "testing")
+
+        assert result is False
+
+    def test_phase_not_found(self, tmp_path: Path) -> None:
+        """Returns False when Phase line not present."""
+        session = tmp_path / "session"
+        session.mkdir()
+        (session / "_overview.md").write_text("# Session\nNo phase here")
+
+        result = update_phase(session, "testing")
+
+        assert result is False
+        # Content unchanged
+        assert "No phase here" in (session / "_overview.md").read_text()
+
+    def test_phase_updated(self, tmp_path: Path) -> None:
+        """Updates phase when found."""
+        session = tmp_path / "session"
+        session.mkdir()
+        (session / "_overview.md").write_text("Phase: implementation\nOther: stuff")
+
+        result = update_phase(session, "testing")
+
+        assert result is True
+        content = (session / "_overview.md").read_text()
+        assert "Phase: testing" in content
+        assert "Phase: implementation" not in content
+        assert "Other: stuff" in content
+
+    def test_preserves_other_content(self, tmp_path: Path) -> None:
+        """Preserves all other content in the file."""
+        session = tmp_path / "session"
+        session.mkdir()
+        original = """# Session
+## Status
+Phase: implementation
+Iteration: 5
+Blocked: no
+
+## Flow Log
+- Entry 1
+"""
+        (session / "_overview.md").write_text(original)
+
+        result = update_phase(session, "quality")
+
+        assert result is True
+        content = (session / "_overview.md").read_text()
+        assert "Phase: quality" in content
+        assert "Iteration: 5" in content
+        assert "Blocked: no" in content
+        assert "## Flow Log" in content
 
 
 class TestExtractIteration:

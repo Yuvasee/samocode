@@ -231,6 +231,31 @@ def extract_phase(session_path: Path) -> str | None:
     return match.group(1).strip() if match else None
 
 
+def update_phase(session_path: Path, new_phase: str) -> bool:
+    """Update Phase field in session _overview.md.
+
+    Returns True if updated, False if file doesn't exist or no Phase field found.
+    """
+    overview_path = session_path / "_overview.md"
+    if not overview_path.exists():
+        return False
+
+    content = overview_path.read_text()
+    new_content, count = re.subn(
+        r"^Phase:\s*.+$",
+        f"Phase: {new_phase}",
+        content,
+        count=1,
+        flags=re.MULTILINE,
+    )
+
+    if count == 0:
+        return False
+
+    overview_path.write_text(new_content)
+    return True
+
+
 def extract_iteration(session_path: Path) -> int | None:
     """Extract Iteration from session _overview.md Status section."""
     content = _read_overview(session_path)
