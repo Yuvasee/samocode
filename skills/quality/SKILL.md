@@ -86,7 +86,7 @@ Analyze changed code for quality issues and technical debt.
 
 ### multi-review - Multi-Perspective Review
 
-Review changes using three different perspectives: Future Maintainer, System Architect, and Product/User Advocate.
+Review changes using four different perspectives: Future Maintainer, System Architect, Product/User Advocate, and External Reviewer (Codex).
 
 **Target branch:** $ARGUMENTS (defaults to current branch if not specified)
 
@@ -123,7 +123,7 @@ Before spawning sub-agents, set up the review environment:
 
 #### Sub-Agent Instructions
 
-Spawn three sub-agents **in parallel** with the following roles. Give each agent:
+Spawn three Claude sub-agents **in parallel** (via Task tool), plus one Codex review (via Bash tool). All four run concurrently. Give each Claude agent:
 
 - The **review directory path** determined above (current directory or worktree path)
 - Instructions to run the git diff command **from that directory** using `cd <path> && git diff main...HEAD`
@@ -195,9 +195,99 @@ Output format: List each concern with severity (blocking/important/nice-to-have)
 
 ---
 
+**Agent 4: External Reviewer (Codex)**
+
+Role: Independent second opinion from a different AI model (GPT-5.2), combining maintainability, architecture, and UX perspectives.
+
+This agent runs via Bash tool (not Task tool) in parallel with the other three.
+
+Instructions (for root agent):
+
+1. Check if Codex is available:
+   ```bash
+   which codex >/dev/null 2>&1 || echo "CODEX_NOT_INSTALLED"
+   ```
+
+2. If not installed, skip and note in synthesis: "Codex review skipped - not installed"
+
+3. If available, run (adjust based on input type):
+
+   **If $ARGUMENTS is a GitHub PR URL:**
+   ```bash
+   OUTPUT_FILE=$(mktemp)
+   timeout 900 codex exec --skip-git-repo-check --full-auto -o "$OUTPUT_FILE" \
+     "You are a senior engineer reviewing a pull request.
+
+   PR: <PR_URL>
+
+   Use gh CLI to fetch the PR diff, then review from three angles:
+
+   1. MAINTAINABILITY: Will a new developer understand this in 6 months? Look for:
+      - Unclear naming or confusing logic
+      - Missing context or documentation
+      - Magic numbers, implicit assumptions
+      - Cognitive load issues
+
+   2. ARCHITECTURE: Does this fit the system well? Look for:
+      - Coupling and dependency issues
+      - Pattern consistency
+      - Scalability concerns
+      - Abstraction quality (too much/little)
+      - Technical debt being introduced
+
+   3. USER EXPERIENCE: Does this serve users well? Look for:
+      - Edge cases in user flows
+      - Error messages - helpful or developer-speak?
+      - Failure modes - what happens when things break?
+      - Accessibility concerns
+
+   Format: List each concern with severity (blocking/important/nice-to-have), file location, and recommendation." 2>/dev/null
+   cat "$OUTPUT_FILE"
+   rm "$OUTPUT_FILE"
+   ```
+
+   **If reviewing local branch (git diff):**
+   ```bash
+   DIFF=$(cd <REVIEW_DIRECTORY> && git diff main...HEAD)
+   OUTPUT_FILE=$(mktemp)
+   timeout 900 codex exec --skip-git-repo-check --full-auto -o "$OUTPUT_FILE" \
+     "You are a senior engineer reviewing a pull request. Analyze this diff:
+
+   $DIFF
+
+   Review from three angles:
+
+   1. MAINTAINABILITY: Will a new developer understand this in 6 months? Look for:
+      - Unclear naming or confusing logic
+      - Missing context or documentation
+      - Magic numbers, implicit assumptions
+      - Cognitive load issues
+
+   2. ARCHITECTURE: Does this fit the system well? Look for:
+      - Coupling and dependency issues
+      - Pattern consistency
+      - Scalability concerns
+      - Abstraction quality (too much/little)
+      - Technical debt being introduced
+
+   3. USER EXPERIENCE: Does this serve users well? Look for:
+      - Edge cases in user flows
+      - Error messages - helpful or developer-speak?
+      - Failure modes - what happens when things break?
+      - Accessibility concerns
+
+   Format: List each concern with severity (blocking/important/nice-to-have), file location, and recommendation." 2>/dev/null
+   cat "$OUTPUT_FILE"
+   rm "$OUTPUT_FILE"
+   ```
+
+4. Include Codex output in synthesis alongside Claude agent reviews
+
+---
+
 #### Synthesis
 
-After receiving all three sub-agent reviews:
+After receiving all four reviews (three Claude sub-agents + Codex):
 
 1. **Deduplicate**: Merge overlapping concerns raised by multiple agents (note when multiple perspectives flagged the same issue — this increases priority)
 2. **Categorize**: Group findings into:
