@@ -212,10 +212,12 @@ Instructions (for root agent):
 
 3. If available, run (adjust based on input type):
 
+   **IMPORTANT:** Always use `2>&1` (not `2>/dev/null`) to capture both stdout and stderr. Codex prints the review to stdout - the `-o` flag only saves the final message. Always `cd` into a git repo directory before running codex so `gh` commands work.
+
    **If $ARGUMENTS is a GitHub PR URL:**
    ```bash
-   OUTPUT_FILE=$(mktemp)
-   timeout 900 codex exec --skip-git-repo-check --dangerously-bypass-approvals-and-sandbox -o "$OUTPUT_FILE" \
+   cd <REVIEW_DIRECTORY> && \
+   timeout 900 codex exec --skip-git-repo-check --dangerously-bypass-approvals-and-sandbox \
      "You are a senior engineer reviewing a pull request.
 
    PR: <PR_URL>
@@ -241,21 +243,16 @@ Instructions (for root agent):
       - Failure modes - what happens when things break?
       - Accessibility concerns
 
-   Format: List each concern with severity (blocking/important/nice-to-have), file location, and recommendation." 2>/dev/null
-   cat "$OUTPUT_FILE"
-   rm "$OUTPUT_FILE"
+   Format: List each concern with severity (blocking/important/nice-to-have), file location, and recommendation." 2>&1
    ```
 
    **If reviewing local branch (git diff):**
    ```bash
-   DIFF=$(cd <REVIEW_DIRECTORY> && git diff main...HEAD)
-   OUTPUT_FILE=$(mktemp)
-   timeout 900 codex exec --skip-git-repo-check --dangerously-bypass-approvals-and-sandbox -o "$OUTPUT_FILE" \
-     "You are a senior engineer reviewing a pull request. Analyze this diff:
+   cd <REVIEW_DIRECTORY> && \
+   timeout 900 codex exec --skip-git-repo-check --dangerously-bypass-approvals-and-sandbox \
+     "You are a senior engineer reviewing code changes.
 
-   $DIFF
-
-   Review from three angles:
+   Run 'git diff origin/main...HEAD' to get the diff, then review from three angles:
 
    1. MAINTAINABILITY: Will a new developer understand this in 6 months? Look for:
       - Unclear naming or confusing logic
@@ -276,9 +273,7 @@ Instructions (for root agent):
       - Failure modes - what happens when things break?
       - Accessibility concerns
 
-   Format: List each concern with severity (blocking/important/nice-to-have), file location, and recommendation." 2>/dev/null
-   cat "$OUTPUT_FILE"
-   rm "$OUTPUT_FILE"
+   Format: List each concern with severity (blocking/important/nice-to-have), file location, and recommendation." 2>&1
    ```
 
 4. Include Codex output in synthesis alongside Claude agent reviews
