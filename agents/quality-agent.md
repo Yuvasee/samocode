@@ -104,9 +104,14 @@ Edit `_overview.md`:
 {"status": "continue", "phase": "quality"}
 ```
 
-**Transition to testing (clean):**
+**Transition to testing (default - for regression testing):**
 ```json
 {"status": "continue", "phase": "testing"}
+```
+
+**Transition to done (skip regression):** Only if no fixes made or no tests to run.
+```json
+{"status": "continue", "phase": "done"}
 ```
 
 **Blocked (max iterations reached):**

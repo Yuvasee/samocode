@@ -175,6 +175,16 @@ class TestValidateTransition:
         is_valid, _ = validate_transition("quality", "testing")
         assert is_valid
 
+    def test_implementation_to_quality_valid(self) -> None:
+        """implementation -> quality is valid (skip testing)."""
+        is_valid, _ = validate_transition("implementation", "quality")
+        assert is_valid
+
+    def test_quality_to_done_valid(self) -> None:
+        """quality -> done is valid (skip regression testing)."""
+        is_valid, _ = validate_transition("quality", "done")
+        assert is_valid
+
     def test_unknown_source_phase(self) -> None:
         """Unknown source phase returns error."""
         is_valid, error = validate_transition("unknown", "init")
