@@ -22,6 +22,7 @@ from worker import (
     clear_signal_file,
     extract_phase,
     extract_total_iterations,
+    get_phase_config,
     get_phase_iteration_count,
     increment_total_iterations,
     is_iteration_limit_exceeded,
@@ -86,6 +87,23 @@ def validate_and_process_signal(
 
     # Validate phase transition (if signal indicates phase change)
     if signal.phase and current_phase and signal.phase.lower() != current_phase.lower():
+        # Enforce gate: gated phases must signal 'waiting' before transitioning
+        current_config = get_phase_config(current_phase)
+        if (
+            current_config
+            and current_config.requires_gate
+            and signal.status != SignalStatus.WAITING
+        ):
+            logger.error(
+                f"Phase '{current_phase}' requires gate: must signal 'waiting' before transitioning"
+            )
+            return Signal(
+                status=SignalStatus.BLOCKED,
+                phase=current_phase,
+                reason=f"Phase '{current_phase}' requires human approval before transitioning",
+                needs="human_decision",
+            )
+
         is_valid, error = validate_transition(current_phase, signal.phase)
         if not is_valid:
             logger.error(error)
