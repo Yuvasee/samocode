@@ -102,9 +102,12 @@ Do NOT assume samocode should run just because a session exists.
 
 5. **Monitor loop (repeat until stopped):**
 
-   5.1. Start background check (sleep duration by phase: investigation/planning 60s, implementation 120-180s, quality 120s, testing 60s):
+   5.1. Start background check. **Sleep durations (DO NOT EXCEED):**
+   - investigation/planning/testing: 60s
+   - implementation: 180s (max)
+   - quality: 120s
    ```bash
-   Bash(command="sleep 60 && cat [SESSION]/_overview.md", run_in_background=true)
+   Bash(command="sleep 180 && cat [SESSION]/_overview.md", run_in_background=true)
    ```
    Returns task_id (e.g., "b155903")
 
@@ -112,7 +115,7 @@ Do NOT assume samocode should run just because a session exists.
    ```bash
    TaskOutput(task_id="b155903", block=true, timeout=600000)
    ```
-   Note: 600000ms (10 min) is the max allowed timeout.
+   Note: 600000ms (10 min) is the max allowed timeout. Never use higher values.
 
    5.3. Extract from result: Phase, Iteration, Total Iterations, Blocked, Last Action, Next, last 3 Flow Log entries
 
