@@ -105,9 +105,14 @@ Edit `_overview.md`:
 {"status": "waiting", "phase": "implementation", "for": "human_action"}
 ```
 
-**Transition to testing (all phases done):**
+**Transition to testing (default - all phases done):**
 ```json
 {"status": "continue", "phase": "testing"}
+```
+
+**Transition to quality (skip testing):** Only for test projects, research, or no test infrastructure.
+```json
+{"status": "continue", "phase": "quality"}
 ```
 
 ## Important Notes

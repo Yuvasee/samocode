@@ -55,8 +55,8 @@ Two separate commits may be needed (they can be different repos):
 ## Phase Flow
 
 ```
-init -> investigation -> requirements -> planning -> implementation -> testing -> quality -> testing -> done
-         (dive)           (Q&A)         (plan)        (phases)         (1st)    (review)    (2nd)
+init -> investigation -> requirements -> planning -> implementation -> testing -> quality -> done
+                                                            \-> quality --/    \-> done
 ```
 
 - **init**: Create session infrastructure (worktree/folder, _overview.md)
@@ -64,9 +64,12 @@ init -> investigation -> requirements -> planning -> implementation -> testing -
 - **requirements**: Q&A with human to clarify scope → **WAIT for human answers**
 - **planning**: Create phased implementation plan → **WAIT for human approval**
 - **implementation**: Execute plan phases iteratively (dop/dop2/do)
-- **testing**: Runs twice - after implementation, after quality
+- **testing**: Formal verification by fresh agent (NOT ad-hoc tests during implementation)
 - **quality**: Review + fix blocking issues (max 3 iterations)
 - **done**: Generate summary, signal complete
+
+**Skipping testing phase** (implementation → quality): Test projects, research, no test infrastructure.
+**Skipping regression testing** (quality → done): No fixes made, or no tests to run.
 
 ## Status Section Format
 

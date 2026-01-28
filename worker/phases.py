@@ -78,14 +78,14 @@ PHASE_CONFIGS: dict[Phase, PhaseConfig] = {
     Phase.IMPLEMENTATION: PhaseConfig(
         phase=Phase.IMPLEMENTATION,
         agent_name="implementation-agent",
-        allowed_next=frozenset({Phase.TESTING}),
+        # Can skip testing for test projects, research, or no test infrastructure
+        allowed_next=frozenset({Phase.TESTING, Phase.QUALITY}),
         allowed_signals=frozenset({"continue", "waiting", "blocked"}),
         max_iterations=100,
     ),
     Phase.TESTING: PhaseConfig(
         phase=Phase.TESTING,
         agent_name="testing-agent",
-        # Testing can go to quality (first pass) or done (after quality)
         allowed_next=frozenset({Phase.QUALITY, Phase.DONE}),
         allowed_signals=frozenset({"continue", "blocked"}),
         max_iterations=20,
@@ -93,7 +93,8 @@ PHASE_CONFIGS: dict[Phase, PhaseConfig] = {
     Phase.QUALITY: PhaseConfig(
         phase=Phase.QUALITY,
         agent_name="quality-agent",
-        allowed_next=frozenset({Phase.TESTING}),  # Back to testing after fixes
+        # Can skip regression testing if no fixes made or no tests
+        allowed_next=frozenset({Phase.TESTING, Phase.DONE}),
         allowed_signals=frozenset({"continue", "blocked"}),
         max_iterations=10,
     ),
