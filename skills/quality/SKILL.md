@@ -215,7 +215,7 @@ Instructions (for root agent):
    **If $ARGUMENTS is a GitHub PR URL:**
    ```bash
    OUTPUT_FILE=$(mktemp)
-   timeout 900 codex exec --skip-git-repo-check --full-auto -o "$OUTPUT_FILE" \
+   timeout 900 codex exec --skip-git-repo-check --dangerously-bypass-approvals-and-sandbox -o "$OUTPUT_FILE" \
      "You are a senior engineer reviewing a pull request.
 
    PR: <PR_URL>
@@ -250,7 +250,7 @@ Instructions (for root agent):
    ```bash
    DIFF=$(cd <REVIEW_DIRECTORY> && git diff main...HEAD)
    OUTPUT_FILE=$(mktemp)
-   timeout 900 codex exec --skip-git-repo-check --full-auto -o "$OUTPUT_FILE" \
+   timeout 900 codex exec --skip-git-repo-check --dangerously-bypass-approvals-and-sandbox -o "$OUTPUT_FILE" \
      "You are a senior engineer reviewing a pull request. Analyze this diff:
 
    $DIFF
