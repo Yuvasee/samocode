@@ -110,8 +110,9 @@ Do NOT assume samocode should run just because a session exists.
 
    5.2. Wait for result - **DO NOT SKIP, do immediately after 5.1:**
    ```bash
-   TaskOutput(task_id="b155903", block=true, timeout=120000)
+   TaskOutput(task_id="b155903", block=true, timeout=600000)
    ```
+   Note: 600000ms (10 min) is the max allowed timeout.
 
    5.3. Extract from result: Phase, Iteration, Total Iterations, Blocked, Last Action, Next, last 3 Flow Log entries
 
