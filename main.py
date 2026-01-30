@@ -59,7 +59,10 @@ def validate_and_process_signal(
     signal_phase = signal.phase or current_phase
 
     # Validate signal is allowed for phase
-    is_valid, error = validate_signal_for_phase(signal_phase, signal.status.value)
+    # Use current_phase for validation (where agent IS), not target phase (where it wants to GO)
+    # This allows "continue" signal when transitioning to done phase
+    validation_phase = current_phase or signal_phase
+    is_valid, error = validate_signal_for_phase(validation_phase, signal.status.value)
     if not is_valid:
         logger.error(f"Invalid signal: {error}")
         return Signal(
