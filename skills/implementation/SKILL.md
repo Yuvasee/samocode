@@ -12,19 +12,33 @@ Executes implementation tasks using different approaches: direct execution, dual
 - Active session must exist (session path in working memory)
 - If no active session: **STOP and ask user** for session path
 
+## Common Steps (Mandatory)
+
+These steps apply to ALL actions after implementation is complete.
+
+### Working Dir Resolution
+- Read Working Dir from session `_overview.md`
+- If not set: check project `.samocode` file for `MAIN_REPO`, or use git root, or ask user
+
+### After Code Changes
+1. **Lint/typecheck:** Run pyright/ruff (Python) or tsc (TypeScript) - fix all errors
+2. **Commit code:** In Working Dir, commit with descriptive message
+   - Check branch first: warn if on main, should be feature branch
+
+### After Session Changes
+1. **Update `_overview.md`:** Add Flow Log entry and Files entry
+2. **Commit session:** `cd [SESSION_DIR] && git add . && git commit -m "[action]: [description]"`
+
+### Plan Progress (when working from a plan)
+- Read plan file, mark completed items `- [x]`
+- Add completion note: `**Phase completed** ([TIMESTAMP_ITERATION])`
+
 ## Default Action: dop2
 
 **IMPORTANT:** For implementation phases, use `dop2` by default.
 
 - **dop2** (Dual-Agent with Auto-Selection): Default for most work
-  - Use when task has design decisions or tradeoffs
-  - Use when "clean" vs "minimal" approach might differ
-  - When in doubt, use dop2
-
-- **dop** (Direct Execution): Only for trivially simple changes
-  - Use for 1-2 line fixes with no design decisions
-  - Use for obvious mechanical changes (rename, move, etc.)
-  - Rare cases only
+- **dop** (Direct Execution): Only for trivially simple 1-2 line changes
 
 **Rule of thumb:** If you're considering dop, ask "Could there be a cleaner way?" If yes -> use dop2.
 
@@ -43,11 +57,8 @@ Execute a task directly with full implementation and documentation.
    - Review session documents for context
    - Explore codebase as needed
    - Make all necessary code changes
-   - Run pyright/ruff (Python) or tsc (TypeScript) - fix all errors
 
-2. **Document work:**
-   - Create `[SESSION_PATH]/[TIMESTAMP_FILE]-do-[task-slug].md`:
-
+2. **Document work** - Create `[SESSION_PATH]/[TIMESTAMP_FILE]-do-[task-slug].md`:
    ```markdown
    # Task: [brief title]
    Date: [TIMESTAMP_LOG]
@@ -65,20 +76,9 @@ Execute a task directly with full implementation and documentation.
    [Any important observations]
    ```
 
-3. **Update session:**
-   - Edit `_overview.md`:
-     - Flow Log: `- [TIMESTAMP_ITERATION] Task: [title] -> [filename].md`
-     - Files: `- [filename].md - [brief description]`
-   - Commit session (if git repo): `cd [SESSION_DIR] && git add . && git commit -m "Task: [title]"`
+3. **Complete common steps** (see above)
 
-4. **Git workflow:**
-   - Read Working Dir from session `_overview.md`
-   - If Working Dir not set: check project `.samocode` file for `MAIN_REPO`, or use git root, or ask user
-   - Check branch: `cd [WORKING_DIR] && git branch --show-current`
-   - If on feature branch: commit with short message
-   - If on main: warn user to create branch first
-
-5. **Report back:** Summary of what was done
+4. **Report back:** Summary of what was done
 
 ---
 
@@ -107,7 +107,7 @@ Both agents solve the **entire task independently** with different philosophies.
 
 **Deliverables:**
 
-1. Create `[SESSION_PATH]/[TIMESTAMP_FILE]-solution-minimal.md` (use TIMESTAMP_FILE from Session Context):
+1. Create `[SESSION_PATH]/[TIMESTAMP_FILE]-solution-minimal.md`:
    ```markdown
    # Solution: Minimal Footprint
    Task: [description]
@@ -143,7 +143,7 @@ Both agents solve the **entire task independently** with different philosophies.
 
 **Deliverables:**
 
-1. Create `[SESSION_PATH]/[TIMESTAMP_FILE]-solution-clean.md` (use TIMESTAMP_FILE from Session Context):
+1. Create `[SESSION_PATH]/[TIMESTAMP_FILE]-solution-clean.md`:
    ```markdown
    # Solution: Clean Foundation
    Task: [description]
@@ -191,13 +191,9 @@ After both agents complete:
    [Can we combine best of both?]
    ```
 
-3. Update `_overview.md`:
-   - Flow Log: `- [TIMESTAMP_ITERATION] Dual analysis: [task] -> comparison.md`
-   - Files: all three solution docs
+3. **Complete common steps** for session files
 
-4. Commit session (if git repo): `cd [SESSION_DIR] && git add . && git commit -m "Dual analysis: [task]"`
-
-5. Present to user:
+4. Present to user:
    ```
    Which approach?
    1. Minimal footprint
@@ -209,10 +205,8 @@ After both agents complete:
 #### After User Confirms
 
 1. **Implement chosen solution**
-2. **Run pyright/ruff (Python) or tsc (TypeScript)** - fix all errors
-3. **If part of a plan:** Update plan progress (mark items `- [x]`, add completion note)
-4. **Git workflow:** Read Working Dir from session `_overview.md`, ensure on feature branch, commit changes
-5. **Update session:** Edit `_overview.md` with Flow Log entry, commit
+2. **If part of a plan:** Update plan progress
+3. **Complete common steps** (lint, commit code, update session, commit session)
 
 ---
 
@@ -237,11 +231,8 @@ IMPORTANT: Only work on this specific part. Don't do other parts of the plan.
 2. **Implement:**
    - Make all necessary code changes for this phase only
    - Follow codebase best practices
-   - Run pyright/ruff (Python) or tsc (TypeScript) - fix all errors
 
-3. **Document work:**
-   - Create `[SESSION_PATH]/[TIMESTAMP_FILE]-dop-[phase-slug].md`:
-
+3. **Document work** - Create `[SESSION_PATH]/[TIMESTAMP_FILE]-dop-[phase-slug].md`:
    ```markdown
    # Phase: [phase name]
    Date: [TIMESTAMP_LOG]
@@ -261,31 +252,9 @@ IMPORTANT: Only work on this specific part. Don't do other parts of the plan.
    [Any issues or observations]
    ```
 
-4. **Update plan progress (MANDATORY):**
-   - Read plan file from session folder
-   - For each completed item in this phase:
-     - Use Edit tool to change `- [ ]` to `- [x]`
-   - Add phase completion note:
-     ```markdown
-     **Phase completed** ([TIMESTAMP_ITERATION])
-     ```
-   - Verify edits by reading plan file again
-   - Remove obsolete info, keep plan clean
+4. **Complete common steps** (lint, commit code, update plan, update session, commit session)
 
-5. **Update session:**
-   - Edit `_overview.md`:
-     - Flow Log: `- [TIMESTAMP_ITERATION] Phase done: [phase] -> [filename].md`
-     - Files: `- [filename].md - [phase description]`
-   - Commit session (if git repo): `cd [SESSION_DIR] && git add . && git commit -m "Phase: [phase]"`
-
-6. **Git workflow:**
-   - Read Working Dir from session `_overview.md`
-   - If not set: check project `.samocode` file for `MAIN_REPO`, or use git root, or ask user
-   - Check branch: `cd [WORKING_DIR] && git branch --show-current`
-   - If on feature branch: commit with short message
-   - If on main: warn user
-
-7. **Report back:** Summary of completed items
+5. **Report back:** Summary of completed items
 
 ---
 
@@ -313,16 +282,11 @@ IMPORTANT: Only work on this specific task. Don't do other parts of the plan.
    - Can run 2 dop2 calls in parallel for independent items
    - Only parallelize if items don't share files/dependencies
 
-**Parallelization Rule:** Run up to 2 dop2 calls in parallel for independent items:
-- Each dop2 spawns its own pair (minimal + clean) = **4 sub-agents total**
-- Only parallelize if items don't share files/dependencies
-- Items must be self-contained with no data dependencies
-
 #### Dual Agent Execution
 
 Spawn 2 sub-agents **in parallel** with the context below. Do NOT tell them about each other.
 
-**CRITICAL:** Both agents solve the **entire task independently**. This is NOT task splitting - each agent produces a FULL solution with their own philosophy. We compare two complete approaches, not partial results to assemble.
+**CRITICAL:** Both agents solve the **entire task independently**. This is NOT task splitting - each agent produces a FULL solution with their own philosophy.
 
 **Agent 1: Minimal Footprint**
 
@@ -335,7 +299,6 @@ Spawn 2 sub-agents **in parallel** with the context below. Do NOT tell them abou
 - Touch as few files as possible
 - Prefer simple, localized fixes
 - Avoid new abstractions or patterns
-- Prioritize "getting it done" over elegance
 - Work within existing structures
 
 **Deliverables:**
@@ -364,9 +327,7 @@ Spawn 2 sub-agents **in parallel** with the context below. Do NOT tell them abou
    [Potential issues]
    ```
 
-2. Update `_overview.md`:
-   - Flow Log: `- [TIMESTAMP_ITERATION] Solution (minimal): [task] -> [filename].md`
-   - Files: `- [filename].md - Minimal solution`
+2. Update `_overview.md`: Flow Log and Files entries
 
 3. **DO NOT edit actual code files** - suggestions only
 
@@ -384,7 +345,6 @@ Spawn 2 sub-agents **in parallel** with the context below. Do NOT tell them abou
 - Introduce abstractions where they reduce future complexity
 - Consider how this code will evolve
 - Prioritize maintainability over minimal diff
-- Fix adjacent issues if tightly related
 
 **Deliverables:**
 
@@ -412,9 +372,7 @@ Spawn 2 sub-agents **in parallel** with the context below. Do NOT tell them abou
    [Long-term advantages]
    ```
 
-2. Update `_overview.md`:
-   - Flow Log: `- [TIMESTAMP_ITERATION] Solution (clean): [task] -> [filename].md`
-   - Files: `- [filename].md - Clean solution`
+2. Update `_overview.md`: Flow Log and Files entries
 
 3. **DO NOT edit actual code files** - suggestions only
 
@@ -454,15 +412,10 @@ After both agents complete:
      - Clean introduces significant complexity with unclear benefit
      - Minimal solves urgent issue with acceptable tradeoffs
      - Clean approach has high risk/uncertainty
-   - **Weight toward Clean** means: when in doubt, prefer clean approach
 
-3. Update `_overview.md`:
-   - Flow Log: `- [TIMESTAMP_ITERATION] Comparison: [task] -> [filename].md`
-   - Files: `- [filename].md - Solution comparison`
+3. **Complete common steps** for session files
 
-4. Commit session (if git repo): `cd [SESSION_DIR] && git add . && git commit -m "Dual analysis: [task]"`
-
-5. Present comparison and ask:
+4. Present comparison and ask:
    ```
    Which approach?
    1. Minimal footprint
@@ -474,22 +427,7 @@ After both agents complete:
 #### After User Confirms
 
 1. **Implement chosen solution**
-2. **Run pyright/ruff (Python) or tsc (TypeScript)** - fix all errors
-3. **Update plan progress (MANDATORY):**
-   - Read plan file from session folder (find via `_overview.md` Plans section)
-   - For each completed item in this phase:
-     - Use Edit tool to change `- [ ]` to `- [x]`
-   - Add phase completion note:
-     ```markdown
-     **Phase completed** ([TIMESTAMP_ITERATION])
-     ```
-   - Verify edits by reading plan file again
-4. **Git workflow:**
-   - Read Working Dir from session `_overview.md`
-   - Ensure on feature branch (not main)
-   - Commit code changes
-5. **Update session:**
-   - Edit `_overview.md` with Flow Log entry: `- [TIMESTAMP_ITERATION] Phase implemented: [name]`
-   - Commit session changes
+2. **Update plan progress** (mark items `- [x]`, add completion note)
+3. **Complete common steps** (lint, commit code, update session, commit session)
 
 IMPORTANT! If unsure about something, ask first.
