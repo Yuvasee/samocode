@@ -30,10 +30,11 @@ Session context is provided via --append-system-prompt by the orchestrator:
    - Find first phase with unchecked `- [ ]` items
    - If all complete -> transition to testing
 
-3. **Execute phase:**
-   - **DEFAULT: Use `dop2`** (dual-agent comparison)
-   - Only use `dop` for trivially simple 1-2 line changes
-   - Create phase document: `[SESSION_PATH]/[TIMESTAMP_FILE]-phase[N]-[slug].md`
+3. **Execute phase using dual-agent pattern (dop2):**
+   - **DEFAULT: Follow dop2 action** from implementation skill
+   - **Spawn 2 Task sub-agents in parallel** (minimal + clean approaches)
+   - **DO NOT implement directly with Edit/Write** - spawn sub-agents to propose solutions
+   - Only skip dual-agent for trivially simple 1-2 line changes (use dop action)
 
 4. **Update plan progress (MANDATORY):**
    - Edit plan file: Mark completed items `- [ ]` -> `- [x]`

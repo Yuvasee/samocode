@@ -35,10 +35,12 @@ These steps apply to ALL actions after implementation is complete.
 
 ## Default Action: dop2
 
-**IMPORTANT:** For implementation phases, use `dop2` by default.
+**IMPORTANT:** For implementation phases, use dop2 (dual-agent comparison).
 
-- **dop2** (Dual-Agent with Auto-Selection): Default for most work
-- **dop** (Direct Execution): Only for trivially simple 1-2 line changes
+- **dop2** (Dual-Agent): Spawn 2 Task sub-agents to propose solutions, then compare
+- **dop** (Direct): Only for trivially simple 1-2 line changes
+
+**DO NOT implement directly with Edit/Write** - spawn sub-agents to propose solutions first.
 
 **Rule of thumb:** If you're considering dop, ask "Could there be a cleaner way?" If yes -> use dop2.
 
@@ -210,11 +212,11 @@ After both agents complete:
 
 ---
 
-### dop - Plan Phase Execution
+### dop - Plan Phase Execution (Direct)
 
 Execute a specific phase from the plan without comparing approaches.
 
-**IMPORTANT: dop is for TRIVIALLY SIMPLE phases only (1-2 line changes). Use dop2 for everything else.**
+**Only for TRIVIALLY SIMPLE 1-2 line changes.** For anything else, use dop2.
 
 **Session path:** [SESSION_PATH from working memory]
 **Phase:** $ARGUMENTS
@@ -260,9 +262,11 @@ IMPORTANT: Only work on this specific part. Don't do other parts of the plan.
 
 ### dop2 - Dual-Agent Plan Phase with Auto-Selection
 
-**DEFAULT IMPLEMENTATION STRATEGY** - Use this for all non-trivial phases.
+**DEFAULT IMPLEMENTATION STRATEGY** - Use Task tool to spawn 2 sub-agents.
 
 Execute a plan phase using dual-agent comparison, with automatic solution selection weighted toward clean approach.
+
+**CRITICAL:** You MUST use the Task tool to spawn sub-agents. DO NOT implement directly.
 
 **Session path:** [SESSION_PATH from working memory]
 **Task:** $ARGUMENTS
