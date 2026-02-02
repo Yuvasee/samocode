@@ -100,7 +100,17 @@ Do NOT assume samocode should run just because a session exists.
 
    Run this in background using `run_in_background: true`
 
-5. **Monitor loop (repeat until stopped):**
+   **Avoid reading background task output directly.** The samocode worker output includes full
+   Claude CLI logs which are large (100KB+ per iteration). Monitor progress via `_overview.md`
+   and other session files instead.
+
+   If debugging requires checking task output (e.g., investigating a crash):
+   - Use `grep` to search for specific errors or patterns first
+   - Use `tail -n 2` or `tail -n 5` max - each line can be huge (full JSON)
+   - Use `Read` with `offset` and `limit` to read small portions
+   - Never read the entire file
+
+5. **Monitor loop (prefer session files over task output):**
 
    5.1. Start background check (sleep duration by phase: investigation/planning 60s, implementation 120-180s, quality 120s, testing 60s):
    ```bash
