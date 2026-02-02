@@ -103,7 +103,7 @@ Load and continue working in an existing session.
    - If not found: **STOP and ask user** for sessions directory
 
 2. **Find matching sessions:**
-   - Search sessions directory for folders matching `*$ARGUMENTS*` (exclude archive/)
+   - Search sessions directory for folders matching `*$ARGUMENTS*` (exclude _archive/)
    - Sort by modification time (most recent first)
 
 3. **Handle results:**
@@ -179,7 +179,7 @@ Archive a session (full) or archive work within a session (partial).
 
 ### Usage Patterns
 
-1. `archive` - Archive entire active session (moves folder to archive/)
+1. `archive` - Archive entire active session (moves folder to _archive/)
 2. `archive [session-name]` - Archive entire named session
 3. `archive keep file1.md file2.md` - Archive work files within session, keep specified files
 4. `archive [session-path] keep file1.md` - Archive work in specific session, keep files
@@ -194,7 +194,7 @@ Archive a session (full) or archive work within a session (partial).
    - Use active session path
 
 2. **If arguments provided (no "keep"):**
-   - Search sessions directory for folders matching `*$ARGUMENTS*` (exclude archive/)
+   - Search sessions directory for folders matching `*$ARGUMENTS*` (exclude _archive/)
    - **No matches:** ERROR: "No sessions found matching '$ARGUMENTS'"
    - **One match:** Confirm with user: "Archive session [name]? (y/n)"
    - **Multiple matches:** List and ask user to specify
@@ -207,7 +207,7 @@ Archive a session (full) or archive work within a session (partial).
 
 2. **Create archive folder if needed:**
    ```bash
-   mkdir -p [SESSIONS_DIR]/archive
+   mkdir -p [SESSIONS_DIR]/_archive
    ```
 
 3. **Remove worktree (if applicable):**
@@ -220,7 +220,7 @@ Archive a session (full) or archive work within a session (partial).
 
 4. **Move session folder:**
    ```bash
-   mv [SESSION_PATH] [SESSIONS_DIR]/archive/
+   mv [SESSION_PATH] [SESSIONS_DIR]/_archive/
    ```
 
 5. **Commit changes (if git repo):**
@@ -262,11 +262,11 @@ Example: `archive keep competitor-analysis.md` → archive active session, keep 
    TIMESTAMP_FOLDER=$(date '+%y-%m-%d')
    ```
    - Extract slug from session folder name or task name from _overview.md
-   - Archive folder: `[SESSION_PATH]/archive/[YY-MM-DD]-[slug]/`
+   - Archive folder: `[SESSION_PATH]/_archive/[YY-MM-DD]-[slug]/`
 
 3. **Create archive subfolder:**
    ```bash
-   mkdir -p [SESSION_PATH]/archive/[YY-MM-DD]-[slug]
+   mkdir -p [SESSION_PATH]/_archive/[YY-MM-DD]-[slug]
    ```
 
 4. **Identify files to archive:**
@@ -280,18 +280,18 @@ Example: `archive keep competitor-analysis.md` → archive active session, keep 
 5. **Move files to archive:**
    ```bash
    for file in [files_to_archive]; do
-     mv "$file" [SESSION_PATH]/archive/[YY-MM-DD]-[slug]/
+     mv "$file" [SESSION_PATH]/_archive/[YY-MM-DD]-[slug]/
    done
    ```
 
 6. **Update _overview.md:**
-   - Add Flow Log entry: `- [TIMESTAMP_LOG] Archived work to archive/[YY-MM-DD]-[slug]/, kept: [kept_files]`
+   - Add Flow Log entry: `- [TIMESTAMP_LOG] Archived work to _archive/[YY-MM-DD]-[slug]/, kept: [kept_files]`
    - Reset Status section for next task
 
 7. **Report to user:**
    ```
    Work archived within session.
-   Archived to: [SESSION_PATH]/archive/[YY-MM-DD]-[slug]/
+   Archived to: [SESSION_PATH]/_archive/[YY-MM-DD]-[slug]/
    Files moved: [count] files
    Kept in place: [kept_files]
    ```
