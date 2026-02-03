@@ -23,15 +23,26 @@ Session context is provided via --append-system-prompt by the orchestrator:
 
 **If Worktree Configuration provided** (repo-based session):
 
+The worktree must be created from the remote main branch (origin/main or origin/master),
+regardless of what's currently checked out in the base repo. This ensures a clean starting point.
+
+Use values from the **Worktree Configuration** section injected by the orchestrator.
+
 ```bash
-# Create worktree from base repo
-cd [base_repo]
-git worktree add -b [branch_name] [worktree_path] origin/main
+# First, ensure we're in the correct repo (Base repo from config) and fetch latest
+cd [Base repo]
+git fetch origin
+
+# Detect default branch (main or master)
+DEFAULT_BRANCH=$(git remote show origin | grep 'HEAD branch' | cut -d: -f2 | xargs)
+
+# Create worktree from the default branch
+git worktree add -b [Branch name] [Worktree path] origin/$DEFAULT_BRANCH
 ```
 
-If worktree creation fails (branch exists), try:
+If worktree creation fails (branch already exists), try attaching to existing branch:
 ```bash
-git worktree add [worktree_path] [branch_name]
+git worktree add [Worktree path] [Branch name]
 ```
 
 **If Standalone Project Configuration provided** (non-repo session):

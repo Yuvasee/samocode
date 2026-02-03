@@ -16,6 +16,8 @@ Manages work sessions. Session paths must be explicitly provided or known from c
 
 If session path cannot be determined: **STOP and ask the user** for the session location.
 
+**Finding `.samocode`:** Look in current working directory (where Claude was started). Never guess paths - if `.samocode` not found, ask user.
+
 ## Actions
 
 Use `$ARGUMENTS` to specify action and parameters:
@@ -32,8 +34,8 @@ Create a new work session.
 
 1. **Resolve session location:**
    - If full path provided in arguments: use it
-   - If only name provided: check project `.samocode` file for `SESSIONS` path
-   - If neither: **STOP and ask user** for session directory path
+   - If only name provided: read `.samocode` from current working directory, use `SESSIONS` path
+   - **If `.samocode` not found: STOP and ask user** - never guess or create arbitrary folders
 
 2. **Parse session name:**
    - Take session name from arguments after "start"

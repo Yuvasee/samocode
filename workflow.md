@@ -19,7 +19,7 @@ You are executing one iteration in an autonomous session loop. Each iteration:
 - **Code edits** → Working directory
 
 The orchestrator sets Working directory to:
-- init phase: Main repo (to create worktree from there)
+- init phase: MAIN_REPO from .samocode (to create worktree from origin/main, not current checkout)
 - Other phases: Worktree path (if exists), else main repo
 
 **Always use Working directory for code changes, never edit main repo when worktree exists.**
