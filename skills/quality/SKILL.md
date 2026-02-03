@@ -86,7 +86,7 @@ Analyze changed code for quality issues and technical debt.
 
 ### multi-review - Multi-Perspective Review
 
-Review changes using four different perspectives: Future Maintainer, System Architect, Product/User Advocate, and External Reviewer (Codex).
+Review changes using five different perspectives: Future Maintainer, System Architect, Product/User Advocate, and two external reviewers (Codex and Gemini).
 
 **Target branch:** $ARGUMENTS (defaults to current branch if not specified)
 
@@ -123,7 +123,7 @@ Before spawning sub-agents, set up the review environment:
 
 #### Sub-Agent Instructions
 
-Spawn three Claude sub-agents **in parallel** (via Task tool), plus one Codex review (via Bash tool). All four run concurrently. Give each Claude agent:
+Spawn three Claude sub-agents **in parallel** (via Task tool), plus Codex and Gemini reviews (via Bash tool). All five run concurrently. Give each Claude agent:
 
 - The **review directory path** determined above (current directory or worktree path)
 - Instructions to run the git diff command **from that directory** using `cd <path> && git diff main...HEAD`
@@ -276,13 +276,96 @@ Instructions (for root agent):
    Format: List each concern with severity (blocking/important/nice-to-have), file location, and recommendation." 2>&1
    ```
 
-4. Include Codex output in synthesis alongside Claude agent reviews
+4. Include Codex output in synthesis alongside other reviews
+
+---
+
+**Agent 5: External Reviewer (Gemini)**
+
+Role: Independent second opinion from Google's Gemini model, combining maintainability, architecture, and UX perspectives.
+
+This agent runs via Bash tool (not Task tool) in parallel with all other agents.
+
+Instructions (for root agent):
+
+1. Check if Gemini CLI is available:
+   ```bash
+   which gemini >/dev/null 2>&1 || echo "GEMINI_NOT_INSTALLED"
+   ```
+
+2. If not installed, skip and note in synthesis: "Gemini review skipped - not installed"
+
+3. If available, run (adjust based on input type):
+
+   **IMPORTANT:** Always use `2>&1` to capture both stdout and stderr. Always `cd` into a git repo directory before running gemini so git commands work.
+
+   **If $ARGUMENTS is a GitHub PR URL:**
+   ```bash
+   cd <REVIEW_DIRECTORY> && \
+   timeout 900 gemini -p "You are a senior engineer reviewing a pull request.
+
+   PR: <PR_URL>
+
+   Use gh CLI to fetch the PR diff, then review from three angles:
+
+   1. MAINTAINABILITY: Will a new developer understand this in 6 months? Look for:
+      - Unclear naming or confusing logic
+      - Missing context or documentation
+      - Magic numbers, implicit assumptions
+      - Cognitive load issues
+
+   2. ARCHITECTURE: Does this fit the system well? Look for:
+      - Coupling and dependency issues
+      - Pattern consistency
+      - Scalability concerns
+      - Abstraction quality (too much/little)
+      - Technical debt being introduced
+
+   3. USER EXPERIENCE: Does this serve users well? Look for:
+      - Edge cases in user flows
+      - Error messages - helpful or developer-speak?
+      - Failure modes - what happens when things break?
+      - Accessibility concerns
+
+   Format: List each concern with severity (blocking/important/nice-to-have), file location, and recommendation." --yolo 2>&1
+   ```
+
+   **If reviewing local branch (git diff):**
+   ```bash
+   cd <REVIEW_DIRECTORY> && \
+   timeout 900 gemini -p "You are a senior engineer reviewing code changes.
+
+   Run 'git diff origin/main...HEAD' to get the diff, then review from three angles:
+
+   1. MAINTAINABILITY: Will a new developer understand this in 6 months? Look for:
+      - Unclear naming or confusing logic
+      - Missing context or documentation
+      - Magic numbers, implicit assumptions
+      - Cognitive load issues
+
+   2. ARCHITECTURE: Does this fit the system well? Look for:
+      - Coupling and dependency issues
+      - Pattern consistency
+      - Scalability concerns
+      - Abstraction quality (too much/little)
+      - Technical debt being introduced
+
+   3. USER EXPERIENCE: Does this serve users well? Look for:
+      - Edge cases in user flows
+      - Error messages - helpful or developer-speak?
+      - Failure modes - what happens when things break?
+      - Accessibility concerns
+
+   Format: List each concern with severity (blocking/important/nice-to-have), file location, and recommendation." --yolo 2>&1
+   ```
+
+4. Include Gemini output in synthesis alongside other reviews
 
 ---
 
 #### Synthesis
 
-After receiving all four reviews (three Claude sub-agents + Codex):
+After receiving all five reviews (three Claude sub-agents + Codex + Gemini):
 
 1. **Deduplicate**: Merge overlapping concerns raised by multiple agents (note when multiple perspectives flagged the same issue — this increases priority)
 2. **Categorize**: Group findings into:

@@ -75,10 +75,13 @@ done
 echo ""
 echo "Installation complete!"
 echo ""
+SKILL_COUNT=$(ls -d "$SAMOCODE_DIR/skills/"*/ 2>/dev/null | wc -l | tr -d ' ')
+AGENT_COUNT=$(ls "$SAMOCODE_DIR/agents/"*.md 2>/dev/null | wc -l | tr -d ' ')
+CMD_COUNT=$(ls "$SAMOCODE_DIR/commands/"*.md 2>/dev/null | wc -l | tr -d ' ')
 echo "Installed:"
-echo "  - 9 skills"
-echo "  - 9 agents"
-echo "  - 14 commands"
+echo "  - $SKILL_COUNT skills"
+echo "  - $AGENT_COUNT agents"
+echo "  - $CMD_COUNT commands"
 echo ""
 echo "============================================================"
 echo "IMPORTANT: Project Setup Required"
