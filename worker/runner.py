@@ -469,7 +469,8 @@ def _build_config_section(session_path: Path, config: SamocodeConfig) -> list[st
     branch_name = session_name.split("-", 3)[-1]
 
     lines.append("## Worktree Configuration")
-    lines.append(f"- Base repo: `{config.repo_path}`")
+    lines.append(f"- Base repo (create worktrees FROM here): `{config.repo_path}`")
+    lines.append(f"- Base branch: `origin/main` or `origin/master` (detect with `git remote show origin`)")
     lines.append(f"- Worktree path: `{worktree_path}`")
     if branch_prefix:
         lines.append(f"- Branch name: `{branch_prefix}/{branch_name}`")
