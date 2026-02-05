@@ -7,4 +7,4 @@ ERROR: "No active session. Run /session-start [name] or /session-continue [name]
 
 ## Execution
 
-Use the implementation skill with `dop` action and $ARGUMENTS as the phase.
+**IMPORTANT:** You MUST read `skills/implementation/SKILL.md` and follow the "dop" action section exactly with $ARGUMENTS as the phase. Do NOT improvise.

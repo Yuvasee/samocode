@@ -1,3 +1,3 @@
 Analyze changed code for quality issues: $ARGUMENTS
 
-Use the quality skill with `cleanup` action and $ARGUMENTS as the scope.
+**IMPORTANT:** You MUST read `skills/quality/SKILL.md` and follow the "cleanup" action section exactly with $ARGUMENTS as the scope. Do NOT improvise.
