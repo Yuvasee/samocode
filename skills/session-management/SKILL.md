@@ -18,6 +18,15 @@ If session path cannot be determined: **STOP and ask the user** for the session 
 
 **Finding `.samocode`:** Look in current working directory (where Claude was started). Never guess paths - if `.samocode` not found, ask user.
 
+## Repository Resolution
+
+**IMPORTANT:** All git operations (fetch, branch creation, worktree management) MUST run from the correct repository directory.
+
+1. Read `.samocode` from CWD — use `MAIN_REPO` value as the repo directory for all git commands
+2. If `.samocode` not found or `MAIN_REPO` not set: fall back to `git rev-parse --show-toplevel` from CWD
+3. **Never run git branch/worktree/fetch commands from CWD directly** — always resolve and use the repo directory first
+4. Store the resolved repo path alongside the session for use in all actions
+
 ## Actions
 
 Use `$ARGUMENTS` to specify action and parameters:
@@ -47,10 +56,11 @@ Create a new work session.
    - If folder exists, ERROR: "Session already exists"
 
 4. **Detect Working Dir:**
-   - Check project `.samocode` file for `MAIN_REPO` path
+   - Check project `.samocode` file for `MAIN_REPO` path (primary source of truth)
    - Or use git root: `git rev-parse --show-toplevel`
    - Or use current working directory
    - If unclear: leave as "TBD" and note to set it
+   - **IMPORTANT:** If creating a worktree or branch for the session, all git commands (fetch, branch, worktree add) MUST be run from the resolved `MAIN_REPO` directory — see "Repository Resolution" section above
 
 5. **Create _overview.md:**
    ```markdown
@@ -214,9 +224,11 @@ Archive a session (full) or archive work within a session (partial).
 
 3. **Remove worktree (if applicable):**
    - If Working Dir contains `/worktrees/`:
-     ```bash
-     git worktree remove [working_dir_path]
-     ```
+     - Resolve `MAIN_REPO` from `.samocode` (see "Repository Resolution" section)
+     - Run worktree removal from `MAIN_REPO` directory:
+       ```bash
+       cd "$MAIN_REPO" && git worktree remove [working_dir_path]
+       ```
    - If removal fails (uncommitted changes), warn user and ask to proceed or abort
    - Note: Branch is preserved, only worktree removed
 
