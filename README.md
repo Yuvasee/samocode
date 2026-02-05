@@ -14,7 +14,7 @@ That's it. The Python loop is intentionally dumb - Claude makes all the decision
 
 ---
 
-Claude automation the way I find most effective for my personal tasks. Currently an essentially supervised agentic loop. Good at both research and coding (better as separate tasks), capable of doing big pieces end-to-end. Reviewing the code it produces for production is highly recommended.
+This is Claude Code automation as I find it most effective, working with Claude Code every day since June 2025. Currently an essentially supervised agentic loop. Good at both research and coding (better as separate tasks), capable of doing big pieces end-to-end. Reviewing the code it produces for production is highly recommended.
 
 ## Installation
 
