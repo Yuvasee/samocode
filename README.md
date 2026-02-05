@@ -159,7 +159,7 @@ Standalone utilities, work without the orchestrator:
 sequenceDiagram
     participant H as Human
     participant P as Parent Claude
-    participant O as worker.py
+    participant O as main.py
     participant C as Claude CLI
     participant F as Session Files
 
