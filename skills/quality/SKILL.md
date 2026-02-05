@@ -23,7 +23,7 @@ Analyze changed code for quality issues and technical debt.
 
 1. **Determine scope:**
    - If $ARGUMENTS specifies files/scope, use that
-   - Otherwise: `git diff main...HEAD` from current directory
+   - Otherwise: `git diff origin/main...HEAD` from current directory
 
 2. **Analyze for issues:**
    - Dead code - exported but never used functions/classes/constants
@@ -126,7 +126,7 @@ Before spawning sub-agents, set up the review environment:
 Spawn three Claude sub-agents **in parallel** (via Task tool), plus Codex and Gemini reviews (via Bash tool). All five run concurrently. Give each Claude agent:
 
 - The **review directory path** determined above (current directory or worktree path)
-- Instructions to run the git diff command **from that directory** using `cd <path> && git diff main...HEAD`
+- Instructions to run the git diff command **from that directory** using `cd <path> && git diff origin/main...HEAD`
 
 **Critical**: When a worktree is used, agents MUST `cd` into the worktree directory before running git commands.
 
@@ -138,7 +138,7 @@ Role: A developer who inherits this code in 6 months with no context.
 
 Instructions:
 
-1. Run `cd <REVIEW_DIRECTORY> && git diff main...HEAD` to get the changes (the root agent will provide the exact path)
+1. Run `cd <REVIEW_DIRECTORY> && git diff origin/main...HEAD` to get the changes (the root agent will provide the exact path)
 2. Review the diff as if you're seeing this codebase for the first time, looking for:
    - Unclear or misleading naming (variables, functions, files)
    - Missing or outdated comments/documentation
@@ -159,7 +159,7 @@ Role: Guardian of system-wide design and long-term technical health.
 
 Instructions:
 
-1. Run `cd <REVIEW_DIRECTORY> && git diff main...HEAD` to get the changes (the root agent will provide the exact path)
+1. Run `cd <REVIEW_DIRECTORY> && git diff origin/main...HEAD` to get the changes (the root agent will provide the exact path)
 2. Review the diff from an architectural perspective, looking for:
    - Coupling issues — does this create unwanted dependencies?
    - Boundary violations — is code in the right layer/module?
@@ -180,7 +180,7 @@ Role: Representative of the end user and product goals.
 
 Instructions:
 
-1. Run `cd <REVIEW_DIRECTORY> && git diff main...HEAD` to get the changes (the root agent will provide the exact path)
+1. Run `cd <REVIEW_DIRECTORY> && git diff origin/main...HEAD` to get the changes (the root agent will provide the exact path)
 2. Review the diff from a product perspective, looking for:
    - Does this actually solve the intended user problem?
    - Edge cases in user flows that aren't handled
