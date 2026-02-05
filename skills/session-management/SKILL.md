@@ -55,18 +55,39 @@ Create a new work session.
    - Path: `[SESSIONS_DIR]/[YY-MM-DD]-[session-name]/` (use current date for folder name)
    - If folder exists, ERROR: "Session already exists"
 
-4. **Detect Working Dir:**
-   - Check project `.samocode` file for `MAIN_REPO` path (primary source of truth)
-   - Or use git root: `git rev-parse --show-toplevel`
-   - Or use current working directory
-   - If unclear: leave as "TBD" and note to set it
-   - **IMPORTANT:** If creating a worktree or branch for the session, all git commands (fetch, branch, worktree add) MUST be run from the resolved `MAIN_REPO` directory — see "Repository Resolution" section above
+4. **Create worktree (if `.samocode` has WORKTREES):**
+
+   Read `MAIN_REPO` and `WORKTREES` from `.samocode`. If both are set, create a worktree:
+
+   ```bash
+   # Derive branch name: strip date prefix from session folder name
+   # e.g., "26-02-05-my-feature" -> "my-feature"
+   BRANCH_NAME=[session-name]  # the name before date-prefixing
+   # If GIT_BRANCH_PREFIX env var is set, prepend it: [prefix]/[branch-name]
+
+   # Fetch and detect default branch
+   cd [MAIN_REPO]
+   git fetch origin
+   DEFAULT_BRANCH=$(git remote show origin | grep 'HEAD branch' | cut -d: -f2 | xargs)
+
+   # Create worktree from remote default branch
+   git worktree add -b [BRANCH_NAME] [WORKTREES]/[YY-MM-DD]-[session-name] origin/$DEFAULT_BRANCH
+   ```
+
+   If worktree creation fails (branch already exists), try attaching to existing branch:
+   ```bash
+   git worktree add [WORKTREES]/[YY-MM-DD]-[session-name] [BRANCH_NAME]
+   ```
+
+   **Working Dir** = `[WORKTREES]/[YY-MM-DD]-[session-name]`
+
+   **If WORKTREES not set** (non-repo project): fall back to `MAIN_REPO`, or `git rev-parse --show-toplevel`, or current directory.
 
 5. **Create _overview.md:**
    ```markdown
    # Session: [session-name]
    Started: [TIMESTAMP_LOG]
-   Working Dir: [detected or TBD]
+   Working Dir: [worktree-path or fallback]
 
    ## Status
    Phase: investigation
@@ -95,6 +116,8 @@ Create a new work session.
    ```
    Session created: [YY-MM-DD]-[session-name]
    Path: [full-path]
+   Working Dir: [worktree-path or fallback]
+   Branch: [BRANCH_NAME]
 
    IMPORTANT: This is now your active session. Remember this path for subsequent commands.
 

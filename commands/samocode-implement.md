@@ -1,6 +1,6 @@
 Run samocode to implement the plan.
 
-Check samocode-run skill to know how to start it properly from implementation phase.
+**IMPORTANT:** You MUST read `skills/samocode-run/SKILL.md` and follow its steps exactly. Do NOT improvise or manually orchestrate phases.
 
 Watch it continuously until the work is completely finished, restart in case of failures.
 

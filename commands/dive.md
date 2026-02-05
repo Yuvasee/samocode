@@ -7,4 +7,4 @@ ERROR: "No active session. Run /session-start [name] or /session-continue [name]
 
 ## Execution
 
-Use the investigation skill with $ARGUMENTS as the topic.
+**IMPORTANT:** You MUST read `skills/investigation/SKILL.md` and follow its steps exactly with $ARGUMENTS as the topic. Do NOT improvise.

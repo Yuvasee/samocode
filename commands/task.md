@@ -7,4 +7,4 @@ ERROR: "No active session. Run /session-start [name] or /session-continue [name]
 
 ## Execution
 
-Use the task-definition skill with $ARGUMENTS as the task description.
+**IMPORTANT:** You MUST read `skills/task-definition/SKILL.md` and follow its steps exactly with $ARGUMENTS as the task description. Do NOT improvise.

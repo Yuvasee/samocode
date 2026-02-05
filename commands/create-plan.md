@@ -7,4 +7,4 @@ ERROR: "No active session. Run /session-start [name] or /session-continue [name]
 
 ## Execution
 
-Use the planning skill with $ARGUMENTS as context.
+**IMPORTANT:** You MUST read `skills/planning/SKILL.md` and follow its steps exactly with $ARGUMENTS as context. Do NOT improvise.

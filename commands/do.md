@@ -7,4 +7,4 @@ ERROR: "No active session. Run /session-start [name] or /session-continue [name]
 
 ## Execution
 
-Use the implementation skill with `do` action and $ARGUMENTS as the task.
+**IMPORTANT:** You MUST read `skills/implementation/SKILL.md` and follow the "do" action section exactly with $ARGUMENTS as the task. Do NOT improvise.

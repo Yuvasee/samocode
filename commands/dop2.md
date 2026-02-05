@@ -9,6 +9,4 @@ ERROR: "No active session. Run /session-start [name] or /session-continue [name]
 
 ## Execution
 
-Use the implementation skill with `dop2` action and $ARGUMENTS as the task.
-
-Note: dop2 uses auto-selection weighted toward clean foundation approach.
+**IMPORTANT:** You MUST read `skills/implementation/SKILL.md` and follow the "dop2" action section exactly with $ARGUMENTS as the task. Do NOT improvise. dop2 uses auto-selection weighted toward clean foundation approach.
