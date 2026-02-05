@@ -153,41 +153,13 @@ Standalone utilities, work without the orchestrator:
 | `/multi-review` | Multi-perspective code review |
 | `/session-start`, `/session-continue`, `/session-archive` | Session management |
 
-## Diagrams
-
-### Workflow Phases
-
-```mermaid
-stateDiagram-v2
-    [*] --> investigation
-
-    investigation --> requirements: dive complete
-
-    requirements --> planning: Q&A answered
-    note right of requirements: HUMAN GATE - Answer Q&A
-
-    planning --> implementation: plan approved
-    note right of planning: HUMAN GATE - Approve plan
-
-    implementation --> testing1: all phases done
-
-    testing1 --> quality: tests pass
-
-    quality --> testing2: issues fixed
-    note right of quality: May need human input
-
-    testing2 --> done: tests pass
-
-    done --> [*]
-```
-
-### Core Flow
+## Core Flow
 
 ```mermaid
 sequenceDiagram
     participant H as Human
     participant P as Parent Claude
-    participant O as Orchestrator
+    participant O as worker.py
     participant C as Claude CLI
     participant F as Session Files
 
