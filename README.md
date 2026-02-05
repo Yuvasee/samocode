@@ -161,7 +161,7 @@ sequenceDiagram
     participant P as Parent Claude
     participant O as main.py
     participant C as Claude CLI
-    participant F as Session Files
+    participant F as _overview.md
 
     H->>P: "Run samocode with dive X, task Y"
     P->>O: spawn main.py
