@@ -1,3 +1,4 @@
 Load and continue working in an existing session: $ARGUMENTS
 
-**IMPORTANT:** You MUST read `skills/session-management/SKILL.md` and follow the "Action: continue" section step by step. Do NOT improvise — the skill contains critical steps that must be followed exactly.
+**IMPORTANT:** You MUST use "session-management" skill and follow the "Action: continue" section step by step. Do NOT improvise — the skill contains critical steps that must be followed exactly.
+Use "session-management" skill now!

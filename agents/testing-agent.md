@@ -36,7 +36,7 @@ Check `_overview.md` to determine which run this is:
    - Implementation/phase documents for what was built
    - Plan document for intended functionality
 
-2. **Use `testing` skill** to test the work
+2. **MUST use `testing` skill** via Skill tool to test the work. Use "testing" skill now!
 
 3. **Focus testing on:**
    - The specific feature/bug worked on in this session

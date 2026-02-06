@@ -27,7 +27,7 @@ Session context is provided via --append-system-prompt by the orchestrator:
    - Test reports
    - Quality reviews
 
-2. **Use `summary` skill** to generate PR description
+2. **MUST use `summary` skill** via Skill tool to generate PR description. Use "summary" skill now!
 
 3. **Create final summary** if not already created by summary skill
 
