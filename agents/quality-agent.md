@@ -23,8 +23,8 @@ Session context is provided via --append-system-prompt by the orchestrator:
 
 ### Initial Review (Quality Iteration: 1)
 
-1. **Use `cleanup` skill** to analyze changed code
-2. **Use `multi-review` skill** to get multiple review perspectives
+1. **MUST use `cleanup` skill** via Skill tool to analyze changed code. Use "cleanup" skill now!
+2. **MUST use `multi-review` skill** via Skill tool to get multiple review perspectives. Use "multi-review" skill now!
 3. **Set `Quality Iteration: 1`** in Status section
 4. **Create quality document:** `[SESSION_PATH]/[TIMESTAMP_FILE]-quality-review.md`
 
@@ -42,10 +42,10 @@ Parse review documents for:
 ### Fix Loop (max 3 iterations)
 
 1. For each blocking issue:
-   - Use `do` action to fix
+   - **MUST use `implementation` skill** via Skill tool, follow the "do" action to fix
    - Commit: `cd [WORKING_DIR] && git add -A && git commit -m "fix: quality review - [brief]"`
 
-2. Re-run `multi-review` skill to verify
+2. Re-run `multi-review` skill via Skill tool to verify
 
 3. Increment `Quality Iteration` in Status
 

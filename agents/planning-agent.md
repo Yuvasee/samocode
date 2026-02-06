@@ -26,7 +26,7 @@ Session context is provided via --append-system-prompt by the orchestrator:
    - Requirements document for decisions
    - Dive documents for technical context
 
-2. **Use `planning` skill** to create implementation plan
+2. **MUST use `planning` skill** via Skill tool to create implementation plan. Use "planning" skill now!
 
 3. **Setup MCPs for the session:**
    - Check if `.mcp.json` exists in Working Dir

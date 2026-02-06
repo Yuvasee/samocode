@@ -22,7 +22,7 @@ Session context is provided via --append-system-prompt by the orchestrator:
 ## Your Task
 
 1. **Read `_overview.md`** from session path to understand the task
-2. **Use `dive` skill** to investigate the codebase/context
+2. **MUST use `dive` skill** via Skill tool to investigate the codebase/context. Use "dive" skill now!
 3. **Create documentation** with your findings
 4. **Update session state** in `_overview.md`
 5. **Write signal** to proceed

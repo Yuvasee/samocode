@@ -1,6 +1,7 @@
 Run samocode to implement the plan.
 
-**IMPORTANT:** You MUST read `skills/samocode-run/SKILL.md` and follow its steps exactly. Do NOT improvise or manually orchestrate phases.
+**IMPORTANT:** You MUST use "samocode-run" skill and follow its steps exactly. Do NOT improvise or manually orchestrate phases.
+Use "samocode-run" skill now!
 
 Watch it continuously until the work is completely finished, restart in case of failures.
 
