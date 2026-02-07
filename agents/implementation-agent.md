@@ -30,13 +30,18 @@ Session context is provided via --append-system-prompt by the orchestrator:
    - Find first phase with unchecked `- [ ]` items
    - If all complete -> transition to testing
 
-3. **Execute phase:**
+3. **Execute phase — choose approach based on phase type:**
+
+   **If phase involves code changes (new features, refactoring, bug fixes):**
    - **CRITICAL: You MUST use "implementation" skill and follow the "dop2" action section.**
    - **You MUST spawn 2 Task sub-agents in parallel. DO NOT implement directly with Edit/Write.**
    - Only exception: trivially simple 1-2 line changes (use dop action instead)
    - Use "implementation" skill now!
+   - **STOP CHECK:** If you are about to use Edit/Write to change code files directly instead of spawning 2 sub-agents, STOP. Go back and spawn sub-agents via the Task tool.
 
-   **STOP CHECK before implementing:** If you are about to use Edit/Write to change code files directly instead of spawning 2 sub-agents, STOP. You are violating the workflow. Go back and spawn sub-agents via the Task tool.
+   **If phase is research/documentation/config only (no code architecture decisions):**
+   - Use "implementation" skill, follow the "dop" action (direct execution). No dual-agent needed.
+   - dop2 adds no value when there's no "minimal vs clean" tradeoff to compare.
 
 4. **Update plan progress (MANDATORY):**
    - Edit plan file: Mark completed items `- [ ]` -> `- [x]`
