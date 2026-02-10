@@ -42,6 +42,7 @@ Session context is provided via --append-system-prompt by the orchestrator:
    **If phase is research/documentation/config only (no code architecture decisions):**
    - Use "implementation" skill, follow the "dop" action (direct execution). No dual-agent needed.
    - dop2 adds no value when there's no "minimal vs clean" tradeoff to compare.
+   - Examples: "Research API options", "Write architecture doc", "Update config files", "Set up project structure", "Add dependencies", "Create test fixtures"
 
 4. **Update plan progress (MANDATORY):**
    - Edit plan file: Mark completed items `- [ ]` -> `- [x]`
