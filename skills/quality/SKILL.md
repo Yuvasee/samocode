@@ -122,7 +122,18 @@ Before spawning sub-agents, set up the review environment:
    - Working directory for sub-agents: the worktree path
 
 3. **Prepare change context:**
-   Before spawning any agents, briefly summarize what this change does -- its intent and scope -- by reviewing the diff and commit messages. Include this 1-2 sentence summary in every agent's instructions so each reviewer understands the purpose of the change, not just its mechanics.
+   Read the commit messages yourself: `cd <REVIEW_DIRECTORY> && git log origin/main..HEAD --oneline`
+
+   Then spawn a quick haiku sub-agent (via Task tool, model: haiku) to summarize the diff:
+
+   ```
+   Run `cd <REVIEW_DIRECTORY> && git diff origin/main...HEAD` and write a concise
+   summary of the actual code changes -- what was added, modified, removed, and
+   the key patterns/logic involved. Keep it to 3-5 sentences. Return ONLY the
+   summary, nothing else.
+   ```
+
+   Combine the commit messages with the haiku agent's diff summary into a change context block. Include it in every reviewer agent's instructions so each understands the purpose and substance of the change. Do NOT read the diff yourself.
 
 #### Shared Output Schema
 
