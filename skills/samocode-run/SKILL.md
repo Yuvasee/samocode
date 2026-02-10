@@ -151,6 +151,8 @@ Do NOT assume samocode should run just because a session exists.
    - `Blocked:` contains `yes` or `waiting` → handle accordingly (see Handling Waiting States), STOP
    - Otherwise → goto step 5.1
 
+   **IMPORTANT: On STOP, clean up monitoring.** When samocode finishes (done/blocked/waiting), do NOT leave pending background sleep tasks running. Stop any active monitoring task via `TaskStop` before reporting the final status. This prevents stale notification floods.
+
 ## Handling Waiting States
 
 When samocode signals `waiting`:

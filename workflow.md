@@ -12,6 +12,7 @@ You are executing one iteration in an autonomous session loop. Each iteration:
 - **One action per iteration**: Execute ONE action, then signal
 - **Always signal**: Write `_signal.json` before exiting (missing signal = orchestrator hangs)
 - **Never skip phases**: All tasks go through the full pipeline
+- **Working Directory is given to you** via Session Context. NEVER guess paths. NEVER run `git worktree list` to discover it. Use the provided Working Directory directly for all code operations.
 
 ## File Locations
 
@@ -155,6 +156,13 @@ Each phase has a dedicated agent with detailed instructions:
 | testing | `agents/testing-agent.md` |
 | quality | `agents/quality-agent.md` |
 | done | `agents/done-agent.md` |
+
+## Context Size Guardrails
+
+When reading multiple session artifacts (dive docs, research docs, phase reports) for synthesis or review:
+- **Never load more than 5-8 documents in a single iteration.** If more exist, process in batches and synthesize summaries across batches.
+- Use your judgment on exact batch size based on document length — fewer for long docs, more for short ones. Max 8.
+- This prevents context limit crashes that waste an entire iteration.
 
 ## Remember
 
