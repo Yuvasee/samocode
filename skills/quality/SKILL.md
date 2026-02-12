@@ -124,7 +124,7 @@ Before spawning sub-agents, set up the review environment:
 3. **Prepare change context:**
    Read the commit messages yourself: `cd <REVIEW_DIRECTORY> && git log origin/main..HEAD --oneline`
 
-   Then spawn a quick haiku sub-agent (via Task tool, model: haiku) to summarize the diff:
+   **IMPORTANT: You MUST then spawn a haiku sub-agent** (via Task tool, model: haiku) to summarize the diff. Do NOT skip this step — reviewers need this context:
 
    ```
    Run `cd <REVIEW_DIRECTORY> && git diff origin/main...HEAD` and write a concise

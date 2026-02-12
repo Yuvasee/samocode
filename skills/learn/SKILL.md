@@ -22,6 +22,7 @@ Extract learnings from the current conversation and add them to the project's CL
 3. **Append learnings:**
    - Find or create `## Learnings` section in CLAUDE.md
    - Add one line per learning, format: `- When [situation], [do this / don't do that]`
+   - **Generalize as much as possible.** Never reference specific files, variables, or code locations. Extract only generic techniques, rules, and patterns that apply broadly across projects and sessions.
    - Keep it terse — one line, no paragraphs
    - Don't duplicate entries already present
 
