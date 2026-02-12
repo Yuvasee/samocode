@@ -421,7 +421,7 @@ Instructions (for root agent):
    **If $ARGUMENTS is a GitHub PR URL:**
    ```bash
    cd <REVIEW_DIRECTORY> && \
-   timeout 900 gemini -p "You are a performance engineer and testing specialist reviewing a pull request.
+   GEMINI_API_KEY=$(grep '^GEMINI_API_KEY=' .env 2>/dev/null | cut -d= -f2-) timeout 900 gemini -p "You are a performance engineer and testing specialist reviewing a pull request.
 
    CHANGE CONTEXT: <SUMMARY_FROM_SETUP_STEP_3>
 
@@ -471,7 +471,7 @@ Instructions (for root agent):
    **If reviewing local branch (git diff):**
    ```bash
    cd <REVIEW_DIRECTORY> && \
-   timeout 900 gemini -p "You are a performance engineer and testing specialist reviewing code changes.
+   GEMINI_API_KEY=$(grep '^GEMINI_API_KEY=' .env 2>/dev/null | cut -d= -f2-) timeout 900 gemini -p "You are a performance engineer and testing specialist reviewing code changes.
 
    CHANGE CONTEXT: <SUMMARY_FROM_SETUP_STEP_3>
 

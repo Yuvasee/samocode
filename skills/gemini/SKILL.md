@@ -17,10 +17,21 @@ which gemini >/dev/null 2>&1 || echo "GEMINI_NOT_INSTALLED"
 
 If not installed, inform the user: "Gemini CLI is not installed. Skipping Gemini review."
 
+## API Key
+
+Gemini requires `GEMINI_API_KEY` in the environment. Load it from the `.env` file in the current working directory (the folder Claude Code is running from):
+
+```bash
+GEMINI_API_KEY=$(grep '^GEMINI_API_KEY=' .env 2>/dev/null | cut -d= -f2-)
+export GEMINI_API_KEY
+```
+
+If `.env` doesn't exist or doesn't contain `GEMINI_API_KEY`, inform the user: "GEMINI_API_KEY not found in .env file."
+
 ## Execution Pattern
 
 ```bash
-gemini -p "$PROMPT" --yolo 2>&1
+GEMINI_API_KEY=$(grep '^GEMINI_API_KEY=' .env 2>/dev/null | cut -d= -f2-) gemini -p "$PROMPT" --yolo 2>&1
 ```
 
 ### Flags
