@@ -204,7 +204,11 @@ Ensure all work from this conversation is recorded in the active session.
 6. **Commit (if git repo):**
    - `cd [SESSION_DIR] && git add . && git commit -m "Sync session: [session-name]"`
 
-7. **Report:**
+7. **Extract learnings:**
+   - If the conversation contained friction moments (failed approaches, workarounds discovered): you MUST use "learn" skill now.
+   - If nothing notable was learned: skip
+
+8. **Report:**
    - "Session synced: [what was added]"
    - Or: "Session already up to date."
 
@@ -266,7 +270,11 @@ Archive a session (full) or archive work within a session (partial).
 6. **Clear active session** (if archiving active session):
    - Remove from working memory
 
-7. **Confirm to user:**
+7. **Extract learnings:**
+   - If the conversation contained friction moments (failed approaches, workarounds discovered): you MUST use "learn" skill now.
+   - If nothing notable was learned: skip
+
+8. **Confirm to user:**
    ```
    Session archived: [session-name]
    Moved to: [archive-path]
@@ -325,7 +333,11 @@ Example: `archive keep competitor-analysis.md` → archive active session, keep 
    - Add Flow Log entry: `- [TIMESTAMP_LOG] Archived work to _archive/[YY-MM-DD]-[slug]/, kept: [kept_files]`
    - Reset Status section for next task
 
-7. **Report to user:**
+7. **Extract learnings:**
+   - If the conversation contained friction moments (failed approaches, workarounds discovered): you MUST use "learn" skill now.
+   - If nothing notable was learned: skip
+
+8. **Report to user:**
    ```
    Work archived within session.
    Archived to: [SESSION_PATH]/_archive/[YY-MM-DD]-[slug]/
