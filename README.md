@@ -2,29 +2,29 @@
 
 ## Explain Like I'm 10
 
-Imagine you have a really smart helper (Claude) that can read code and write code. But it forgets everything after each conversation. So we built a system where:
+Imagine you have a really smart helper (Claude or Codex) that can read code and write code. But it forgets everything after each conversation. So we built a system where:
 
 1. **A notebook** (`_overview.md`) keeps track of what's been done and what's next
-2. **A simple loop** (Python script) wakes up Claude, says "read the notebook and do the next thing", then waits
-3. Claude reads the notebook, does one piece of work, writes what happened back in the notebook, and goes to sleep
-4. The loop wakes Claude up again, and repeats until the job is done
-5. **You** (through a parent Claude session) watch the progress and answer questions when Claude needs help
+2. **A simple loop** (Python script) wakes up the AI CLI, says "read the notebook and do the next thing", then waits
+3. The AI reads the notebook, does one piece of work, writes what happened back in the notebook, and goes to sleep
+4. The loop wakes it up again, and repeats until the job is done
+5. **You** (through a parent session) watch the progress and answer questions when needed
 
-That's it. The Python loop is intentionally dumb - Claude makes all the decisions.
+That's it. The Python loop is intentionally dumb; the child agent makes all the decisions.
 
 ---
 
-This is Claude Code automation as I find it most effective, working with Claude Code every day since June 2025. Currently an essentially supervised agentic loop. Good at both research and coding (better as separate tasks), capable of doing big pieces end-to-end. Reviewing the code it produces for production is highly recommended.
+This is a practical supervised agent loop for real repository work: research, planning, implementation, testing, and quality passes. It can handle large chunks end-to-end, but production review is still recommended.
 
 ## Installation
 
 ```bash
 cd ~/samocode
-./install.sh          # Creates symlinks to ~/.claude/
+./install.sh          # Creates symlinks to ~/.claude/ (skills/commands/agents)
 pip install -r requirements.txt
 
 # Optional: configure environment
-cp .env.example .env  # Set CLAUDE_PATH, Telegram tokens, etc.
+cp .env.example .env  # Set provider, CLI paths/models, Telegram tokens, etc.
 ```
 
 For each project, create a `.samocode` file in the project root:
@@ -36,13 +36,13 @@ SESSIONS=~/your-project/_sessions/
 
 ## Quick Start
 
-Start Claude in your project directory and tell it what to do:
+Start your agent session in the project directory and tell it what to do:
 ```
 You: "Run samocode with dive into our authentication architecture
       and existing user models. Task: add JWT-based user authentication."
 ```
 
-Samocode-parent will start the worker, monitor progress, and report back. When samocode has questions, parent relays them to you:
+The parent session starts the worker, monitors progress, and reports back. When samocode has questions, parent relays them to you:
 ```
 Parent: "Questions in _qa.md: Which auth method? Where to store tokens?"
 You:    "JWT, httpOnly cookies"
@@ -50,17 +50,17 @@ You:    "JWT, httpOnly cookies"
 
 ## Architecture
 
-Three layers: **Parent Claude** (your session) → **Worker** (Python loop) → **Child Claude** (per-iteration instances)
+Three layers: **Parent session** (your chat) → **Worker** (Python loop) → **Child AI CLI** (per-iteration instances)
 
 ```
-Parent Claude          Worker (Python)           Child Claude
-─────────────         ────────────────          ─────────────
-You talk here    →    Spawns Claude CLI    →    Reads _overview.md
-Monitors progress     Reads signals             Executes one action
-Handles Q&A           Sends notifications       Writes signal
+Parent Session         Worker (Python)          Child Agent CLI
+──────────────        ────────────────         ───────────────
+You talk here    →    Spawns provider CLI  →   Reads _overview.md
+Monitors progress     Reads signals            Executes one action
+Handles Q&A           Sends notifications      Writes signal
 ```
 
-The Python worker is intentionally dumb - it just invokes Claude, reads the signal file, and decides: loop, stop, or notify human. Claude makes all decisions.
+The Python worker is intentionally dumb: it invokes the configured provider, reads `_signal.json`, and decides loop/stop/pause. The child agent performs the real work.
 
 ## Phases
 
@@ -95,9 +95,13 @@ investigation → requirements → planning → implementation → testing → q
 
 | Variable | Default | Description |
 |----------|---------|-------------|
+| `SAMOCODE_PROVIDER` | `claude` | Provider: `claude` or `codex` |
 | `CLAUDE_PATH` | `claude` | Path to Claude CLI |
-| `CLAUDE_MODEL` | `opus` | Model to use |
-| `CLAUDE_TIMEOUT` | `1800` | Timeout per iteration (seconds) |
+| `CLAUDE_MODEL` | `opus` | Claude model |
+| `CLAUDE_TIMEOUT` | `1800` | Claude timeout per iteration (seconds) |
+| `CODEX_PATH` | `codex` | Path to Codex CLI |
+| `CODEX_MODEL` | empty | Codex model (empty = use `~/.codex/config.toml`) |
+| `CODEX_TIMEOUT` | `1800` | Codex timeout per iteration (seconds) |
 | `TELEGRAM_BOT_TOKEN` | - | Telegram notifications |
 | `TELEGRAM_CHAT_ID` | - | Telegram notifications |
 
@@ -112,11 +116,21 @@ python main.py --config ~/project/.samocode --session my-task \
 
 # Continue existing session
 python main.py --config ~/project/.samocode --session my-task
+
+# Run with Codex provider for this invocation
+python main.py --config ~/project/.samocode --session my-task --provider codex
 ```
+
+## Provider Notes
+
+- Default provider is `claude` (`SAMOCODE_PROVIDER=claude`).
+- Set `SAMOCODE_PROVIDER=codex` (or `--provider codex`) to run iterations with Codex.
+- In Claude mode, samocode uses native Claude agent flags.
+- In Codex mode, samocode injects the selected phase agent instructions into the iteration prompt.
 
 ## Signal Protocol
 
-Claude writes `_signal.json` to control flow:
+The child agent writes `_signal.json` to control flow:
 
 | Signal | Effect | Example |
 |--------|--------|---------|
@@ -158,9 +172,9 @@ Standalone utilities, work without the orchestrator:
 ```mermaid
 sequenceDiagram
     participant H as Human
-    participant P as Parent Claude
+    participant P as Parent Session
     participant O as main.py
-    participant C as Claude CLI
+    participant C as Child Agent CLI
     participant F as _overview.md
 
     H->>P: "Run samocode with dive X, task Y"

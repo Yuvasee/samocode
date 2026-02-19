@@ -53,7 +53,7 @@ Session context is provided via --append-system-prompt by the orchestrator:
      - `chrome-devtools` - Browser testing and UI inspection
      - `context7` - Library documentation lookup
      - `serena` - Code intelligence (go-to-definition, find-references)
-   - If MCP was added, signal `continue` to restart Claude for MCP pickup
+   - If MCP was added, signal `continue` to restart the agent process for MCP pickup
 
 4. **Create plan document** at `[SESSION_PATH]/[TIMESTAMP_FILE]-plan-[slug].md`
 
@@ -108,7 +108,7 @@ Edit `_overview.md`:
 
 **Do NOT update Phase field** - orchestrator handles it based on signal.
 
-After human approves, parent Claude updates `_overview.md` and restarts orchestrator.
+After human approves, parent agent updates `_overview.md` and restarts orchestrator.
 
 ## Commits
 
@@ -135,6 +135,6 @@ If MCP config was added, mention it in the overview but still wait for plan appr
 
 ## Important Notes
 
-- MCP changes require Claude restart to take effect
+- MCP changes require agent process restart to take effect
 - Plan should provide clear direction for implementation agent
 - Include verification criteria for each phase

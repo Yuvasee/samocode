@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Samocode - Autonomous Session Orchestrator.
 
-Main orchestrator loop that runs Claude Code CLI iteratively.
-Claude reads session state, decides actions via skills, updates state, signals next.
+Main orchestrator loop that runs an AI CLI iteratively.
+The child AI reads session state, decides actions, updates state, and signals next.
 """
 
 import argparse
@@ -163,6 +163,11 @@ Examples:
         type=int,
         help="Override timeout in seconds (default: 1800 = 30 min)",
     )
+    parser.add_argument(
+        "--provider",
+        choices=["claude", "codex"],
+        help="AI CLI provider to run orchestrator iterations with",
+    )
 
     return parser.parse_args()
 
@@ -186,9 +191,15 @@ def load_config(args: argparse.Namespace) -> SamocodeConfig:
     # Load runtime config from environment
     runtime = RuntimeConfig.from_env()
 
+    # Override provider if provided via CLI
+    if args.provider:
+        runtime = replace(runtime, ai_provider=args.provider)
+
     # Override timeout if provided via CLI
     if args.timeout:
-        runtime = replace(runtime, claude_timeout=args.timeout)
+        runtime = replace(
+            runtime, claude_timeout=args.timeout, codex_timeout=args.timeout
+        )
 
     runtime_errors = runtime.validate()
     errors.extend(runtime_errors)
@@ -237,9 +248,12 @@ def main() -> None:
     logger.info(f"Config: {args.config}")
     logger.info(f"Session: {session_path}")
     logger.info(f"Repo: {config.main_repo}")
-    logger.info(f"Model: {config.claude_model}")
-    logger.info(f"Max turns: {config.claude_max_turns}")
-    logger.info(f"Timeout: {config.claude_timeout}s")
+    model = config.ai_model or "default"
+    logger.info(f"Provider: {config.ai_provider}")
+    logger.info(f"Model: {model}")
+    if config.ai_provider == "claude":
+        logger.info(f"Max turns: {config.claude_max_turns}")
+    logger.info(f"Timeout: {config.ai_timeout}s")
     if args.dive:
         logger.info(f"Initial dive: {args.dive}")
     if args.task:
@@ -288,14 +302,14 @@ def main() -> None:
             )
 
             if result.status != ExecutionStatus.SUCCESS:
-                logger.error("Claude execution failed after retries")
+                logger.error(f"{config.ai_provider} execution failed after retries")
                 logger.error(f"Status: {result.status.value}")
                 if result.stderr:
                     logger.error(f"Last stderr: {result.stderr[:500]}")
                 if result.stdout:
                     logger.error(f"Last stdout (last 500 chars): {result.stdout[-500:]}")
                 notify_error(
-                    f"Claude execution failed: {result.status.value}",
+                    f"{config.ai_provider} execution failed: {result.status.value}",
                     session_display_name,
                     iteration,
                     config.telegram_bot_token,

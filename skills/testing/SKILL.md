@@ -40,7 +40,7 @@ Tests the specific feature or bug fix implemented in the current session. NOT fu
    - Complex interactions -> Puppeteer or Playwright
    - Need screenshots/traces -> Playwright
 
-   **If adding MCP:** After modifying `.mcp.json`, signal `continue` to restart Claude Code process (MCP doesn't hot-reload).
+   **If adding MCP:** After modifying `.mcp.json`, signal `continue` to restart the agent process (MCP doesn't hot-reload).
 
 4. **Start the application:**
    - Read project's `.samocode` file or README for startup instructions

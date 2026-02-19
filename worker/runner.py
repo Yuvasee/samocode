@@ -1,4 +1,4 @@
-"""Claude CLI execution with proper error handling and retries."""
+"""AI CLI execution with proper error handling and retries."""
 
 import logging
 import os
@@ -61,7 +61,7 @@ def validate_session_structure(session_path: Path) -> list[str]:
 
 
 class ExecutionStatus(Enum):
-    """Result of Claude CLI execution."""
+    """Result of AI CLI execution."""
 
     SUCCESS = "success"
     TIMEOUT = "timeout"
@@ -71,7 +71,7 @@ class ExecutionStatus(Enum):
 
 @dataclass
 class ExecutionResult:
-    """Result of running Claude CLI."""
+    """Result of running AI CLI."""
 
     status: ExecutionStatus
     stdout: str
@@ -94,7 +94,7 @@ def run_claude_with_retry(
     initial_task: str | None = None,
     on_line: Callable[[str], None] | None = None,
 ) -> ExecutionResult:
-    """Execute Claude CLI with retry logic for transient failures."""
+    """Execute configured AI CLI with retry logic for transient failures."""
     result: ExecutionResult | None = None
 
     for attempt in range(1, config.max_retries + 1):
@@ -149,7 +149,7 @@ def run_claude_once(
     initial_task: str | None = None,
     on_line: Callable[[str], None] | None = None,
 ) -> ExecutionResult:
-    """Execute Claude CLI once with timeout protection and log streaming.
+    """Execute configured AI CLI once with timeout protection and log streaming.
 
     Uses phase-specific agent based on session state:
     - New session (no _overview.md): uses init-agent
@@ -158,7 +158,7 @@ def run_claude_once(
 
     Raises SessionStructureError if session has invalid nested structure.
     """
-    logger.info(f"Executing Claude CLI (attempt {attempt})...")
+    logger.info(f"Executing {config.ai_provider} CLI (attempt {attempt})...")
 
     # Validate session structure (fail-fast on deprecated nested _samocode pattern)
     structure_warnings = validate_session_structure(session_path)
@@ -193,8 +193,6 @@ def run_claude_once(
     working_dir = config.repo_path
     logger.info(f"Working Dir: {working_dir}")
 
-    cli_args = _build_cli_args(config)
-
     logger.info(f"Using agent: {agent_name} (phase: {phase})")
     session_context = build_session_context(
         workflow_prompt_path=workflow_prompt_path,
@@ -205,14 +203,24 @@ def run_claude_once(
         initial_dive=initial_dive,
         initial_task=initial_task,
     )
-    cli_args.extend(["--agent", agent_name, "--append-system-prompt", session_context])
-    cli_args.extend(["-p", "Start"])
+    cli_args = _build_cli_args(
+        config=config,
+        agent_name=agent_name,
+        session_context=session_context,
+        workflow_prompt_path=workflow_prompt_path,
+    )
 
     log_file = generate_log_filename(session_path, phase, iteration)
     logger.info(f"Streaming logs to: {log_file}")
 
     return _execute_process(
-        cli_args, working_dir, log_file, config.claude_timeout, attempt, on_line
+        cli_args=cli_args,
+        working_dir=working_dir,
+        log_file=log_file,
+        timeout=config.ai_timeout,
+        attempt=attempt,
+        provider_name=config.ai_provider,
+        on_line=on_line,
     )
 
 
@@ -352,7 +360,7 @@ def build_session_context(
         lines.append(f"**Iteration:** {iteration}")
 
     # Add time limit so agent knows constraints
-    timeout = config.runtime.claude_timeout
+    timeout = config.ai_timeout
     lines.append(f"**Time limit:** {timeout}s ({timeout // 60} min)")
 
     # Add injected timestamps section
@@ -401,6 +409,7 @@ def stream_logs(
     process: subprocess.Popen[str],
     log_file: Path,
     timeout: float,
+    command_name: str,
     on_line: Callable[[str], None] | None = None,
 ) -> tuple[str, str]:
     """Stream stdout from process to JSONL file with timeout support."""
@@ -419,7 +428,7 @@ def stream_logs(
         while True:
             remaining = deadline - time.time()
             if remaining <= 0:
-                raise subprocess.TimeoutExpired(cmd="claude", timeout=timeout)
+                raise subprocess.TimeoutExpired(cmd=command_name, timeout=timeout)
 
             if process.poll() is not None:
                 _drain_remaining(
@@ -499,9 +508,32 @@ def _build_initial_instructions(
     return lines
 
 
-def _build_cli_args(config: SamocodeConfig) -> list[str]:
-    """Build base CLI arguments."""
-    return [
+def _build_cli_args(
+    config: SamocodeConfig,
+    agent_name: str,
+    session_context: str,
+    workflow_prompt_path: Path,
+) -> list[str]:
+    """Build provider-specific CLI arguments."""
+    if config.ai_provider == "claude":
+        return _build_claude_cli_args(config, agent_name, session_context)
+    if config.ai_provider == "codex":
+        return _build_codex_cli_args(
+            config,
+            _build_codex_prompt(
+                agent_name=agent_name,
+                session_context=session_context,
+                workflow_prompt_path=workflow_prompt_path,
+            ),
+        )
+    raise ValueError(f"Unsupported provider: {config.ai_provider}")
+
+
+def _build_claude_cli_args(
+    config: SamocodeConfig, agent_name: str, session_context: str
+) -> list[str]:
+    """Build Claude CLI arguments."""
+    args = [
         str(config.claude_path),
         "--dangerously-skip-permissions",
         "--model",
@@ -512,6 +544,44 @@ def _build_cli_args(config: SamocodeConfig) -> list[str]:
         "--output-format",
         "stream-json",
     ]
+    args.extend(["--agent", agent_name, "--append-system-prompt", session_context])
+    args.extend(["-p", "Start"])
+    return args
+
+
+def _build_codex_cli_args(config: SamocodeConfig, prompt: str) -> list[str]:
+    """Build Codex CLI arguments."""
+    args = [
+        str(config.codex_path),
+        "exec",
+        "--skip-git-repo-check",
+        "--dangerously-bypass-approvals-and-sandbox",
+    ]
+    if config.codex_model:
+        args.extend(["--model", config.codex_model])
+    args.append(prompt)
+    return args
+
+
+def _build_codex_prompt(
+    agent_name: str, session_context: str, workflow_prompt_path: Path
+) -> str:
+    """Build a full prompt for Codex mode using the selected agent definition."""
+    agents_dir = workflow_prompt_path.parent / "agents"
+    agent_path = agents_dir / f"{agent_name}.md"
+    if not agent_path.exists():
+        raise ValueError(f"Agent prompt not found for codex mode: {agent_path}")
+
+    agent_instructions = agent_path.read_text().strip()
+    return (
+        f"{session_context}\n\n"
+        "## Execution Mode\n"
+        "You are running in samocode codex-provider mode. Execute one full phase iteration.\n"
+        "Follow the agent spec exactly. Use tools as needed. Update session files and write the "
+        "final `_signal.json` status before exiting.\n\n"
+        f"## Agent Spec: {agent_name}\n"
+        f"{agent_instructions}\n"
+    )
 
 
 def _execute_process(
@@ -520,6 +590,7 @@ def _execute_process(
     log_file: Path,
     timeout: int,
     attempt: int,
+    provider_name: str,
     on_line: Callable[[str], None] | None,
 ) -> ExecutionResult:
     """Execute subprocess and return result."""
@@ -534,11 +605,11 @@ def _execute_process(
             bufsize=1,
         )
 
-        stdout, stderr = stream_logs(process, log_file, timeout, on_line)
+        stdout, stderr = stream_logs(process, log_file, timeout, provider_name, on_line)
         process.wait()
 
         if process.returncode == 0:
-            logger.info("Claude CLI completed successfully")
+            logger.info(f"{provider_name} CLI completed successfully")
             return ExecutionResult(
                 status=ExecutionStatus.SUCCESS,
                 stdout=stdout,
@@ -548,7 +619,7 @@ def _execute_process(
                 log_file=log_file,
             )
 
-        logger.error(f"Claude CLI failed with code {process.returncode}")
+        logger.error(f"{provider_name} CLI failed with code {process.returncode}")
         if stderr:
             logger.error(f"stderr: {stderr[:500]}")
         if stdout:
@@ -567,7 +638,7 @@ def _execute_process(
         if process is not None:
             process.kill()
             process.wait()
-        logger.error(f"Claude CLI timed out after {timeout}s")
+        logger.error(f"{provider_name} CLI timed out after {timeout}s")
         return ExecutionResult(
             status=ExecutionStatus.TIMEOUT,
             stdout="",
@@ -581,7 +652,7 @@ def _execute_process(
         if process is not None:
             process.kill()
             process.wait()
-        logger.error(f"Claude CLI execution failed: {e}")
+        logger.error(f"{provider_name} CLI execution failed: {e}")
         return ExecutionResult(
             status=ExecutionStatus.FAILURE,
             stdout="",

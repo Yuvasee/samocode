@@ -1,6 +1,7 @@
 """Configuration management for Samocode orchestrator."""
 
 import os
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -71,12 +72,16 @@ class ProjectConfig:
 class RuntimeConfig:
     """Runtime settings from environment variables."""
 
+    ai_provider: str
     telegram_bot_token: str
     telegram_chat_id: str
     claude_path: Path
     claude_model: str
     claude_max_turns: int
     claude_timeout: int
+    codex_path: Path
+    codex_model: str
+    codex_timeout: int
     max_retries: int
     retry_delay: int
 
@@ -84,12 +89,16 @@ class RuntimeConfig:
     def from_env(cls) -> "RuntimeConfig":
         """Load runtime configuration from environment variables."""
         return cls(
+            ai_provider=os.getenv("SAMOCODE_PROVIDER", "claude").lower(),
             telegram_bot_token=os.getenv("TELEGRAM_BOT_TOKEN", ""),
             telegram_chat_id=os.getenv("TELEGRAM_CHAT_ID", ""),
             claude_path=Path(os.getenv("CLAUDE_PATH", "claude")),
             claude_model=os.getenv("CLAUDE_MODEL", "opus"),
             claude_max_turns=int(os.getenv("CLAUDE_MAX_TURNS", "300")),
             claude_timeout=int(os.getenv("CLAUDE_TIMEOUT", "1800")),
+            codex_path=Path(os.getenv("CODEX_PATH", "codex")),
+            codex_model=os.getenv("CODEX_MODEL", ""),
+            codex_timeout=int(os.getenv("CODEX_TIMEOUT", "1800")),
             max_retries=int(os.getenv("SAMOCODE_MAX_RETRIES", "3")),
             retry_delay=int(os.getenv("SAMOCODE_RETRY_DELAY", "5")),
         )
@@ -98,16 +107,26 @@ class RuntimeConfig:
         """Validate runtime configuration."""
         errors: list[str] = []
 
-        if not self.claude_path.exists():
-            errors.append(f"Claude CLI not found at {self.claude_path}")
-        elif not self.claude_path.is_file():
-            errors.append(f"Claude path is not a file: {self.claude_path}")
+        if self.ai_provider not in {"claude", "codex"}:
+            errors.append(
+                f"Invalid provider '{self.ai_provider}'. Use 'claude' or 'codex'."
+            )
+
+        if self.ai_provider == "claude":
+            if not _command_exists(self.claude_path):
+                errors.append(f"Claude CLI not found: {self.claude_path}")
+        elif self.ai_provider == "codex":
+            if not _command_exists(self.codex_path):
+                errors.append(f"Codex CLI not found: {self.codex_path}")
 
         if self.claude_max_turns < 1:
             errors.append(f"Invalid max_turns: {self.claude_max_turns}")
 
         if self.claude_timeout < 1:
             errors.append(f"Invalid timeout: {self.claude_timeout}")
+
+        if self.codex_timeout < 1:
+            errors.append(f"Invalid codex timeout: {self.codex_timeout}")
 
         return errors
 
@@ -150,6 +169,10 @@ class SamocodeConfig:
         return self.runtime.telegram_chat_id
 
     @property
+    def ai_provider(self) -> str:
+        return self.runtime.ai_provider
+
+    @property
     def claude_path(self) -> Path:
         return self.runtime.claude_path
 
@@ -166,6 +189,30 @@ class SamocodeConfig:
         return self.runtime.claude_timeout
 
     @property
+    def codex_path(self) -> Path:
+        return self.runtime.codex_path
+
+    @property
+    def codex_model(self) -> str:
+        return self.runtime.codex_model
+
+    @property
+    def codex_timeout(self) -> int:
+        return self.runtime.codex_timeout
+
+    @property
+    def ai_path(self) -> Path:
+        return self.claude_path if self.ai_provider == "claude" else self.codex_path
+
+    @property
+    def ai_model(self) -> str:
+        return self.claude_model if self.ai_provider == "claude" else self.codex_model
+
+    @property
+    def ai_timeout(self) -> int:
+        return self.claude_timeout if self.ai_provider == "claude" else self.codex_timeout
+
+    @property
     def max_retries(self) -> int:
         return self.runtime.max_retries
 
@@ -180,10 +227,11 @@ class SamocodeConfig:
     def to_log_string(self) -> str:
         """Return loggable config string (excludes secrets)."""
         telegram_status = "configured" if self.telegram_bot_token else "none"
+        model = self.ai_model or "default"
         return (
             f"repo={self.main_repo}, worktrees={self.worktrees_dir}, "
             f"sessions={self.sessions_dir}, session={self.session_path}, "
-            f"model={self.claude_model}, timeout={self.claude_timeout}s, "
+            f"provider={self.ai_provider}, model={model}, timeout={self.ai_timeout}s, "
             f"max_turns={self.claude_max_turns}, telegram={telegram_status}"
         )
 
@@ -199,6 +247,14 @@ def _parse_config_file(path: Path) -> dict[str, str]:
             key, value = line.split("=", 1)
             result[key.strip()] = value.strip()
     return result
+
+
+def _command_exists(command: Path) -> bool:
+    """Check whether CLI command is available either by absolute path or PATH lookup."""
+    cmd = str(command)
+    if "/" in cmd:
+        return command.exists() and command.is_file()
+    return shutil.which(cmd) is not None
 
 
 def resolve_session_path(sessions_dir: Path, session_name: str) -> Path:
