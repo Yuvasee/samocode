@@ -29,7 +29,7 @@ Use this skill when user says:
 
 ## What is Samocode?
 
-Samocode is an autonomous session orchestrator that runs Claude CLI in a loop to complete complex tasks. It:
+Samocode is an autonomous session orchestrator that runs the configured AI CLI provider in a loop to complete complex tasks. It:
 - Reads session state from `_overview.md`
 - Runs phase-specific agents automatically based on current phase
 - Sends Telegram notifications on state changes
@@ -40,7 +40,7 @@ For workflow details and phase definitions, see `~/samocode/CLAUDE.md`.
 ## Sessions: Manual vs Autonomous
 
 There's no strict "samocode session" - just sessions. Any session can be worked on:
-- **Manually** by you (the parent Claude) - e.g., investigation, Q&A, planning
+- **Manually** by you (the parent agent session) - e.g., investigation, Q&A, planning
 - **Autonomously** by samocode - e.g., implementation, testing, quality fixes
 - **Mixed** - start manually, hand off to samocode, take back control when blocked
 
@@ -90,7 +90,7 @@ Do NOT assume samocode should run just because a session exists.
    ```
 
    **Optional:** Add `--timeout SECONDS` for per-iteration time limit (default: 1800s = 30 min).
-   Each child Claude iteration is killed if it exceeds this. Increase for complex phases:
+   Each child agent iteration is killed if it exceeds this. Increase for complex phases:
    ```bash
    python main.py --config ... --session ... --timeout 3600  # 1 hour per iteration
    ```
@@ -101,7 +101,7 @@ Do NOT assume samocode should run just because a session exists.
    Run this in background using `run_in_background: true`
 
    **Avoid reading background task output directly.** The samocode worker output includes full
-   Claude CLI logs which are large (100KB+ per iteration). Monitor progress via `_overview.md`
+   Agent CLI logs which are large (100KB+ per iteration). Monitor progress via `_overview.md`
    and other session files instead.
 
    If debugging requires checking task output (e.g., investigating a crash):
@@ -190,7 +190,7 @@ SESSIONS=~/path/to/_sessions/
 ```
 
 **All three keys are REQUIRED:**
-- `MAIN_REPO`: The main working directory (where Claude runs)
+- `MAIN_REPO`: The main working directory (where the child agent runs)
 - `SESSIONS`: Where samocode session folders are stored
 - `WORKTREES`: Where git worktrees are created
 
@@ -229,7 +229,7 @@ Next: [what to do next]
 
 1. **Missing .samocode file**: Create `.samocode` file in project root with SESSIONS, WORKTREES, MAIN_REPO
 2. **Telegram errors**: Check `~/samocode/.env` has TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID
-3. **Timeout**: Default is 30 min. Increase CLAUDE_TIMEOUT env var if iterations need more
+3. **Timeout**: Default is 30 min. Increase provider timeout env var (`CLAUDE_TIMEOUT` or `CODEX_TIMEOUT`) if iterations need more
 
 ## Debugging Samocode Bugs
 
@@ -277,4 +277,4 @@ User: "Continue the samocode session"
 → Monitor iterations, report progress
 ```
 
-**Remember:** You run `python main.py`, the Python worker runs Claude. You do NOT run phase agents yourself.
+**Remember:** You run `python main.py`, the Python worker runs the configured provider (Claude or Codex). You do NOT run phase agents yourself.

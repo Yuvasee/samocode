@@ -19,7 +19,7 @@ If not installed, inform the user: "Gemini CLI is not installed. Skipping Gemini
 
 ## API Key
 
-Gemini requires `GEMINI_API_KEY` in the environment. Load it from the `.env` file in the current working directory (the folder Claude Code is running from):
+Gemini requires `GEMINI_API_KEY` in the environment. Load it from the `.env` file in the current working directory (the folder your current agent session is running from):
 
 ```bash
 GEMINI_API_KEY=$(grep '^GEMINI_API_KEY=' .env 2>/dev/null | cut -d= -f2-)

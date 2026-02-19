@@ -86,7 +86,7 @@ Analyze changed code for quality issues and technical debt.
 
 ### multi-review - Multi-Perspective Review
 
-Review changes using five specialized perspectives: Future Maintainer, System Architect, Product/User Advocate, and two external reviewers -- Codex (Security & Correctness) and Gemini (Performance & Testing).
+Review changes using five specialized perspectives: Future Maintainer, System Architect, Product/User Advocate, one opposite-provider external reviewer (Security & Correctness), and Gemini (Performance & Testing).
 
 **Target branch:** $ARGUMENTS (defaults to current branch if not specified)
 
@@ -171,7 +171,7 @@ Before listing findings, follow this reasoning process:
 
 #### Sub-Agent Instructions
 
-Spawn three Claude sub-agents **in parallel** (via Task tool), plus Codex and Gemini reviews (via Bash tool). All five run concurrently. Give each agent:
+Spawn three internal sub-agents **in parallel** (via Task tool), plus one opposite-provider external review and one Gemini review (via Bash tool). All five run concurrently. Give each agent:
 
 - The **change context summary** from Setup step 3
 - The **review directory path** (current directory or worktree path)
@@ -282,28 +282,41 @@ CHECKLIST:
 
 ---
 
-**Agent 4: External Reviewer (Codex) -- Security & Correctness**
+**Agent 4: External Reviewer (Opposite Provider) -- Security & Correctness**
 
 This agent runs via Bash tool (not Task tool) in parallel with the other four.
 
 Instructions (for root agent):
 
-1. Check if Codex is available:
+1. Detect current host and choose opposite reviewer:
    ```bash
-   which codex >/dev/null 2>&1 || echo "CODEX_NOT_INSTALLED"
+   if [ -n "${CODEX_THREAD_ID:-}" ]; then
+     REVIEWER_KIND="claude"
+   else
+     REVIEWER_KIND="codex"
+   fi
    ```
 
-2. If not installed, skip and note in synthesis: "Codex review skipped - not installed"
+2. Check reviewer availability:
+   ```bash
+   if [ "$REVIEWER_KIND" = "codex" ]; then
+     which codex >/dev/null 2>&1 || echo "CODEX_NOT_INSTALLED"
+   else
+     which claude >/dev/null 2>&1 || echo "CLAUDE_NOT_INSTALLED"
+   fi
+   ```
 
-3. If available, run (adjust based on input type):
+3. If unavailable, skip and note in synthesis:
+   - if `codex`: `"Codex review skipped - not installed"`
+   - if `claude`: `"Claude review skipped - not installed"`
 
-   **IMPORTANT:** Always use `2>&1` (not `2>/dev/null`) to capture both stdout and stderr. Always `cd` into a git repo directory before running codex so `gh` commands work.
+4. If available, run (adjust based on input type):
+
+   **IMPORTANT:** Always use `2>&1` (not `2>/dev/null`) to capture both stdout and stderr. Always `cd` into a git repo directory before running the external reviewer so `gh` commands work.
 
    **If $ARGUMENTS is a GitHub PR URL:**
    ```bash
-   cd <REVIEW_DIRECTORY> && \
-   timeout 900 codex exec --skip-git-repo-check --dangerously-bypass-approvals-and-sandbox \
-     "You are a security engineer and correctness specialist reviewing a pull request.
+   PROMPT="You are a security engineer and correctness specialist reviewing a pull request.
 
    CHANGE CONTEXT: <SUMMARY_FROM_SETUP_STEP_3>
 
@@ -346,14 +359,19 @@ Instructions (for root agent):
    - evidence: [specific code reference]
    - recommendation: [concrete fix]
 
-   End with: Total: X findings (Y blocking, Z important, W suggestions)" 2>&1
+   End with: Total: X findings (Y blocking, Z important, W suggestions)"
+
+   cd <REVIEW_DIRECTORY> && \
+   if [ "$REVIEWER_KIND" = "codex" ]; then
+     timeout 900 codex exec --skip-git-repo-check --dangerously-bypass-approvals-and-sandbox "$PROMPT" 2>&1
+   else
+     timeout 900 claude --dangerously-skip-permissions -p "$PROMPT" 2>&1
+   fi
    ```
 
    **If reviewing local branch (git diff):**
    ```bash
-   cd <REVIEW_DIRECTORY> && \
-   timeout 900 codex exec --skip-git-repo-check --dangerously-bypass-approvals-and-sandbox \
-     "You are a security engineer and correctness specialist reviewing code changes.
+   PROMPT="You are a security engineer and correctness specialist reviewing code changes.
 
    CHANGE CONTEXT: <SUMMARY_FROM_SETUP_STEP_3>
 
@@ -394,10 +412,17 @@ Instructions (for root agent):
    - evidence: [specific code reference]
    - recommendation: [concrete fix]
 
-   End with: Total: X findings (Y blocking, Z important, W suggestions)" 2>&1
+   End with: Total: X findings (Y blocking, Z important, W suggestions)"
+
+   cd <REVIEW_DIRECTORY> && \
+   if [ "$REVIEWER_KIND" = "codex" ]; then
+     timeout 900 codex exec --skip-git-repo-check --dangerously-bypass-approvals-and-sandbox "$PROMPT" 2>&1
+   else
+     timeout 900 claude --dangerously-skip-permissions -p "$PROMPT" 2>&1
+   fi
    ```
 
-4. Include Codex output in synthesis alongside other reviews
+5. Include this external reviewer output in synthesis alongside other reviews
 
 ---
 
@@ -522,7 +547,7 @@ Instructions (for root agent):
 
 #### Synthesis
 
-After receiving all five reviews (three Claude sub-agents + Codex + Gemini):
+After receiving all five reviews (three internal sub-agents + opposite-provider external reviewer + Gemini):
 
 ##### Step 1: Agreement Classification
 
