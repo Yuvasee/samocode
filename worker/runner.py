@@ -190,7 +190,14 @@ def run_claude_once(
             "  1. Pass --repo /path to the orchestrator, or\n"
             "  2. Set MAIN_REPO in .samocode file"
         )
-    working_dir = config.repo_path
+    # Determine working directory: worktree if exists, else main repo
+    # (mirrors logic in build_session_context)
+    session_name = session_path.name
+    worktree_path = config.worktrees_dir / session_name
+    if phase == "init" or not worktree_path.exists():
+        working_dir = config.repo_path
+    else:
+        working_dir = worktree_path
     logger.info(f"Working Dir: {working_dir}")
 
     logger.info(f"Using agent: {agent_name} (phase: {phase})")
@@ -596,6 +603,9 @@ def _execute_process(
     """Execute subprocess and return result."""
     process: subprocess.Popen[str] | None = None
     try:
+        env = os.environ.copy()
+        env.pop("CLAUDECODE", None)
+
         process = subprocess.Popen(
             cli_args,
             cwd=str(working_dir),
@@ -603,6 +613,7 @@ def _execute_process(
             stderr=subprocess.PIPE,
             text=True,
             bufsize=1,
+            env=env,
         )
 
         stdout, stderr = stream_logs(process, log_file, timeout, provider_name, on_line)
