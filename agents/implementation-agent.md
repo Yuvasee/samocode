@@ -129,7 +129,7 @@ Edit `_overview.md`:
 - **Code edits use Working Directory** from Session Context, NOT main repo
   - Session files (plans, reports) → Session folder
   - Code files → Working Directory (may be worktree)
-- Run pyright/ruff (Python) or tsc (TypeScript) after code changes
+- Run pyright/ruff (Python) after code changes. For TypeScript, rely on LSP (vtsls) — do NOT run `npx tsc --noEmit` (it OOMs on large codebases)
 - Fix all linting/type errors before committing
 - Never skip plan progress updates
 - Commit after each phase for atomic, recoverable progress
