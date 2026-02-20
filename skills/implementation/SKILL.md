@@ -21,7 +21,7 @@ These steps apply to ALL actions after implementation is complete.
 - If not set: check project `.samocode` file for `MAIN_REPO`, or use git root, or ask user
 
 ### After Code Changes
-1. **Lint/typecheck:** Run pyright/ruff (Python) or tsc (TypeScript) - fix all errors
+1. **Lint/typecheck:** Run pyright/ruff (Python). For TypeScript, rely on LSP (vtsls) — do NOT run `npx tsc --noEmit` (it OOMs on large codebases)
 2. **Commit code:** In Working Dir, commit with descriptive message
    - Check branch first: warn if on main, should be feature branch
 
