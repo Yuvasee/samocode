@@ -93,7 +93,7 @@ Spawn two agents with different philosophies to solve the same task independentl
 
 #### Dual Agent Execution
 
-Spawn 2 sub-agents **in parallel**. Do NOT tell them about each other.
+Spawn 2 sub-agents **in parallel** (model: sonnet). Do NOT tell them about each other.
 
 Both agents solve the **entire task independently** with different philosophies.
 
@@ -288,7 +288,7 @@ IMPORTANT: Only work on this specific task. Don't do other parts of the plan.
 
 #### Dual Agent Execution
 
-Spawn 2 sub-agents **in parallel** with the context below. Do NOT tell them about each other.
+Spawn 2 sub-agents **in parallel** (model: sonnet) with the context below. Do NOT tell them about each other.
 
 **CRITICAL:** Both agents solve the **entire task independently**. This is NOT task splitting - each agent produces a FULL solution with their own philosophy.
 
