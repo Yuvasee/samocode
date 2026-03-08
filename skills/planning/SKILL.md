@@ -27,6 +27,12 @@ Creates detailed implementation plans with phases, stored within the session fol
 2. **Create plan file:**
    - Location: `[SESSION_PATH]/[TIMESTAMP_FILE]-plan-[plan-slug].md`
 
+   **Phase design principles:**
+   - Each phase is executed as a **single samocode iteration** — keep phases bite-sized and independently completable
+   - 1–3 focused steps per phase (not counting lint/typecheck)
+   - Split by logical boundary: one file/module/concern per phase when possible
+   - Prefer more small phases over fewer large ones
+
    Structure:
    ```markdown
    # Plan: [Title]
