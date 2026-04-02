@@ -1,11 +1,15 @@
 ---
 name: implementation
-description: Execute implementation tasks with different approaches (single, dual-agent, plan-based).
+description: >
+  Implement features, fix bugs, refactor code, and complete coding tasks across a codebase within a samocode session.
+  Handles complex multi-file changes by spawning parallel sub-agents that propose competing solutions (minimal vs clean),
+  then compares and applies the best approach. Use when the user asks to implement, build, code, fix, refactor,
+  or complete a development task from a session plan.
 ---
 
 # Implementation
 
-Executes implementation tasks using different approaches: direct execution, dual-agent comparison, or plan-based execution.
+Implements features, fixes bugs, refactors code, and completes coding tasks within a samocode session. For non-trivial changes, spawns two parallel sub-agents with different philosophies (minimal footprint vs clean foundation), compares their proposals, and applies the chosen solution.
 
 ## Requirements
 
