@@ -6,5 +6,8 @@ __pycache__/
 .coverage
 .coverage.*
 htmlcov/
+dist/
+build/
+*.egg-info/
 
 _samocode/
