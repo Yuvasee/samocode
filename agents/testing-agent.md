@@ -123,6 +123,6 @@ cd [SESSION_PATH] && git add -A && git commit -m "testing: [pass/fail] - [brief 
 
 - Don't auto-fix failures - document and signal blocked
 - Focus on session-specific functionality, not full E2E
-- Use browser tools (chrome-devtools MCP) for UI testing if available
+- **Browser E2E is mandatory when implementation touched FE files** — the `testing` skill enforces this. Do NOT signal `continue` while skipping browser verification with environmental excuses (other container using the mount, "manual" plan phase, etc.). The skill authorizes stopping the project's dev container and starting it from this worktree.
 - Use API tools for backend testing
 - Keep test scope appropriate to changes made

@@ -27,34 +27,37 @@ Tests the specific feature or bug fix implemented in the current session. NOT fu
 
 3. **Select browser testing tool** (if frontend testing needed):
 
-   Choose the most suitable tool for your needs:
+   **Default: `playwright-cli`** — use the `playwright-cli` skill. It handles auth, screenshots, clicks, form fills, route mocking, and extraction via a single CLI. First choice for all E2E work in this environment.
 
-   | Tool | Best For | Setup |
-   |------|----------|-------|
-   | chrome-devtools MCP | Quick inspection, console access | Add to `.mcp.json` |
-   | Puppeteer | Scripted browser automation | `npx puppeteer` |
-   | Playwright | Cross-browser testing, screenshots | `npx playwright` |
+   **Backup: Puppeteer via bash** — use only if `playwright-cli` is unavailable (missing install, broken Chromium, or the scenario specifically needs Puppeteer APIs).
 
-   **Recommendation:**
-   - Simple UI verification -> chrome-devtools MCP
-   - Complex interactions -> Puppeteer or Playwright
-   - Need screenshots/traces -> Playwright
+   | Tool | Role | When to use |
+   |------|------|-------------|
+   | playwright-cli | **Primary** | All E2E: auth flows, clicks, screenshots, network mocking, extraction |
+   | Puppeteer (`npx puppeteer`) | Backup | Only if playwright-cli is unavailable or unsuitable |
+   | chrome-devtools MCP | Niche | Live console/network inspection when driving a human-operated browser |
 
-   **If adding MCP:** After modifying `.mcp.json`, signal `continue` to restart the agent process (MCP doesn't hot-reload).
+   **Recommendation:** Start with `playwright-cli`. Fall back to Puppeteer only with a stated reason.
 
-4. **Start the application:**
-   - Read project's `.samocode` file or README for startup instructions
-   - Follow project-specific setup commands
-   - Verify app is running (check ports, health endpoints)
-   - If fails to start -> document error, signal blocked
+   **If adding MCP (e.g., chrome-devtools):** After modifying `.mcp.json`, signal `continue` to restart the agent process (MCP doesn't hot-reload).
+
+4. **Start the application from THIS worktree:**
+   - Read project's `.samocode` file or README for startup instructions.
+   - **If the project uses a single named dev container that is currently mounted from another worktree, stop it and restart from this worktree.** Named dev containers are typically shared across sessions; it is EXPECTED that browser testing may disrupt another session and that is acceptable. Record in the test report which container (if any) was stopped.
+   - Verify app is running (ports, health endpoints). If fails to start after two retries, signal blocked.
 
 5. **Execute feature tests:**
 
-   **Browser testing:**
-   - Navigate to relevant page
-   - Interact with new/modified UI elements
-   - Verify expected behavior
-   - Check console for errors
+   **Browser E2E is MANDATORY when implementation touched frontend files** (any `*.tsx`/`*.ts`/`*.jsx`/`*.js`/`*.css` in the project's frontend directories). Deferring to "human verification" or to a "manual" phase in the plan is NOT allowed — regardless of what the plan labels it.
+
+   Required per FE-touching session:
+   - Navigate to every page the feature changes.
+   - Exercise the new/modified UI (toggles, filters, forms, empty/error states).
+   - Capture screenshots of each key view to `[SESSION_PATH]/_screenshots/[NN]-[view-slug].png`. At minimum: default state, post-interaction state, one edge case.
+   - Network audit: record request method + URL + params for the feature's API traffic and include it in the test report. This is how you prove the shipped queries match the intended ones.
+   - Console audit: any new browser error or warning introduced by the change blocks the phase.
+
+   **Mock data:** if the feature needs data density (lists, charts, timelines, pagination), seed it via the project's existing scripts or fixtures (check the project README, seed/fixture directories, or `database*/scripts/`). Empty states alone are not sufficient coverage.
 
    **API testing:**
    ```bash
@@ -84,7 +87,7 @@ Tests the specific feature or bug fix implemented in the current session. NOT fu
    ## Test Environment
    - Working Dir: [path]
    - App Status: [running/failed to start]
-   - Testing Tools: [chrome-devtools/puppeteer/playwright/curl]
+   - Testing Tools: [playwright-cli/puppeteer/chrome-devtools/curl]
 
    ## Test Steps
    1. [Step and result]
@@ -108,26 +111,17 @@ Tests the specific feature or bug fix implemented in the current session. NOT fu
 9. **Signal result:**
     - Tests PASS -> signal `continue`, recommend quality phase
     - Tests FAIL -> signal `blocked` with failure details (don't auto-fix)
+    - **Do NOT signal `continue` if mandatory browser E2E was skipped.** If the app could not be brought up after two retries, or if both playwright-cli and Puppeteer are unavailable, signal `blocked` with `needs: "human_decision"` — never defer silently.
 
 ## Browser Tool Setup
 
-### chrome-devtools MCP
+### playwright-cli (primary)
 
-Add to `.mcp.json`:
-```json
-{
-  "mcpServers": {
-    "chrome-devtools": {
-      "command": "npx",
-      "args": ["chrome-devtools-mcp@latest", "--headless=true"]
-    }
-  }
-}
-```
+Invoke the `playwright-cli` skill. It handles browser automation via a single CLI — navigate, click, fill, screenshot, extract, and route-mock without writing a driver script. On hosts where the bundled Chromium is missing or unsuitable, configure `.playwright/cli.config.json` with an `executablePath` pointing at a system Chromium and any required launch flags (e.g. `--no-sandbox`).
 
-Then signal `continue` to restart with new MCP.
+### Puppeteer (backup)
 
-### Puppeteer (via Bash)
+Use only when playwright-cli is unavailable or the scenario needs Puppeteer-specific APIs (e.g. CDP access patterns that playwright-cli doesn't expose). State the reason for the fallback in the test report.
 
 ```bash
 # Quick test script
@@ -143,30 +137,28 @@ const puppeteer = require('puppeteer');
 EOF
 ```
 
-### Playwright (via Bash)
+### chrome-devtools MCP (niche)
 
-```bash
-# Quick test
-npx playwright test --headed=false
+Useful when you need to inspect a live, human-operated session (console, network tab) rather than drive the browser yourself. Add to `.mcp.json`:
 
-# Or inline script
-npx playwright <<'EOF'
-const { chromium } = require('playwright');
-(async () => {
-  const browser = await chromium.launch();
-  const page = await browser.newPage();
-  await page.goto('http://localhost:3000');
-  await page.screenshot({ path: 'test.png' });
-  await browser.close();
-})();
-EOF
+```json
+{
+  "mcpServers": {
+    "chrome-devtools": {
+      "command": "npx",
+      "args": ["chrome-devtools-mcp@latest", "--headless=true"]
+    }
+  }
+}
 ```
+
+Then signal `continue` to restart with new MCP.
 
 ## Edge Cases
 
 - Working Dir not in `_overview.md` -> Check project .samocode file for MAIN_REPO, or ask user
 - App fails to start -> Document in test report, signal blocked
-- MCP not available -> Use Puppeteer/Playwright via bash instead
+- playwright-cli unavailable or broken -> Fall back to Puppeteer via bash; state the reason in the test report
 - Can't determine what to test -> Review implementation docs, ask if unclear
 - No implementation phase completed -> Signal blocked (nothing to test)
 

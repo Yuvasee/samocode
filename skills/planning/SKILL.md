@@ -32,6 +32,7 @@ Creates detailed implementation plans with phases, stored within the session fol
    - 1–3 focused steps per phase (not counting lint/typecheck)
    - Split by logical boundary: one file/module/concern per phase when possible
    - Prefer more small phases over fewer large ones
+   - **Do NOT label any phase "Manual browser verification" or similar.** Samocode's testing-agent runs browser E2E autonomously (container restart, data seeding, screenshots included). Carving it out as a "manual" phase gives the testing-agent permission to defer. Put browser verification criteria in the standard Testing phase or as acceptance checks on the UI-touching phases.
 
    Structure:
    ```markdown

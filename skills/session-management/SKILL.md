@@ -81,6 +81,9 @@ Create a new work session.
 
    **Working Dir** = `[WORKTREES]/[YY-MM-DD]-[session-name]`
 
+   **Restore gitignored env files in the worktree** (`git worktree add` does not copy gitignored files):
+   - If the project relies on a `.env` (or per-service `.env`) that lives outside git, copy it from the main repo, or seed it from a secrets store. Path layout is project-specific — check `MAIN_REPO`'s `.env*` files and the project README.
+
    **If WORKTREES not set** (non-repo project): fall back to `MAIN_REPO`, or `git rev-parse --show-toplevel`, or current directory.
 
 5. **Create _overview.md:**
