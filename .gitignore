@@ -3,5 +3,8 @@ logs/
 __pycache__/
 *.pyc
 .env
+.coverage
+.coverage.*
+htmlcov/
 
 _samocode/
