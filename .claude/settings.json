@@ -1,0 +1,13 @@
+{
+  "extraKnownMarketplaces": {
+    "revdiff": {
+      "source": {
+        "source": "github",
+        "repo": "umputun/revdiff"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "revdiff@revdiff": true
+  }
+}
