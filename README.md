@@ -1,20 +1,38 @@
-# Samocode - Autonomous Session Orchestrator
+<div align="center">
 
-## Explain Like I'm 10
+# samocode
 
-Imagine you have a really smart helper (Claude or Codex) that can read code and write code. But it forgets everything after each conversation. So we built a system where:
+**Walk-away AI coding sessions, locally orchestrated.**
+Drives Claude (primary) or Codex through full SDLC phases with human gates,
+so you can hand off multi-hour engineering work and walk away.
 
-1. **A notebook** (`_overview.md`) keeps track of what's been done and what's next
-2. **A simple loop** (Python script) wakes up the AI CLI, says "read the notebook and do the next thing", then waits
-3. The AI reads the notebook, does one piece of work, writes what happened back in the notebook, and goes to sleep
-4. The loop wakes it up again, and repeats until the job is done
-5. **You** (through a parent session) watch the progress and answer questions when needed
+[![PyPI](https://img.shields.io/pypi/v/samocode.svg)](https://pypi.org/project/samocode/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/)
+[![CI](https://github.com/Yuvasee/samocode/actions/workflows/ci.yml/badge.svg)](https://github.com/Yuvasee/samocode/actions/workflows/ci.yml)
 
-That's it. The Python loop is intentionally dumb; the child agent makes all the decisions.
+[Quick start](#quick-start) · [How it works](#how-it-works) · [vs alternatives](#vs-alternatives) · [Examples](examples/)
+
+</div>
 
 ---
 
-This is a practical supervised agent loop for real repository work: research, planning, implementation, testing, and quality passes. It can handle large chunks end-to-end, but production review is still recommended.
+## What this is
+
+You give samocode a real engineering task — research a codebase, plan a refactor, implement a feature, run tests, clean up. It runs an AI CLI in a loop, walking your task through investigation → planning → implementation → testing → quality phases. It pauses to ask you questions when it needs to (`_qa.md`), waits for plan approval, and notifies you on Telegram when something needs your attention. You come back two hours later, your branch has the work done, with commits, tests, and a summary.
+
+It's open-source, provider-agnostic (works with Claude, Codex, or Gemini CLI), and runs locally — no SaaS, no proxy, your code never leaves your machine.
+
+Not an engineer? See [docs/eli10.md](docs/eli10.md) for a friendly walkthrough.
+
+## When this is useful
+
+- "Add JWT auth to this Express app, write tests, make sure CI passes." (90 min unattended)
+- "Investigate how rate-limiting currently works in this codebase, then design a new sliding-window approach." (45 min unattended)
+- "Refactor this 800-line file into focused modules, keep the test suite green." (2 hours unattended)
+- "Run the linter on the whole repo, fix every issue except the ones in `legacy/`." (30 min unattended)
+
+If your task is "I need to think about this with the AI for 10 minutes" — use Claude / Cursor / Aider directly. samocode is for the cases where you'd rather walk away.
 
 ## Installation
 
