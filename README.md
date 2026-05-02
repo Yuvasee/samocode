@@ -34,70 +34,60 @@ Not an engineer? See [docs/eli10.md](docs/eli10.md) for a friendly walkthrough.
 
 If your task is "I need to think about this with the AI for 10 minutes" — use Claude / Cursor / Aider directly. samocode is for the cases where you'd rather walk away.
 
-## Installation
+## Quick start (60 seconds)
 
 ```bash
-cd ~/samocode
-./install.sh          # Creates symlinks to ~/.claude/ (skills/commands/agents)
-pip install -r requirements.txt
-
-# Optional: configure environment
-cp .env.example .env  # Set provider, CLI paths/models, Telegram tokens, etc.
+pip install samocode
 ```
 
-For each project, create a `.samocode` file in the project root:
-```
-MAIN_REPO=~/your-project/repo
+Create `.samocode` in your project root:
+```ini
+MAIN_REPO=~/your-project
 WORKTREES=~/your-project/worktrees/
 SESSIONS=~/your-project/_sessions/
 ```
 
-## Quick Start
-
-Start your agent session in the project directory and tell it what to do:
-```
-You: "Run samocode with dive into our authentication architecture
-      and existing user models. Task: add JWT-based user authentication."
-```
-
-The parent session starts the worker, monitors progress, and reports back. When samocode has questions, parent relays them to you:
-```
-Parent: "Questions in _qa.md: Which auth method? Where to store tokens?"
-You:    "JWT, httpOnly cookies"
+Run a session:
+```bash
+samocode \
+  --config ~/your-project/.samocode \
+  --session add-jwt-auth \
+  --task "Add JWT-based authentication to the Express API"
 ```
 
-## Architecture
+samocode creates a worktree, spawns the AI CLI, walks the task through phases, and signals when it's done or needs you. Watch progress in `~/your-project/_sessions/26-XX-XX-add-jwt-auth/_overview.md`.
 
-Three layers: **Parent session** (your chat) → **Worker** (Python loop) → **Child AI CLI** (per-iteration instances)
-
-```
-Parent Session         Worker (Python)          Child Agent CLI
-──────────────        ────────────────         ───────────────
-You talk here    →    Spawns provider CLI  →   Reads _overview.md
-Monitors progress     Reads signals            Executes one action
-Handles Q&A           Sends notifications      Writes signal
+To hack on samocode itself, clone the repo instead:
+```bash
+git clone https://github.com/Yuvasee/samocode ~/samocode
+cd ~/samocode && ./install.sh && pip install -r requirements.txt
 ```
 
-The Python worker is intentionally dumb: it invokes the configured provider, reads `_signal.json`, and decides loop/stop/pause. The child agent performs the real work.
+→ See [`examples/`](examples/) for runnable scenarios.
 
-## Phases
+## How it works
+
+Three layers, each with a single responsibility:
 
 ```
-investigation → requirements → planning → implementation → testing → quality → done
-                    ↑              ↑
-               HUMAN GATE     HUMAN GATE
-              (answer Q&A)   (approve plan)
+Parent session       Worker (Python)         Child AI CLI
+─────────────       ───────────────         ────────────
+You + your CLI  →   spawns provider CLI  →  reads _overview.md
+monitors progress   reads _signal.json      executes one action
+relays Q&A          decides loop/stop       writes _signal.json
 ```
 
-| Phase | What happens |
-|-------|-------------|
-| investigation | Explore the codebase |
-| requirements | Q&A with human via `_qa.md` |
-| planning | Create plan, wait for approval |
-| implementation | Execute plan |
-| testing | Verify the feature works |
-| quality | Code review and cleanup |
-| done | Generate summary |
+Each iteration is **stateless**: the child CLI starts fresh, reads `_overview.md`, executes one action, writes a signal, exits. The Python worker is intentionally dumb — it just spawns the CLI and reads signals. All decisions happen in the child agent.
+
+Phases:
+```
+init → investigation → requirements → planning → implementation → testing → quality → done
+                            ↑              ↑
+                       human gate     human gate
+                       (answer Q&A)   (approve plan)
+```
+
+→ See [ARCHITECTURE.md](ARCHITECTURE.md) for deeper dive.
 
 ## Configuration
 
