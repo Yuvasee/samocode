@@ -89,6 +89,21 @@ init → investigation → requirements → planning → implementation → test
 
 → See [ARCHITECTURE.md](ARCHITECTURE.md) for deeper dive.
 
+## vs alternatives
+
+| Tool | Style | Session length | Human gates | Provider |
+|------|-------|----------------|-------------|----------|
+| **samocode** | External orchestrator over AI CLI | Hours–days, multi-phase | Built-in (Q&A + plan approval) | Claude / Codex |
+| Aider | Interactive pair-programming | Minutes–hours | Per-message | Any LLM via API |
+| Cursor Background Agents | SaaS unattended runs | Hours | Limited | Cursor's own |
+| Devin | Closed SaaS | Hours | Limited | Cognition's own |
+| LangGraph | Embeddable graph framework | App-defined | Code-defined | Any |
+| CrewAI | Embeddable role-based multi-agent | App-defined | Code-defined | Any |
+| AutoGen | Embeddable conversational multi-agent | App-defined | Code-defined | Any |
+| Claude Agent SDK | SDK for embedding Claude agents | App-defined | Code-defined | Claude |
+
+**TL;DR positioning:** samocode is the open-source, local-first version of "set the AI on this task and walk away" tooling, with explicit phase separation and human gates.
+
 ## Configuration
 
 ### `.samocode` File (per project, all required)
@@ -112,6 +127,19 @@ init → investigation → requirements → planning → implementation → test
 | `CODEX_TIMEOUT` | `1800` | Codex timeout per iteration (seconds) |
 | `TELEGRAM_BOT_TOKEN` | - | Telegram notifications |
 | `TELEGRAM_CHAT_ID` | - | Telegram notifications |
+
+## Phase reference
+
+| Phase | What happens |
+|-------|--------------|
+| init | Create worktree + session infrastructure |
+| investigation | Explore the codebase via `dive` skill |
+| requirements | Q&A with you via `_qa.md` (human gate) |
+| planning | Create phased plan, wait for approval (human gate) |
+| implementation | Execute plan phases iteratively |
+| testing | Verify by fresh agent (not ad-hoc tests) |
+| quality | Review + fix blocking issues (max 3 iterations) |
+| done | Generate summary, signal complete |
 
 ## Worker CLI
 
