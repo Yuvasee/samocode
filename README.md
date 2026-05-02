@@ -19,7 +19,7 @@ so you can hand off multi-hour engineering work and walk away.
 
 ## What this is
 
-You give samocode a real engineering task — research a codebase, plan a refactor, implement a feature, run tests, clean up. It runs an AI CLI in a loop, walking your task through investigation → planning → implementation → testing → quality phases. It pauses to ask you questions when it needs to (`_qa.md`), waits for plan approval, and notifies you on Telegram when something needs your attention. You come back two hours later, your branch has the work done, with commits, tests, and a summary.
+You give samocode a real engineering task — research a codebase, plan a refactor, implement a feature, run tests, clean up. It runs an AI CLI in a loop, walking your task through investigation → requirements → planning → implementation → testing → quality phases. It pauses to ask you questions when it needs to (`_qa.md`), waits for plan approval, and notifies you on Telegram when something needs your attention. You come back two hours later, your branch has the work done, with commits, tests, and a summary.
 
 It's open-source, runs Claude or Codex as the orchestration provider (Gemini available as a second-opinion subagent), and runs locally — no SaaS, no proxy, your code never leaves your machine.
 
@@ -183,6 +183,8 @@ Standalone utilities, work without the orchestrator:
 ## Examples
 
 → [`examples/`](examples/)
+
+*These are scaffolds for the next polish phase — none exist yet.*
 
 - [`hello-agent/`](examples/hello-agent/) — minimal session (creates a single file)
 - [`add-feature/`](examples/add-feature/) — full pipeline on a small Express app
