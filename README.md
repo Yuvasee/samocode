@@ -164,15 +164,15 @@ python main.py --config ~/project/.samocode --session my-task --provider codex
 - In Claude mode, samocode uses native Claude agent flags.
 - In Codex mode, samocode injects the selected phase agent instructions into the iteration prompt.
 
-## Signal Protocol
+## Signal protocol
 
-The child agent writes `_signal.json` to control flow:
+The child agent writes `_signal.json` to control the loop:
 
 | Signal | Effect | Example |
 |--------|--------|---------|
-| `continue` | Next iteration | `{"status": "continue"}` |
-| `done` | Stop | `{"status": "done", "summary": "..."}` |
-| `blocked` | Stop + notify | `{"status": "blocked", "reason": "...", "needs": "human_decision"}` |
+| `continue` | Next iteration | `{"status": "continue", "phase": "implementation"}` |
+| `done` | Stop, success | `{"status": "done", "summary": "..."}` |
+| `blocked` | Stop, notify human | `{"status": "blocked", "reason": "...", "needs": "human_decision"}` |
 | `waiting` | Pause for input | `{"status": "waiting", "for": "qa_answers"}` |
 
 ## Session Structure
@@ -202,6 +202,44 @@ Standalone utilities, work without the orchestrator:
 | `/cleanup` | Code cleanup analysis |
 | `/multi-review` | Multi-perspective code review |
 | `/session-start`, `/session-continue`, `/session-archive` | Session management |
+
+## Examples
+
+→ [`examples/`](examples/)
+
+- [`hello-agent/`](examples/hello-agent/) — minimal session (creates a single file)
+- [`add-feature/`](examples/add-feature/) — full pipeline on a small Express app
+- [`refactor/`](examples/refactor/) — multi-file refactor with tests
+- [`research-only/`](examples/research-only/) — investigation-only, no code changes
+- [`provider-codex/`](examples/provider-codex/) — same task, Codex provider
+
+Examples are scaffolds for the next polish phase — not all are present yet.
+
+## Providers
+
+Today: **Claude** is the primary orchestration provider. **Codex** (`--provider codex`) works for full sessions but with reduced feature parity (no native subagents — phase agents are injected as prompts). **Gemini** is available as a second-opinion subagent in the `/multi-review` skill, not as an orchestration provider.
+
+On the roadmap: full Codex/Gemini orchestration parity (native subagent equivalents, provider-specific phase agents).
+
+## Roadmap
+
+- [ ] Monitor process for crash recovery (see [IDEAS.md](IDEAS.md) §1)
+- [ ] Stall detection
+- [ ] Handoff pattern for context refresh
+- [ ] Parallel worker support
+- [ ] Full Codex/Gemini orchestration parity
+
+## Contributing
+
+Issues and PRs welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+### Recommended Claude Code plugins
+
+This repo's `.claude/settings.json` recommends [revdiff](https://github.com/umputun/revdiff). When you open the repo in Claude Code, you'll be prompted to install it (skippable). It's used for inline diff review.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
 
 ## Core Flow
 
