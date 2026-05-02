@@ -1,85 +1,108 @@
-# Samocode - Autonomous Session Orchestrator
+<div align="center">
 
-## Explain Like I'm 10
+# samocode
 
-Imagine you have a really smart helper (Claude or Codex) that can read code and write code. But it forgets everything after each conversation. So we built a system where:
+**Walk-away AI coding sessions, locally orchestrated.**
+Drives Claude (primary) or Codex through full SDLC phases with human gates,
+so you can hand off multi-hour engineering work and walk away.
 
-1. **A notebook** (`_overview.md`) keeps track of what's been done and what's next
-2. **A simple loop** (Python script) wakes up the AI CLI, says "read the notebook and do the next thing", then waits
-3. The AI reads the notebook, does one piece of work, writes what happened back in the notebook, and goes to sleep
-4. The loop wakes it up again, and repeats until the job is done
-5. **You** (through a parent session) watch the progress and answer questions when needed
+[![PyPI](https://img.shields.io/pypi/v/samocode.svg)](https://pypi.org/project/samocode/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/)
+[![CI](https://github.com/Yuvasee/samocode/actions/workflows/ci.yml/badge.svg)](https://github.com/Yuvasee/samocode/actions/workflows/ci.yml)
 
-That's it. The Python loop is intentionally dumb; the child agent makes all the decisions.
+[Quick start](#quick-start) · [How it works](#how-it-works) · [vs alternatives](#vs-alternatives) · [Examples](examples/)
+
+</div>
 
 ---
 
-This is a practical supervised agent loop for real repository work: research, planning, implementation, testing, and quality passes. It can handle large chunks end-to-end, but production review is still recommended.
+## What this is
 
-## Installation
+You give samocode a real engineering task — research a codebase, plan a refactor, implement a feature, run tests, clean up. It runs an AI CLI in a loop, walking your task through investigation → requirements → planning → implementation → testing → quality phases. It pauses to ask you questions when it needs to (`_qa.md`), waits for plan approval, and notifies you on Telegram when something needs your attention. You come back two hours later, your branch has the work done, with commits, tests, and a summary.
+
+It's open-source, runs Claude or Codex as the orchestration provider (Gemini available as a second-opinion subagent), and runs locally — no SaaS, no proxy, your code never leaves your machine.
+
+Not an engineer? See [docs/eli10.md](docs/eli10.md) for a friendly walkthrough.
+
+## When this is useful
+
+- "Add JWT auth to this Express app, write tests, make sure CI passes." (90 min unattended)
+- "Investigate how rate-limiting currently works in this codebase, then design a new sliding-window approach." (45 min unattended)
+- "Refactor this 800-line file into focused modules, keep the test suite green." (2 hours unattended)
+- "Run the linter on the whole repo, fix every issue except the ones in `legacy/`." (30 min unattended)
+
+If your task is "I need to think about this with the AI for 10 minutes" — use Claude / Cursor / Aider directly. samocode is for the cases where you'd rather walk away.
+
+## Quick start (60 seconds)
 
 ```bash
-cd ~/samocode
-./install.sh          # Creates symlinks to ~/.claude/ (skills/commands/agents)
-pip install -r requirements.txt
-
-# Optional: configure environment
-cp .env.example .env  # Set provider, CLI paths/models, Telegram tokens, etc.
+pip install samocode
 ```
 
-For each project, create a `.samocode` file in the project root:
-```
-MAIN_REPO=~/your-project/repo
+Create `.samocode` in your project root:
+```ini
+MAIN_REPO=~/your-project
 WORKTREES=~/your-project/worktrees/
 SESSIONS=~/your-project/_sessions/
 ```
 
-## Quick Start
-
-Start your agent session in the project directory and tell it what to do:
-```
-You: "Run samocode with dive into our authentication architecture
-      and existing user models. Task: add JWT-based user authentication."
-```
-
-The parent session starts the worker, monitors progress, and reports back. When samocode has questions, parent relays them to you:
-```
-Parent: "Questions in _qa.md: Which auth method? Where to store tokens?"
-You:    "JWT, httpOnly cookies"
+Run a session:
+```bash
+samocode \
+  --config ~/your-project/.samocode \
+  --session add-jwt-auth \
+  --task "Add JWT-based authentication to the Express API"
 ```
 
-## Architecture
+samocode creates a worktree, spawns the AI CLI, walks the task through phases, and signals when it's done or needs you. Watch progress in `~/your-project/_sessions/26-XX-XX-add-jwt-auth/_overview.md`.
 
-Three layers: **Parent session** (your chat) → **Worker** (Python loop) → **Child AI CLI** (per-iteration instances)
-
-```
-Parent Session         Worker (Python)          Child Agent CLI
-──────────────        ────────────────         ───────────────
-You talk here    →    Spawns provider CLI  →   Reads _overview.md
-Monitors progress     Reads signals            Executes one action
-Handles Q&A           Sends notifications      Writes signal
+To hack on samocode itself, clone the repo instead:
+```bash
+git clone https://github.com/Yuvasee/samocode ~/samocode
+cd ~/samocode && ./install.sh && pip install -r requirements.txt
 ```
 
-The Python worker is intentionally dumb: it invokes the configured provider, reads `_signal.json`, and decides loop/stop/pause. The child agent performs the real work.
+→ See [`examples/`](examples/) for runnable scenarios.
 
-## Phases
+## How it works
+
+Three layers, each with a single responsibility:
 
 ```
-investigation → requirements → planning → implementation → testing → quality → done
-                    ↑              ↑
-               HUMAN GATE     HUMAN GATE
-              (answer Q&A)   (approve plan)
+Parent session       Worker (Python)         Child AI CLI
+─────────────       ───────────────         ────────────
+You + your CLI  →   spawns provider CLI  →  reads _overview.md
+monitors progress   reads _signal.json      executes one action
+relays Q&A          decides loop/stop       writes _signal.json
 ```
 
-| Phase | What happens |
-|-------|-------------|
-| investigation | Explore the codebase |
-| requirements | Q&A with human via `_qa.md` |
-| planning | Create plan, wait for approval |
-| implementation | Execute plan |
-| testing | Verify the feature works |
-| quality | Code review and cleanup |
-| done | Generate summary |
+Each iteration is **stateless**: the child CLI starts fresh, reads `_overview.md`, executes one action, writes a signal, exits. The Python worker is intentionally dumb — it just spawns the CLI and reads signals. All decisions happen in the child agent.
+
+Phases:
+```
+init → investigation → requirements → planning → implementation → testing → quality → done
+                            ↑              ↑
+                       human gate     human gate
+                       (answer Q&A)   (approve plan)
+```
+
+→ See [ARCHITECTURE.md](ARCHITECTURE.md) for deeper dive.
+
+## vs alternatives
+
+| Tool | Style | Session length | Human gates | Provider |
+|------|-------|----------------|-------------|----------|
+| **samocode** | External orchestrator over AI CLI | Hours–days, multi-phase | Built-in (Q&A + plan approval) | Claude / Codex |
+| Aider | Interactive pair-programming | Minutes–hours | Per-message | Any LLM via API |
+| Cursor Background Agents | SaaS unattended runs | Hours | Limited | Cursor's own |
+| Devin | Closed SaaS | Hours | Limited | Cognition's own |
+| LangGraph | Embeddable graph framework | App-defined | Code-defined | Any |
+| CrewAI | Embeddable role-based multi-agent | App-defined | Code-defined | Any |
+| AutoGen | Embeddable conversational multi-agent | App-defined | Code-defined | Any |
+| Claude Agent SDK | SDK for embedding Claude agents | App-defined | Code-defined | Claude |
+
+**TL;DR positioning:** samocode is the open-source, local-first version of "set the AI on this task and walk away" tooling, with explicit phase separation and human gates.
 
 ## Configuration
 
@@ -105,38 +128,28 @@ investigation → requirements → planning → implementation → testing → q
 | `TELEGRAM_BOT_TOKEN` | - | Telegram notifications |
 | `TELEGRAM_CHAT_ID` | - | Telegram notifications |
 
-## Worker CLI
+## Phase reference
 
-Normally started by parent, but can be run directly:
+| Phase | What happens |
+|-------|--------------|
+| init | Create worktree + session infrastructure |
+| investigation | Explore the codebase via `dive` skill |
+| requirements | Q&A with you via `_qa.md` (human gate) |
+| planning | Create phased plan, wait for approval (human gate) |
+| implementation | Execute plan phases iteratively |
+| testing | Verify by fresh agent (not ad-hoc tests) |
+| quality | Review + fix blocking issues (max 3 iterations) |
+| done | Generate summary, signal complete |
 
-```bash
-# New session
-python main.py --config ~/project/.samocode --session my-task \
-  --dive "current API structure" --task "Redesign the REST API"
+## Signal protocol
 
-# Continue existing session
-python main.py --config ~/project/.samocode --session my-task
-
-# Run with Codex provider for this invocation
-python main.py --config ~/project/.samocode --session my-task --provider codex
-```
-
-## Provider Notes
-
-- Default provider is `claude` (`SAMOCODE_PROVIDER=claude`).
-- Set `SAMOCODE_PROVIDER=codex` (or `--provider codex`) to run iterations with Codex.
-- In Claude mode, samocode uses native Claude agent flags.
-- In Codex mode, samocode injects the selected phase agent instructions into the iteration prompt.
-
-## Signal Protocol
-
-The child agent writes `_signal.json` to control flow:
+The child agent writes `_signal.json` to control the loop:
 
 | Signal | Effect | Example |
 |--------|--------|---------|
-| `continue` | Next iteration | `{"status": "continue"}` |
-| `done` | Stop | `{"status": "done", "summary": "..."}` |
-| `blocked` | Stop + notify | `{"status": "blocked", "reason": "...", "needs": "human_decision"}` |
+| `continue` | Next iteration | `{"status": "continue", "phase": "implementation"}` |
+| `done` | Stop, success | `{"status": "done", "summary": "..."}` |
+| `blocked` | Stop, notify human | `{"status": "blocked", "reason": "...", "needs": "human_decision"}` |
 | `waiting` | Pause for input | `{"status": "waiting", "for": "qa_answers"}` |
 
 ## Session Structure
@@ -167,55 +180,42 @@ Standalone utilities, work without the orchestrator:
 | `/multi-review` | Multi-perspective code review |
 | `/session-start`, `/session-continue`, `/session-archive` | Session management |
 
-## Core Flow
+## Examples
 
-```mermaid
-sequenceDiagram
-    participant H as Human
-    participant P as Parent Session
-    participant O as main.py
-    participant C as Child Agent CLI
-    participant F as _overview.md
+→ [`examples/`](examples/)
 
-    H->>P: "Run samocode with dive X, task Y"
-    P->>O: spawn main.py
+*These are scaffolds for the next polish phase — none exist yet.*
 
-    loop Each Iteration
-        O->>C: spawn with workflow.md
-        activate C
+- [`hello-agent/`](examples/hello-agent/) — minimal session (creates a single file)
+- [`add-feature/`](examples/add-feature/) — full pipeline on a small Express app
+- [`refactor/`](examples/refactor/) — multi-file refactor with tests
+- [`research-only/`](examples/research-only/) — investigation-only, no code changes
+- [`provider-codex/`](examples/provider-codex/) — same task, Codex provider
 
-        C->>F: read _overview.md
-        F-->>C: current state
+Examples are scaffolds for the next polish phase — not all are present yet.
 
-        C->>C: determine phase
-        C->>C: execute skill
+## Providers
 
-        Note over C: RESEARCH / CODE
+Today: **Claude** is the primary orchestration provider. **Codex** (`--provider codex`) works for full sessions but with reduced feature parity (no native subagents — phase agents are injected as prompts). **Gemini** is available as a second-opinion subagent in the `/multi-review` skill, not as an orchestration provider.
 
-        C->>F: update _overview.md
-        C->>F: write artifacts
-        C->>F: write _signal.json
+On the roadmap: full Codex/Gemini orchestration parity (native subagent equivalents, provider-specific phase agents).
 
-        deactivate C
+## Roadmap
 
-        O->>F: read _signal.json
-        F-->>O: signal status
+- [ ] Monitor process for crash recovery (see [IDEAS.md](IDEAS.md) §1)
+- [ ] Stall detection
+- [ ] Handoff pattern for context refresh
+- [ ] Parallel worker support
+- [ ] Full Codex/Gemini orchestration parity
 
-        alt continue
-            Note over O: next iteration
-        else waiting
-            O->>H: notification
-            H->>F: answer Q&A / approve
-            Note over O: resume
-        else blocked
-            O->>H: notification
-            H->>F: intervene
-            Note over O: restart needed
-        else done
-            O->>H: notification
-            Note over O: complete
-        end
-    end
+## Contributing
 
-    P->>H: "Complete! Summary: ..."
-```
+Issues and PRs welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+### Recommended Claude Code plugins
+
+This repo's `.claude/settings.json` recommends [revdiff](https://github.com/umputun/revdiff). When you open the repo in Claude Code, you'll be prompted to install it (skippable). It's used for inline diff review.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
