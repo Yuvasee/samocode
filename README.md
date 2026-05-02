@@ -21,7 +21,7 @@ so you can hand off multi-hour engineering work and walk away.
 
 You give samocode a real engineering task — research a codebase, plan a refactor, implement a feature, run tests, clean up. It runs an AI CLI in a loop, walking your task through investigation → planning → implementation → testing → quality phases. It pauses to ask you questions when it needs to (`_qa.md`), waits for plan approval, and notifies you on Telegram when something needs your attention. You come back two hours later, your branch has the work done, with commits, tests, and a summary.
 
-It's open-source, provider-agnostic (works with Claude, Codex, or Gemini CLI), and runs locally — no SaaS, no proxy, your code never leaves your machine.
+It's open-source, runs Claude or Codex as the orchestration provider (Gemini available as a second-opinion subagent), and runs locally — no SaaS, no proxy, your code never leaves your machine.
 
 Not an engineer? See [docs/eli10.md](docs/eli10.md) for a friendly walkthrough.
 
@@ -141,29 +141,6 @@ init → investigation → requirements → planning → implementation → test
 | quality | Review + fix blocking issues (max 3 iterations) |
 | done | Generate summary, signal complete |
 
-## Worker CLI
-
-Normally started by parent, but can be run directly:
-
-```bash
-# New session
-python main.py --config ~/project/.samocode --session my-task \
-  --dive "current API structure" --task "Redesign the REST API"
-
-# Continue existing session
-python main.py --config ~/project/.samocode --session my-task
-
-# Run with Codex provider for this invocation
-python main.py --config ~/project/.samocode --session my-task --provider codex
-```
-
-## Provider Notes
-
-- Default provider is `claude` (`SAMOCODE_PROVIDER=claude`).
-- Set `SAMOCODE_PROVIDER=codex` (or `--provider codex`) to run iterations with Codex.
-- In Claude mode, samocode uses native Claude agent flags.
-- In Codex mode, samocode injects the selected phase agent instructions into the iteration prompt.
-
 ## Signal protocol
 
 The child agent writes `_signal.json` to control the loop:
@@ -240,56 +217,3 @@ This repo's `.claude/settings.json` recommends [revdiff](https://github.com/umpu
 ## License
 
 MIT — see [LICENSE](LICENSE).
-
-## Core Flow
-
-```mermaid
-sequenceDiagram
-    participant H as Human
-    participant P as Parent Session
-    participant O as main.py
-    participant C as Child Agent CLI
-    participant F as _overview.md
-
-    H->>P: "Run samocode with dive X, task Y"
-    P->>O: spawn main.py
-
-    loop Each Iteration
-        O->>C: spawn with workflow.md
-        activate C
-
-        C->>F: read _overview.md
-        F-->>C: current state
-
-        C->>C: determine phase
-        C->>C: execute skill
-
-        Note over C: RESEARCH / CODE
-
-        C->>F: update _overview.md
-        C->>F: write artifacts
-        C->>F: write _signal.json
-
-        deactivate C
-
-        O->>F: read _signal.json
-        F-->>O: signal status
-
-        alt continue
-            Note over O: next iteration
-        else waiting
-            O->>H: notification
-            H->>F: answer Q&A / approve
-            Note over O: resume
-        else blocked
-            O->>H: notification
-            H->>F: intervene
-            Note over O: restart needed
-        else done
-            O->>H: notification
-            Note over O: complete
-        end
-    end
-
-    P->>H: "Complete! Summary: ..."
-```
