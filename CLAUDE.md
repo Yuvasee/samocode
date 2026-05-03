@@ -101,3 +101,12 @@ SESSIONS=~/project/_sessions/
 - `worker/signal_history.py` - Records signals to `_signal_history.jsonl` for debugging
 - `workflow.md` - Master prompt injected into each Claude run
 - `TECH_DEBT.md` - Known architectural issues
+
+## Learnings
+
+- When rewriting git history with `filter-repo` (or `filter-branch`), stash or commit uncommitted working-tree changes first — the rewrite ends with `git reset --hard` followed by `git gc`, which destroys uncommitted work irrecoverably from git
+- When working-tree edits made by Claude Code are lost, scan `~/.claude/projects/**/*.jsonl` for `Edit`/`Write`/`Read` tool calls on the affected paths and replay chronologically from the latest Read snapshot — Claude session logs are a non-git backup of recent file states
+- After `filter-repo` finishes it removes the `origin` remote by design; re-add it, then `git fetch origin` to rebuild remote-tracking refs before any `--force-with-lease` push
+- Pin repo-local git identity (`git config --local user.email …`) when the repo's intended author differs from your global config — worktrees inherit local config automatically
+- Never accept secrets pasted into a chat as a working approach — Claude transcripts persist; treat any pasted token as compromised and rotate it immediately, then guide the user to env vars or a credentials file for future runs
+- When a session uses a worktree, start the orchestrator from the worktree path (or pass the worktree as working dir) — otherwise commits land on the main-repo branch instead of the session branch and the PR ends up split between two locations
