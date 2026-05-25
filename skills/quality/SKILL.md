@@ -92,11 +92,11 @@ Review changes using five specialized perspectives: Future Maintainer, System Ar
 
 #### Setup
 
-Before spawning sub-agents, set up the review environment:
+Before running reviewer passes, set up the review environment:
 
 1. **If `$ARGUMENTS` is empty or not provided**:
    - Use current directory, no setup needed
-   - Working directory for sub-agents: current directory
+   - Working directory for reviewers: current directory
 
 2. **If `$ARGUMENTS` is specified**:
 
@@ -115,16 +115,16 @@ Before spawning sub-agents, set up the review environment:
      git worktree add "$WORKTREE_PATH" "origin/$ARGUMENTS"
    else
      echo "Error: Branch '$ARGUMENTS' not found locally or on origin"
-     # Stop here - do not spawn sub-agents
+     # Stop here - do not run reviewers
    fi
    ```
 
-   - Working directory for sub-agents: the worktree path
+   - Working directory for reviewers: the worktree path
 
 3. **Prepare change context:**
    Read the commit messages yourself: `cd <REVIEW_DIRECTORY> && git log origin/main..HEAD --oneline`
 
-   **IMPORTANT: You MUST then spawn a haiku sub-agent** (via Task tool, model: haiku) to summarize the diff. Do NOT skip this step — reading the diff yourself wastes context you need for the final synthesis:
+   **IMPORTANT: Summarize the diff before review.** If the Task tool is available, spawn a haiku sub-agent (model: haiku) to summarize the diff. If the Task tool is not available, run this as a separate, bounded pass yourself and avoid reviewing findings during the summary pass:
 
    ```
    Run `cd <REVIEW_DIRECTORY> && git diff origin/main...HEAD` and write a concise
@@ -169,9 +169,9 @@ Before listing findings, follow this reasoning process:
 5. Only report findings you can support with specific evidence from the diff
 ```
 
-#### Sub-Agent Instructions
+#### Reviewer Execution Instructions
 
-Spawn three internal sub-agents **in parallel** (via Task tool), plus one opposite-provider external review and one Gemini review (via Bash tool). All five run concurrently. Give each agent:
+Run three internal reviewer perspectives, plus one opposite-provider external review and one Gemini review. If the Task tool is available, spawn the three internal sub-agents **in parallel**. If the Task tool is not available, run the three internal perspectives yourself as separate passes before synthesis. Give each reviewer:
 
 - The **change context summary** from Setup step 3
 - The **review directory path** (current directory or worktree path)
@@ -547,7 +547,7 @@ Instructions (for root agent):
 
 #### Synthesis
 
-After receiving all five reviews (three internal sub-agents + opposite-provider external reviewer + Gemini):
+After receiving all five reviews (three internal perspectives + opposite-provider external reviewer + Gemini):
 
 ##### Step 1: Agreement Classification
 
@@ -615,7 +615,7 @@ Each finding in sections 3-6 should include: agreement level tag, file, lines, t
 
 #### Cleanup
 
-After all sub-agents complete and synthesis is done:
+After all reviewers complete and synthesis is done:
 
 ```bash
 # Only if a worktree was created

@@ -3,7 +3,7 @@
 # samocode
 
 **Walk-away AI coding sessions, locally orchestrated.**
-Drives Claude (primary) or Codex through full SDLC phases with human gates,
+Drives Claude or Codex through full SDLC phases with human gates,
 so you can hand off multi-hour engineering work and walk away.
 
 [![PyPI](https://img.shields.io/pypi/v/samocode.svg)](https://pypi.org/project/samocode/)
@@ -62,6 +62,8 @@ To hack on samocode itself, clone the repo instead:
 git clone https://github.com/Yuvasee/samocode ~/samocode
 cd ~/samocode && ./install.sh && pip install -r requirements.txt
 ```
+
+`install.sh` links samocode skills into both `~/.claude/skills` and `~/.codex/skills`. Claude-only slash commands and agent files are linked into `~/.claude`; Codex provider runs read the phase agent files directly from the installed samocode package.
 
 → See [`examples/`](examples/) for runnable scenarios.
 
@@ -196,9 +198,9 @@ Examples are scaffolds for the next polish phase — not all are present yet.
 
 ## Providers
 
-Today: **Claude** is the primary orchestration provider. **Codex** (`--provider codex`) works for full sessions but with reduced feature parity (no native subagents — phase agents are injected as prompts). **Gemini** is available as a second-opinion subagent in the `/multi-review` skill, not as an orchestration provider.
+Today: **Claude** and **Codex** are supported orchestration providers. Claude uses native agent selection; Codex uses provider-specific prompt injection for the same phase agents and falls back to inline multi-pass workflows where Claude would use Task subagents. **Gemini** is available as a second-opinion reviewer in the `/multi-review` skill, not as an orchestration provider.
 
-On the roadmap: full Codex/Gemini orchestration parity (native subagent equivalents, provider-specific phase agents).
+On the roadmap: Gemini orchestration support and deeper provider-specific agent optimizations.
 
 ## Roadmap
 
@@ -206,7 +208,7 @@ On the roadmap: full Codex/Gemini orchestration parity (native subagent equivale
 - [ ] Stall detection
 - [ ] Handoff pattern for context refresh
 - [ ] Parallel worker support
-- [ ] Full Codex/Gemini orchestration parity
+- [ ] Gemini orchestration support
 
 ## Contributing
 

@@ -10,7 +10,7 @@ readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.10"
 authors = [{ name = "Yuri Vasilchikov", email = "yuri.v9v@gmail.com" }]
-keywords = ["claude", "claude-code", "ai", "agent", "orchestrator", "automation"]
+keywords = ["claude", "claude-code", "codex", "ai", "agent", "orchestrator", "automation"]
 classifiers = [
   "Development Status :: 3 - Alpha",
   "Environment :: Console",
@@ -44,6 +44,10 @@ packages = ["worker"]
 
 [tool.hatch.build.targets.wheel.force-include]
 "main.py" = "main.py"
+"workflow.md" = "workflow.md"
+"agents" = "agents"
+"skills" = "skills"
+"commands" = "commands"
 
 [tool.hatch.build.targets.sdist]
 include = [
@@ -58,3 +62,10 @@ include = [
   "CLAUDE.md",
   "pyproject.toml",
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+norecursedirs = [".git", ".pytest_cache", ".ruff_cache", "dist", "logs", "worktrees", "_sessions"]
+
+[tool.ruff]
+exclude = [".git", ".pytest_cache", ".ruff_cache", "dist", "logs", "worktrees", "_sessions"]

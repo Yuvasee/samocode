@@ -37,10 +37,12 @@ These steps apply to ALL actions after implementation is complete.
 
 **IMPORTANT:** For implementation phases, use dop2 (dual-agent comparison).
 
-- **dop2** (Dual-Agent): Spawn 2 Task sub-agents to propose solutions, then compare
+- **dop2** (Dual-Agent): Use 2 independent solution passes, then compare
+  - Claude Code: spawn 2 Task sub-agents in parallel when the Task tool is available
+  - Codex or no Task tool: create both proposal documents yourself in separate passes before editing code
 - **dop** (Direct): Only for trivially simple 1-2 line changes
 
-**DO NOT implement directly with Edit/Write** - spawn sub-agents to propose solutions first.
+**DO NOT implement directly with Edit/Write** until the comparison step is complete.
 
 **Rule of thumb:** If you're considering dop, ask "Could there be a cleaner way?" If yes -> use dop2.
 
@@ -93,7 +95,7 @@ Spawn two agents with different philosophies to solve the same task independentl
 
 #### Dual Agent Execution
 
-Spawn 2 sub-agents **in parallel** (model: sonnet). Do NOT tell them about each other.
+Create 2 independent solution proposals. If the Task tool is available, spawn 2 sub-agents **in parallel** (model: sonnet). If the Task tool is not available, run the two proposal passes yourself sequentially and keep them independent.
 
 Both agents solve the **entire task independently** with different philosophies.
 
@@ -262,11 +264,11 @@ IMPORTANT: Only work on this specific part. Don't do other parts of the plan.
 
 ### dop2 - Dual-Agent Plan Phase with Auto-Selection
 
-**DEFAULT IMPLEMENTATION STRATEGY** - Use Task tool to spawn 2 sub-agents.
+**DEFAULT IMPLEMENTATION STRATEGY** - Use two independent proposal passes before editing code.
 
 Execute a plan phase using dual-agent comparison, with automatic solution selection weighted toward clean approach.
 
-**CRITICAL:** You MUST use the Task tool to spawn sub-agents. DO NOT implement directly.
+**CRITICAL:** If the Task tool is available, use it to spawn sub-agents. If it is not available, create the two proposal documents yourself in separate passes. DO NOT implement directly before comparing the proposals.
 
 **Session path:** [SESSION_PATH from working memory]
 **Task:** $ARGUMENTS
@@ -288,7 +290,7 @@ IMPORTANT: Only work on this specific task. Don't do other parts of the plan.
 
 #### Dual Agent Execution
 
-Spawn 2 sub-agents **in parallel** (model: sonnet) with the context below. Do NOT tell them about each other.
+Create 2 independent proposals with the context below. If the Task tool is available, spawn 2 sub-agents **in parallel** (model: sonnet). If the Task tool is not available, do the minimal proposal first, then the clean proposal, without letting the second proposal optimize around the first.
 
 **CRITICAL:** Both agents solve the **entire task independently**. This is NOT task splitting - each agent produces a FULL solution with their own philosophy.
 

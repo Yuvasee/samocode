@@ -86,7 +86,7 @@ class ExecutionResult:
 # =============================================================================
 
 
-def run_claude_with_retry(
+def run_ai_with_retry(
     workflow_prompt_path: Path,
     session_path: Path,
     config: SamocodeConfig,
@@ -98,7 +98,7 @@ def run_claude_with_retry(
     result: ExecutionResult | None = None
 
     for attempt in range(1, config.max_retries + 1):
-        result = run_claude_once(
+        result = run_ai_once(
             workflow_prompt_path,
             session_path,
             config,
@@ -140,7 +140,7 @@ def run_claude_with_retry(
     )
 
 
-def run_claude_once(
+def run_ai_once(
     workflow_prompt_path: Path,
     session_path: Path,
     config: SamocodeConfig,
@@ -228,6 +228,46 @@ def run_claude_once(
         attempt=attempt,
         provider_name=config.ai_provider,
         on_line=on_line,
+    )
+
+
+def run_claude_with_retry(
+    workflow_prompt_path: Path,
+    session_path: Path,
+    config: SamocodeConfig,
+    initial_dive: str | None = None,
+    initial_task: str | None = None,
+    on_line: Callable[[str], None] | None = None,
+) -> ExecutionResult:
+    """Backward-compatible alias for run_ai_with_retry."""
+    return run_ai_with_retry(
+        workflow_prompt_path,
+        session_path,
+        config,
+        initial_dive,
+        initial_task,
+        on_line,
+    )
+
+
+def run_claude_once(
+    workflow_prompt_path: Path,
+    session_path: Path,
+    config: SamocodeConfig,
+    attempt: int,
+    initial_dive: str | None = None,
+    initial_task: str | None = None,
+    on_line: Callable[[str], None] | None = None,
+) -> ExecutionResult:
+    """Backward-compatible alias for run_ai_once."""
+    return run_ai_once(
+        workflow_prompt_path,
+        session_path,
+        config,
+        attempt,
+        initial_dive,
+        initial_task,
+        on_line,
     )
 
 
@@ -486,7 +526,7 @@ def _build_config_section(session_path: Path, config: SamocodeConfig) -> list[st
 
     lines.append("## Worktree Configuration")
     lines.append(f"- Base repo (create worktrees FROM here): `{config.repo_path}`")
-    lines.append(f"- Base branch: `origin/main` or `origin/master` (detect with `git remote show origin`)")
+    lines.append("- Base branch: `origin/main` or `origin/master` (detect with `git remote show origin`)")
     lines.append(f"- Worktree path: `{worktree_path}`")
     if branch_prefix:
         lines.append(f"- Branch name: `{branch_prefix}/{branch_name}`")
@@ -584,7 +624,9 @@ def _build_codex_prompt(
         f"{session_context}\n\n"
         "## Execution Mode\n"
         "You are running in samocode codex-provider mode. Execute one full phase iteration.\n"
-        "Follow the agent spec exactly. Use tools as needed. Update session files and write the "
+        "Follow the agent spec exactly. The agent frontmatter was written for Claude Code; "
+        "treat unavailable tool/model names as role metadata and use your available Codex "
+        "tools instead. Update session files and write the "
         "final `_signal.json` status before exiting.\n\n"
         f"## Agent Spec: {agent_name}\n"
         f"{agent_instructions}\n"

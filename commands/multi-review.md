@@ -9,5 +9,5 @@ Review changes using multiple parallel perspectives.
 **DO NOT delegate this task to a subagent.** Execute it yourself:
 
 1. Use "quality" skill and follow the `multi-review` action instructions exactly
-3. Spawn sub-agents as specified in the skill
+3. Run reviewer passes as specified in the skill
 4. Synthesize results per the skill's synthesis section

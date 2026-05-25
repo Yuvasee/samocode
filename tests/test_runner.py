@@ -1,4 +1,4 @@
-"""Tests for worker/runner.py - Claude CLI execution.
+"""Tests for worker/runner.py - AI CLI execution.
 
 This module tests:
 - Phase to agent mapping
@@ -20,6 +20,8 @@ from worker.phases import Phase, get_agent_for_phase
 from worker.runner import (
     ExecutionResult,
     ExecutionStatus,
+    _build_cli_args,
+    _build_codex_prompt,
     build_session_context,
     extract_iteration,
     extract_phase,
@@ -58,6 +60,26 @@ def make_config(tmp_path: Path, repo_path: Path | None = None) -> SamocodeConfig
         project=project,
         runtime=runtime,
         session_path=sessions / "test-session",
+    )
+
+
+def make_codex_config(tmp_path: Path, repo_path: Path | None = None) -> SamocodeConfig:
+    """Create a Codex test configuration."""
+    config = make_config(tmp_path, repo_path)
+    codex = tmp_path / "codex"
+    codex.touch()
+    runtime = RuntimeConfig(
+        ai_provider="codex",
+        codex_path=codex,
+        codex_model="gpt-5.5",
+        codex_timeout=45,
+        max_retries=2,
+        retry_delay=0,
+    )
+    return SamocodeConfig(
+        project=config.project,
+        runtime=runtime,
+        session_path=config.session_path,
     )
 
 
@@ -177,6 +199,50 @@ class TestBuildSessionContext:
         assert "architecture" in context
         assert "add feature" in context
         assert "IMPORTANT" in context
+
+
+class TestCodexPromptBuilding:
+    """Tests for Codex provider prompt and CLI construction."""
+
+    def test_build_codex_prompt_includes_agent_spec(self, tmp_path: Path) -> None:
+        """Codex prompt injects the selected phase agent instructions."""
+        workflow = tmp_path / "workflow.md"
+        workflow.write_text("# Workflow")
+        agents = tmp_path / "agents"
+        agents.mkdir()
+        (agents / "testing-agent.md").write_text("# Testing Agent\nRun tests.")
+
+        prompt = _build_codex_prompt(
+            "testing-agent",
+            "SESSION CONTEXT",
+            workflow,
+        )
+
+        assert "samocode codex-provider mode" in prompt
+        assert "SESSION CONTEXT" in prompt
+        assert "Agent Spec: testing-agent" in prompt
+        assert "Run tests." in prompt
+
+    def test_build_codex_cli_args(self, tmp_path: Path) -> None:
+        """Codex CLI args use codex exec with configured model and prompt."""
+        workflow = tmp_path / "workflow.md"
+        workflow.write_text("# Workflow")
+        agents = tmp_path / "agents"
+        agents.mkdir()
+        (agents / "init-agent.md").write_text("# Init Agent")
+        config = make_codex_config(tmp_path)
+
+        args = _build_cli_args(config, "init-agent", "SESSION CONTEXT", workflow)
+
+        assert args[:4] == [
+            str(config.codex_path),
+            "exec",
+            "--skip-git-repo-check",
+            "--dangerously-bypass-approvals-and-sandbox",
+        ]
+        assert "--model" in args
+        assert "gpt-5.5" in args
+        assert "SESSION CONTEXT" in args[-1]
 
 
 class TestExtractPhase:
@@ -444,7 +510,7 @@ class TestRunClaudeWithRetry:
         session.mkdir()
         config = make_config(tmp_path)
 
-        with patch("worker.runner.run_claude_once") as mock_run:
+        with patch("worker.runner.run_ai_once") as mock_run:
             mock_run.return_value = ExecutionResult(
                 status=ExecutionStatus.SUCCESS,
                 stdout="ok",
@@ -466,7 +532,7 @@ class TestRunClaudeWithRetry:
         session.mkdir()
         config = make_config(tmp_path)
 
-        with patch("worker.runner.run_claude_once") as mock_run:
+        with patch("worker.runner.run_ai_once") as mock_run:
             mock_run.side_effect = [
                 ExecutionResult(
                     status=ExecutionStatus.FAILURE,
@@ -497,7 +563,7 @@ class TestRunClaudeWithRetry:
         session.mkdir()
         config = make_config(tmp_path)
 
-        with patch("worker.runner.run_claude_once") as mock_run:
+        with patch("worker.runner.run_ai_once") as mock_run:
             mock_run.return_value = ExecutionResult(
                 status=ExecutionStatus.FAILURE,
                 stdout="",

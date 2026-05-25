@@ -16,7 +16,7 @@ Manages work sessions. Session paths must be explicitly provided or known from c
 
 If session path cannot be determined: **STOP and ask the user** for the session location.
 
-**Finding `.samocode`:** Look in current working directory (where Claude was started). Never guess paths - if `.samocode` not found, ask user.
+**Finding `.samocode`:** Look in current working directory (where the provider CLI was started). Never guess paths - if `.samocode` not found, ask user.
 
 ## Repository Resolution
 

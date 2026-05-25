@@ -33,7 +33,7 @@ from worker import (
     read_signal_file,
     record_signal,
     resolve_session_path,
-    run_claude_with_retry,
+    run_ai_with_retry,
     setup_logging,
     update_phase,
     validate_signal_for_phase,
@@ -273,7 +273,7 @@ def main() -> None:
             if session_path.exists() and (session_path / "_overview.md").exists():
                 cumulative_iterations = increment_total_iterations(session_path)
 
-            # Add session handler once session directory exists (created by Claude)
+            # Add session handler once the provider creates the session directory
             if session_handler is None and session_path.exists():
                 session_handler = add_session_handler(logger, session_path)
                 logger.info(f"Session log: {session_path / 'session.log'}")
@@ -293,7 +293,7 @@ def main() -> None:
                 logger.info(f"Previous signal: {previous_signal}")
             logger.info("Cleared signal file")
 
-            result = run_claude_with_retry(
+            result = run_ai_with_retry(
                 workflow_prompt_path,
                 session_path,
                 config,

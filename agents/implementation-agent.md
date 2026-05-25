@@ -34,10 +34,12 @@ Session context is provided via --append-system-prompt by the orchestrator:
 
    **If phase involves code changes (new features, refactoring, bug fixes):**
    - **CRITICAL: You MUST use "implementation" skill and follow the "dop2" action section.**
-   - **You MUST spawn 2 Task sub-agents in parallel. DO NOT implement directly with Edit/Write.**
+   - Use two independent proposal passes before editing code.
+   - Claude Code: spawn 2 Task sub-agents in parallel when the Task tool is available.
+   - Codex or no Task tool: create the minimal and clean proposal documents yourself in separate passes.
    - Only exception: trivially simple 1-2 line changes (use dop action instead)
    - Use "implementation" skill now!
-   - **STOP CHECK:** If you are about to use Edit/Write to change code files directly instead of spawning 2 sub-agents, STOP. Go back and spawn sub-agents via the Task tool.
+   - **STOP CHECK:** If you are about to use Edit/Write to change code files directly before producing and comparing proposals, STOP. Complete the proposal comparison first.
 
    **If phase is research/documentation/config only (no code architecture decisions):**
    - Use "implementation" skill, follow the "dop" action (direct execution). No dual-agent needed.

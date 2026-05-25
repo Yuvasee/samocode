@@ -17,7 +17,7 @@ class SignalStatus(Enum):
 
 @dataclass
 class Signal:
-    """Signal from Claude to orchestrator."""
+    """Signal from child provider to orchestrator."""
 
     status: SignalStatus
     summary: str | None = None

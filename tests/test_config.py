@@ -203,9 +203,13 @@ class TestRuntimeConfigFromEnv:
         with patch.dict(os.environ, {}, clear=True):
             config = RuntimeConfig.from_env()
 
+        assert config.ai_provider == "claude"
         assert config.claude_model == "opus"
         assert config.claude_max_turns == 300
         assert config.claude_timeout == 1800
+        assert config.codex_path == Path("codex")
+        assert config.codex_model == ""
+        assert config.codex_timeout == 1800
         assert config.max_retries == 3
         assert config.retry_delay == 5
         assert config.telegram_bot_token == ""
@@ -224,6 +228,22 @@ class TestRuntimeConfigFromEnv:
         assert config.claude_model == "sonnet"
         assert config.claude_max_turns == 50
         assert config.claude_timeout == 300
+
+    def test_reads_codex_env_vars(self) -> None:
+        """Values read from CODEX_* environment variables."""
+        env = {
+            "SAMOCODE_PROVIDER": "codex",
+            "CODEX_PATH": "/usr/local/bin/codex",
+            "CODEX_MODEL": "gpt-5.5",
+            "CODEX_TIMEOUT": "900",
+        }
+        with patch.dict(os.environ, env, clear=False):
+            config = RuntimeConfig.from_env()
+
+        assert config.ai_provider == "codex"
+        assert config.codex_path == Path("/usr/local/bin/codex")
+        assert config.codex_model == "gpt-5.5"
+        assert config.codex_timeout == 900
 
     def test_reads_samocode_env_vars(self) -> None:
         """Values read from SAMOCODE_* environment variables."""
@@ -347,6 +367,26 @@ class TestRuntimeConfigValidate:
         errors = config.validate()
 
         assert any("timeout" in e for e in errors)
+
+    def test_valid_codex_config_returns_empty(self, tmp_path: Path) -> None:
+        """Codex provider validates the Codex CLI path instead of Claude."""
+        codex = tmp_path / "codex"
+        codex.touch()
+
+        config = RuntimeConfig(ai_provider="codex", codex_path=codex)
+
+        assert config.validate() == []
+
+    def test_codex_path_not_found(self, tmp_path: Path) -> None:
+        """Error when Codex provider path doesn't exist."""
+        config = RuntimeConfig(
+            ai_provider="codex",
+            codex_path=tmp_path / "missing-codex",
+        )
+
+        errors = config.validate()
+
+        assert any("Codex CLI not found" in e for e in errors)
 
 
 class TestResolveSessionPath:

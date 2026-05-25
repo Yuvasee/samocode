@@ -12,7 +12,7 @@ Runs the samocode autonomous orchestrator on a project session and monitors its 
 **When user asks to "run samocode" or "continue samocode", you MUST use this skill.**
 
 DO NOT:
-- Launch Task subagents yourself for investigation/planning/implementation phases
+- Launch phase agents or Task subagents yourself for investigation/planning/implementation phases
 - Manually read `_overview.md` and decide what phase to run
 - Update `_signal.json` yourself
 - Pretend to be the orchestrator
@@ -26,6 +26,8 @@ Use this skill when user says:
 - "start samocode"
 - "continue samocode"
 - "let samocode work on it"
+- "implement the plan"
+- Claude command equivalent: `/samocode-implement`
 
 ## What is Samocode?
 
@@ -70,6 +72,16 @@ Do NOT assume samocode should run just because a session exists.
 
 3. **Check session state (if exists):**
    - Read `_overview.md` Status section
+   - **If user asked to "implement the plan" or invoked the `/samocode-implement` equivalent:**
+     - This is an implementation handoff, not a generic continue.
+     - If `Phase: planning` and the session is waiting for plan approval (`Blocked: waiting_human`, `Next: Await plan approval`, or `_signal.json` has `waiting_for: plan_approval` / `"for": "plan_approval"`), approve the gate before starting samocode:
+       - `Phase: implementation`
+       - `Blocked: no`
+       - `Last Action: Plan approved for implementation`
+       - `Next: Execute first implementation phase`
+       - Add to Flow Log: `- [MM-DD HH:MM] Plan approved for implementation via samocode-run`
+     - Do NOT start from task-definition, requirements, or planning steps unless no approved/waiting plan exists.
+     - If no plan file exists or requirements are incomplete, report that implementation cannot start yet and ask the user how to proceed.
    - **If `Phase: done`:**
      - Ask user: "Session is complete. What new work do you want to do?"
      - Update `_overview.md`:

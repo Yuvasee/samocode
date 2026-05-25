@@ -72,18 +72,18 @@ class ProjectConfig:
 class RuntimeConfig:
     """Runtime settings from environment variables."""
 
-    ai_provider: str
-    telegram_bot_token: str
-    telegram_chat_id: str
-    claude_path: Path
-    claude_model: str
-    claude_max_turns: int
-    claude_timeout: int
-    codex_path: Path
-    codex_model: str
-    codex_timeout: int
-    max_retries: int
-    retry_delay: int
+    ai_provider: str = "claude"
+    telegram_bot_token: str = ""
+    telegram_chat_id: str = ""
+    claude_path: Path = Path("claude")
+    claude_model: str = "opus"
+    claude_max_turns: int = 300
+    claude_timeout: int = 1800
+    codex_path: Path = Path("codex")
+    codex_model: str = ""
+    codex_timeout: int = 1800
+    max_retries: int = 3
+    retry_delay: int = 5
 
     @classmethod
     def from_env(cls) -> "RuntimeConfig":
@@ -114,10 +114,10 @@ class RuntimeConfig:
 
         if self.ai_provider == "claude":
             if not _command_exists(self.claude_path):
-                errors.append(f"Claude CLI not found: {self.claude_path}")
+                errors.append(_command_error("Claude CLI", self.claude_path))
         elif self.ai_provider == "codex":
             if not _command_exists(self.codex_path):
-                errors.append(f"Codex CLI not found: {self.codex_path}")
+                errors.append(_command_error("Codex CLI", self.codex_path))
 
         if self.claude_max_turns < 1:
             errors.append(f"Invalid max_turns: {self.claude_max_turns}")
@@ -255,6 +255,14 @@ def _command_exists(command: Path) -> bool:
     if "/" in cmd:
         return command.exists() and command.is_file()
     return shutil.which(cmd) is not None
+
+
+def _command_error(label: str, command: Path) -> str:
+    """Return a precise validation error for a missing or invalid command path."""
+    cmd = str(command)
+    if "/" in cmd and command.exists() and not command.is_file():
+        return f"{label} is not a file: {command}"
+    return f"{label} not found: {command}"
 
 
 def resolve_session_path(sessions_dir: Path, session_name: str) -> Path:

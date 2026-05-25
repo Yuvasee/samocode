@@ -36,7 +36,7 @@ Split into focused modules:
 
 ```
 worker/
-├── runner.py          # Public API: run_claude_with_retry, run_claude_once
+├── runner.py          # Public API: run_ai_with_retry, run_ai_once
 ├── extraction.py      # extract_phase, extract_iteration, extract_working_dir
 ├── context.py         # build_session_context, _build_config_section, _build_initial_instructions
 ├── streaming.py       # stream_logs, _drain_remaining

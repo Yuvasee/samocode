@@ -1,24 +1,24 @@
 # Samocode
 
-Autonomous session orchestrator for Claude Code. Python spawns Claude CLI in a loop; Claude reads session state, executes phase-specific work, signals next step.
+Autonomous session orchestrator for Claude Code or OpenAI Codex. Python spawns the configured provider CLI in a loop; the child agent reads session state, executes phase-specific work, signals next step.
 
 ## Project Structure
 
 ```
 main.py              # Orchestrator entry point - main loop
-workflow.md          # Master prompt template for Claude iterations
+workflow.md          # Master prompt template for provider iterations
 worker/              # Core package (~1,600 lines)
   config.py          # Configuration from .samocode + .env
   phases.py          # Phase enum, config registry, transition validation
-  runner.py          # Claude CLI execution with retry
+  runner.py          # Provider CLI execution with retry
   signal_history.py  # Signal history tracking for debugging
   signals.py         # Signal file I/O (continue/done/blocked/waiting)
   timestamps.py      # Centralized timestamp formatting
   logging.py         # Rotating file + console logging
   notifications.py   # Telegram notifications
 agents/              # Phase-specific agent instructions (md files)
-skills/              # Claude Code skills (9 total)
-commands/            # Standalone Claude commands (13 total)
+skills/              # Claude/Codex skills
+commands/            # Standalone Claude slash commands
 tests/               # pytest suite - one file per worker module
 ```
 
@@ -52,17 +52,17 @@ python main.py --help           # Run orchestrator
 
 ## Architecture
 
-**Three layers**: Parent Claude -> Worker (Python) -> Child Claude instances
+**Three layers**: Parent CLI -> Worker (Python) -> Child provider instances
 
 **Phase flow**: init -> investigation -> requirements -> planning -> implementation -> testing -> quality -> done
 
-**Signal protocol** - Claude writes `_signal.json` to control flow:
+**Signal protocol** - child provider writes `_signal.json` to control flow:
 - `continue` - Next iteration
 - `done` - Workflow complete
 - `blocked` - Needs human intervention
 - `waiting` - Paused for human input (Q&A or plan approval)
 
-**Stateless iterations** - Each Claude invocation reads `_overview.md` fresh, executes one action, signals, exits.
+**Stateless iterations** - Each provider invocation reads `_overview.md` fresh, executes one action, signals, exits.
 
 ## Testing
 
@@ -88,18 +88,19 @@ SESSIONS=~/project/_sessions/
 ```
 
 **Environment variables** (in .env) - runtime settings only:
-- `CLAUDE_PATH` - Path to Claude CLI
-- `CLAUDE_MODEL` - Model name (default: opus)
+- `SAMOCODE_PROVIDER` - `claude` or `codex` (default: claude)
+- `CLAUDE_PATH`, `CLAUDE_MODEL` - Claude CLI settings
+- `CODEX_PATH`, `CODEX_MODEL` - Codex CLI settings
 - `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` - Optional notifications
 
 ## Key Files
 
 - `worker/phases.py` - Phase enum, PhaseConfig registry, transition/signal validation (source of truth)
-- `worker/runner.py` - Core execution logic, Claude CLI invocation
+- `worker/runner.py` - Core execution logic, provider CLI invocation
 - `worker/config.py` - ProjectConfig, RuntimeConfig, SamocodeConfig dataclasses
 - `worker/signals.py` - Signal dataclass, JSON parsing
 - `worker/signal_history.py` - Records signals to `_signal_history.jsonl` for debugging
-- `workflow.md` - Master prompt injected into each Claude run
+- `workflow.md` - Master prompt injected into each provider run
 - `TECH_DEBT.md` - Known architectural issues
 
 ## Learnings
