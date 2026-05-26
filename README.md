@@ -180,6 +180,7 @@ Standalone utilities, work without the orchestrator:
 | `/dop`, `/dop2` | Execute plan phase (single / dual-agent) |
 | `/cleanup` | Code cleanup analysis |
 | `/multi-review` | Multi-perspective code review |
+| `/merge` | Guarded merge from `origin/main` or another source branch |
 | `/session-start`, `/session-continue`, `/session-archive` | Session management |
 
 ## Examples
