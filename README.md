@@ -181,6 +181,7 @@ Standalone utilities, work without the orchestrator:
 | `/cleanup` | Code cleanup analysis |
 | `/multi-review` | Multi-perspective code review |
 | `/merge` | Guarded merge from `origin/main` or another source branch |
+| `/prcomments` | Investigate and triage PR review comments |
 | `/session-start`, `/session-continue`, `/session-archive` | Session management |
 
 ## Examples
