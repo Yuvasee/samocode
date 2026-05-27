@@ -84,7 +84,7 @@ Run: [1st (post-implementation) | 2nd (post-quality)]
 Edit `_overview.md`:
 - If tests pass:
   - First run: `Last Action: Tests passed`, `Next: Quality review`
-  - Second run: `Last Action: Regression tests passed`, `Next: Generate summary`
+  - Second run: `Last Action: Regression tests passed`, `Next: PR readiness`
 - If tests fail: `Last Action: Tests failed`, document failures
 - Flow Log: `- [TIMESTAMP_ITERATION] Testing: [pass/fail] -> [filename].md`
 
@@ -104,9 +104,9 @@ cd [SESSION_PATH] && git add -A && git commit -m "testing: [pass/fail] - [brief 
 {"status": "continue", "phase": "quality"}
 ```
 
-**Tests pass (second run -> done):**
+**Tests pass (second run -> PR readiness):**
 ```json
-{"status": "continue", "phase": "done"}
+{"status": "continue", "phase": "pr-readiness"}
 ```
 
 **Tests fail:**

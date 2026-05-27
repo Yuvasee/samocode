@@ -32,14 +32,15 @@ class TestPhaseEnum:
             "implementation",
             "testing",
             "quality",
+            "pr-readiness",
             "done",
         ]
         actual = [p.value for p in Phase]
         assert sorted(actual) == sorted(expected)
 
     def test_phase_count(self) -> None:
-        """Exactly 8 phases exist."""
-        assert len(Phase) == 8
+        """Exactly 9 phases exist."""
+        assert len(Phase) == 9
 
 
 class TestPhaseConfigs:
@@ -60,6 +61,12 @@ class TestPhaseConfigs:
         """Done is a terminal phase."""
         done_config = PHASE_CONFIGS[Phase.DONE]
         assert len(done_config.allowed_next) == 0
+
+    def test_pr_readiness_transitions_only_to_done(self) -> None:
+        """PR readiness is the explicit gate before done."""
+        readiness_config = PHASE_CONFIGS[Phase.PR_READINESS]
+        assert readiness_config.allowed_next == frozenset({Phase.DONE})
+        assert readiness_config.requires_gate
 
     def test_done_only_allows_done_signal(self) -> None:
         """Done phase only allows 'done' or 'blocked' signals."""
@@ -165,9 +172,9 @@ class TestValidateTransition:
         is_valid, _ = validate_transition("testing", "quality")
         assert is_valid
 
-    def test_testing_to_done_valid(self) -> None:
-        """testing -> done is valid (after quality pass)."""
-        is_valid, _ = validate_transition("testing", "done")
+    def test_testing_to_pr_readiness_valid(self) -> None:
+        """testing -> pr-readiness is valid after regression tests pass."""
+        is_valid, _ = validate_transition("testing", "pr-readiness")
         assert is_valid
 
     def test_quality_to_testing_valid(self) -> None:
@@ -180,9 +187,26 @@ class TestValidateTransition:
         is_valid, _ = validate_transition("implementation", "quality")
         assert is_valid
 
-    def test_quality_to_done_valid(self) -> None:
-        """quality -> done is valid (skip regression testing)."""
-        is_valid, _ = validate_transition("quality", "done")
+    def test_quality_to_pr_readiness_valid(self) -> None:
+        """quality -> pr-readiness is valid when regression testing is skipped."""
+        is_valid, _ = validate_transition("quality", "pr-readiness")
+        assert is_valid
+
+    def test_testing_to_done_invalid(self) -> None:
+        """testing cannot skip the explicit PR readiness gate."""
+        is_valid, error = validate_transition("testing", "done")
+        assert not is_valid
+        assert "Invalid transition" in error
+
+    def test_quality_to_done_invalid(self) -> None:
+        """quality cannot skip the explicit PR readiness gate."""
+        is_valid, error = validate_transition("quality", "done")
+        assert not is_valid
+        assert "Invalid transition" in error
+
+    def test_pr_readiness_to_done_valid(self) -> None:
+        """pr-readiness -> done is valid after the gate passes."""
+        is_valid, _ = validate_transition("pr-readiness", "done")
         assert is_valid
 
     def test_unknown_source_phase(self) -> None:

@@ -56,8 +56,8 @@ Two separate commits may be needed (they can be different repos):
 ## Phase Flow
 
 ```
-init -> investigation -> requirements -> planning -> implementation -> testing -> quality -> done
-                                                            \-> quality --/    \-> done
+init -> investigation -> requirements -> planning -> implementation -> testing -> quality -> pr-readiness -> done
+                                                            \-> quality --/    \--------------/
 ```
 
 - **init**: Create session infrastructure (worktree/folder, _overview.md)
@@ -66,17 +66,18 @@ init -> investigation -> requirements -> planning -> implementation -> testing -
 - **planning**: Create phased implementation plan → **WAIT for human approval**
 - **implementation**: Execute plan phases iteratively (dop/dop2/do)
 - **testing**: Formal verification by fresh agent (NOT ad-hoc tests during implementation)
-- **quality**: Review + fix blocking issues (max 3 iterations)
+- **quality**: Review, fix blocking issues, and require decisions for important issues (max 3 iterations)
+- **pr-readiness**: Final-head gate after fixes, merges, and manual debugging
 - **done**: Generate summary, signal complete
 
 **Skipping testing phase** (implementation → quality): Test projects, research, no test infrastructure.
-**Skipping regression testing** (quality → done): No fixes made, or no tests to run.
+**Skipping regression testing** (quality → pr-readiness): No fixes made, or no tests to run. The explicit PR readiness gate still runs before done.
 
 ## Status Section Format
 
 ```markdown
 ## Status
-Phase: [init|investigation|requirements|planning|implementation|testing|quality|done]
+Phase: [init|investigation|requirements|planning|implementation|testing|quality|pr-readiness|done]
 Iteration: [number]
 Blocked: [no|waiting_human]
 Quality Iteration: [number, only during quality]
@@ -140,6 +141,7 @@ Never completely rewrite `_overview.md` if it has meaningful content. Backup fir
 | `do`, `dop`, `dop2` | implementation, quality fixes |
 | `testing` | testing |
 | `cleanup`, `multi-review` | quality |
+| `pr-readiness` | pr-readiness |
 | `summary` | done |
 
 ## Phase Agents
@@ -155,6 +157,7 @@ Each phase has a dedicated agent with detailed instructions:
 | implementation | `agents/implementation-agent.md` |
 | testing | `agents/testing-agent.md` |
 | quality | `agents/quality-agent.md` |
+| pr-readiness | `agents/pr-readiness-agent.md` |
 | done | `agents/done-agent.md` |
 
 ## Context Size Guardrails

@@ -24,6 +24,9 @@ These steps apply to ALL actions after implementation is complete.
 1. **Lint/typecheck:** Run pyright/ruff (Python). For TypeScript, rely on LSP (vtsls) — do NOT run `npx tsc --noEmit` (it OOMs on large codebases)
 2. **Commit code:** In Working Dir, commit with descriptive message
    - Check branch first: warn if on main, should be feature branch
+3. **Final readiness:** After all fix loops, merges, or manual debugging, the workflow must enter the `pr-readiness` phase before `done`
+   - Do not mark implementation complete while `_review_debt.md` has undecided blocking/important rows
+   - Resolve important findings as fix now, defer with ticket/reason, or reject with evidence
 
 ### After Session Changes
 1. **Update `_overview.md`:** Add Flow Log entry and Files entry
@@ -144,6 +147,7 @@ Both agents solve the **entire task independently** with different philosophies.
 - Refactor for cleaner solution
 - Introduce helpful abstractions
 - Consider future maintainability
+- Promote code into shared Python packages such as `avoncore` only when there are 2+ current Python service consumers. A frontend mirror does not count; a future consumer belongs in a ticket/TODO, not a premature shared abstraction.
 
 **Deliverables:**
 
