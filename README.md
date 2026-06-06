@@ -69,6 +69,22 @@ After a `pip install`, run `samocode install --copy` once to make the skills, ag
 
 → See [`examples/`](examples/) for runnable scenarios.
 
+## Use samocode skills standalone
+
+samocode's skills (`investigation`, `planning`, `implementation`, `quality`, `testing`, and more) are plain [Agent Skills](https://github.com/vercel-labs/skills) — a `SKILL.md` per directory — so any compatible agent can use them without the orchestrator. Install them cross-agent in one line:
+
+```bash
+npx skills add Yuvasee/samocode
+```
+
+This discovers every skill in the repo and links them into your agent skill directories (`~/.claude/skills`, `~/.codex/skills`, and others — the `skills` CLI is multi-agent aware). Add `--copy` to copy instead of symlink, or `-a '*' --skill '*' -y` to install all skills to all detected agents non-interactively. Preview without installing:
+
+```bash
+npx skills add Yuvasee/samocode --list
+```
+
+This installs **skills only** — not the orchestrator, agents, or slash commands. For the full samocode loop, use `pip install samocode` (above); for self-install of all assets from a checkout, use `samocode install`.
+
 ## How it works
 
 Three layers, each with a single responsibility:
