@@ -226,3 +226,243 @@ def install_asset(
         outcome=outcome_on_create,
         mode=resolved_mode,
     )
+
+
+# === Uninstall data model ===
+
+
+class UninstallOutcome(Enum):
+    """What happened when _uninstall_asset() ran."""
+
+    REMOVED = "removed"  # samocode-owned symlink deleted
+    SKIPPED = "skipped"  # target present but not samocode-owned; left untouched
+    NOT_FOUND = "not_found"  # target does not exist
+
+
+@dataclass(frozen=True)
+class UninstallResult:
+    """Result of a single _uninstall_asset() call."""
+
+    target: Path
+    outcome: UninstallOutcome
+    note: str | None = None
+
+
+# === Asset enumeration ===
+
+
+def _enumerate_asset_entries(asset_class: AssetClass, src_root: Path) -> list[Path]:
+    """Return the source items to install for an asset class.
+
+    - is_dir_asset=True  -> immediate subdirectories (mirrors `skills/*/`)
+    - is_dir_asset=False -> *.md files (mirrors `agents/*.md`, `commands/*.md`)
+
+    Returns [] (no error) when the source subdir is missing or empty so callers
+    report zero items instead of crashing.
+    """
+    src_dir = src_root / asset_class.src_subdir
+    if not src_dir.is_dir():
+        return []
+    if asset_class.is_dir_asset:
+        return sorted(p for p in src_dir.iterdir() if p.is_dir())
+    return sorted(src_dir.glob("*.md"))
+
+
+# === Ownership check ===
+
+
+def _is_samocode_owned(target: Path, src_root: Path) -> bool:
+    """Return True if target is a symlink resolving into the samocode source tree.
+
+    Symlink mode: only links pointing into src_root are samocode-owned and safe
+    to remove. Foreign symlinks (pointing elsewhere) and symlinks from a
+    different samocode checkout (different src_root) are not matched.
+
+    Copy mode: a copied file is indistinguishable from a user file of the same
+    name, so real (non-symlink) targets always return False. See uninstall()
+    docstring for the documented limitation.
+    """
+    if not target.is_symlink():
+        return False
+    try:
+        resolved = target.resolve()
+    except OSError:
+        # Broken symlink - conservatively leave it for manual cleanup.
+        return False
+    return str(resolved).startswith(str(src_root))
+
+
+# === Single-asset uninstall primitive ===
+
+
+def _uninstall_asset(target: Path, src_root: Path) -> UninstallResult:
+    """Remove a single asset if samocode-owned. Never raises."""
+    if not target.exists() and not target.is_symlink():
+        return UninstallResult(target=target, outcome=UninstallOutcome.NOT_FOUND)
+
+    if _is_samocode_owned(target, src_root):
+        target.unlink()
+        return UninstallResult(target=target, outcome=UninstallOutcome.REMOVED)
+
+    if target.is_symlink():
+        note = (
+            f"{target} is a symlink but does not point into the samocode "
+            "source tree; left untouched."
+        )
+    else:
+        note = (
+            f"{target} is a real file/directory (not a symlink); samocode cannot "
+            "verify ownership. Left untouched - remove manually if installed via copy."
+        )
+    return UninstallResult(target=target, outcome=UninstallOutcome.SKIPPED, note=note)
+
+
+# === Printing helpers ===
+
+
+def _print_install_section(asset_class_name: str, provider: str) -> None:
+    """Print a section header, e.g. 'Installing claude skills...'."""
+    print(f"\nInstalling {provider} {asset_class_name}...")
+
+
+def _print_uninstall_section(asset_class_name: str, provider: str) -> None:
+    """Print a section header, e.g. 'Removing claude skills...'."""
+    print(f"\nRemoving {provider} {asset_class_name}...")
+
+
+def _print_install_item(result: InstallResult) -> None:
+    """Print one line per asset, mirroring install.sh output."""
+    name = result.target.name
+    if result.outcome is InstallOutcome.INSTALLED:
+        print(f"  Installing: {name}")
+    elif result.outcome is InstallOutcome.UPDATED:
+        print(f"  Updating: {name}")
+    else:
+        print(f"  Warning: {name} exists and is not a symlink, skipping")
+
+
+def _print_uninstall_item(result: UninstallResult) -> None:
+    """Print one line per asset during uninstall (silent on NOT_FOUND)."""
+    if result.outcome is UninstallOutcome.REMOVED:
+        print(f"  Removing: {result.target.name}")
+    elif result.outcome is UninstallOutcome.SKIPPED:
+        print(f"  Skipping: {result.target.name}")
+        if result.note:
+            print(f"    {result.note}")
+
+
+def _print_install_summary(results: list[InstallResult], src_root: Path) -> None:
+    """Print counts summary + .samocode project-setup reminder (bash parity)."""
+
+    def _count(subdir: str) -> int:
+        marker = src_root / subdir
+        return len(
+            {
+                r.src
+                for r in results
+                if r.outcome is not InstallOutcome.SKIPPED and marker in r.src.parents
+            }
+        )
+
+    print("\nInstallation complete!\n")
+    print("Installed:")
+    print(f"  - {_count('skills')} skills")
+    print(f"  - {_count('agents')} Claude agents")
+    print(f"  - {_count('commands')} Claude commands")
+    print("")
+    print("============================================================")
+    print("IMPORTANT: Project Setup Required")
+    print("============================================================")
+    print("")
+    print("For each project where you use samocode, create a .samocode file:")
+    print("")
+    print("  MAIN_REPO=~/your-project/repo")
+    print("  WORKTREES=~/your-project/worktrees/")
+    print("  SESSIONS=~/your-project/_sessions/")
+    print("")
+    print("Without this file, samocode will refuse to run.")
+    print("")
+    print("============================================================")
+    print("")
+    print("Restart Claude Code and/or Codex to apply changes.")
+
+
+def _print_uninstall_summary(results: list[UninstallResult]) -> None:
+    """Print removal counts."""
+    n_removed = sum(1 for r in results if r.outcome is UninstallOutcome.REMOVED)
+    n_skipped = sum(1 for r in results if r.outcome is UninstallOutcome.SKIPPED)
+    print(f"\nUninstall complete! Removed {n_removed}, skipped {n_skipped}.")
+
+
+# === Orchestration ===
+
+
+def install(copy: bool | None = None) -> list[InstallResult]:
+    """Install all samocode assets (skills, agents, commands) to provider dirs.
+
+    Walks ASSET_CLASSES x providers, enumerates source entries, and calls
+    install_asset() for each (src, target) pair. Prints per-item lines, a
+    summary, and the .samocode project-setup reminder to stdout.
+
+    Args:
+        copy: None  -> InstallMode.AUTO    (symlink in git repo; copy elsewhere)
+              True  -> InstallMode.COPY     (force copy; e.g. pip-installed)
+              False -> InstallMode.SYMLINK  (force symlink; dev override)
+
+    Returns:
+        All InstallResult objects, in order, so callers can aggregate by
+        outcome without re-parsing stdout.
+    """
+    if copy is None:
+        mode = InstallMode.AUTO
+    elif copy:
+        mode = InstallMode.COPY
+    else:
+        mode = InstallMode.SYMLINK
+
+    src_root = resolve_asset_source_dir()
+    results: list[InstallResult] = []
+
+    for asset_class in ASSET_CLASSES:
+        entries = _enumerate_asset_entries(asset_class, src_root)
+        for provider in asset_class.providers:
+            target_dir = resolve_target_dir(asset_class, provider)
+            _print_install_section(asset_class.name, provider)
+            for src in entries:
+                result = install_asset(src, target_dir / src.name, mode)
+                results.append(result)
+                _print_install_item(result)
+
+    _print_install_summary(results, src_root)
+    return results
+
+
+def uninstall() -> list[UninstallResult]:
+    """Remove samocode-owned assets from all provider target dirs.
+
+    Mirrors install(): walks the same ASSET_CLASSES x providers in the same
+    order. Only removes targets that are samocode-owned symlinks (see
+    _is_samocode_owned). Real (non-symlink) files - whether user-created or
+    copy-mode installs - are left untouched with a SKIPPED result.
+
+    Copy-mode installs are a documented limitation: samocode cannot prove
+    ownership of a copied file, so uninstall() never deletes real files.
+
+    Returns:
+        All UninstallResult objects, in order.
+    """
+    src_root = resolve_asset_source_dir()
+    results: list[UninstallResult] = []
+
+    for asset_class in ASSET_CLASSES:
+        entries = _enumerate_asset_entries(asset_class, src_root)
+        for provider in asset_class.providers:
+            target_dir = resolve_target_dir(asset_class, provider)
+            _print_uninstall_section(asset_class.name, provider)
+            for src in entries:
+                result = _uninstall_asset(target_dir / src.name, src_root)
+                results.append(result)
+                _print_uninstall_item(result)
+
+    _print_uninstall_summary(results)
+    return results
