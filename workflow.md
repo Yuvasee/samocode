@@ -61,7 +61,7 @@ init -> investigation -> requirements -> planning -> implementation -> testing -
 ```
 
 - **init**: Create session infrastructure (worktree/folder, _overview.md)
-- **investigation**: Deep-dive exploration using `dive` skill
+- **investigation**: Deep-dive exploration using `investigation` skill
 - **requirements**: Q&A with human to clarify scope → **WAIT for human answers**
 - **planning**: Create phased implementation plan → **WAIT for human approval**
 - **implementation**: Execute plan phases iteratively (dop/dop2/do)
@@ -134,12 +134,12 @@ Never completely rewrite `_overview.md` if it has meaningful content. Backup fir
 
 | Skill | Phase |
 |-------|-------|
-| `dive` | investigation |
+| `investigation` | investigation |
 | `task-definition` | requirements (iterative Q&A) |
 | `planning` | planning |
-| `do`, `dop`, `dop2` | implementation, quality fixes |
+| `implementation` (`do`/`dop`/`dop2` actions) | implementation, quality fixes |
 | `testing` | testing |
-| `cleanup`, `multi-review` | quality |
+| `quality` (`cleanup`/`multi-review` actions) | quality |
 | `summary` | done |
 
 ## Phase Agents

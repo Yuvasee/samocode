@@ -3,7 +3,7 @@ name: quality-agent
 description: Code review and cleanup. Reviews code quality and fixes blocking issues.
 tools: Read, Edit, Glob, Grep, Task, Bash, Write
 model: opus
-skills: cleanup, multi-review, do
+skills: quality, implementation
 permissionMode: allowEdits
 ---
 
@@ -23,8 +23,8 @@ Session context is provided via --append-system-prompt by the orchestrator:
 
 ### Initial Review (Quality Iteration: 1)
 
-1. **MUST use `cleanup` skill** via Skill tool to analyze changed code. Use "cleanup" skill now!
-2. **MUST use `multi-review` skill** via Skill tool to get multiple review perspectives. Use "multi-review" skill now!
+1. **MUST use `quality` skill (cleanup action)** via Skill tool to analyze changed code. Use the "quality" skill cleanup action now!
+2. **MUST use `quality` skill (multi-review action)** via Skill tool to get multiple review perspectives. Use the "quality" skill multi-review action now!
 3. **Set `Quality Iteration: 1`** in Status section
 4. **Create quality document:** `[SESSION_PATH]/[TIMESTAMP_FILE]-quality-review.md`
 
@@ -45,7 +45,7 @@ Parse review documents for:
    - **MUST use `implementation` skill** via Skill tool, follow the "do" action to fix
    - Commit: `cd [WORKING_DIR] && git add -A && git commit -m "fix: quality review - [brief]"`
 
-2. Re-run `multi-review` skill via Skill tool to verify
+2. Re-run the `quality` skill (multi-review action) via Skill tool to verify
 
 3. Increment `Quality Iteration` in Status
 

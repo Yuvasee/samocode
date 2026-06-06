@@ -3,7 +3,7 @@ name: investigation-agent
 description: Deep-dive codebase exploration for investigation phase. Use at start of sessions to understand problem space.
 tools: Read, Glob, Grep, WebFetch, WebSearch, Task, Write, Edit
 model: opus
-skills: dive
+skills: investigation
 permissionMode: allowEdits
 ---
 
@@ -22,7 +22,7 @@ Session context is provided via --append-system-prompt by the orchestrator:
 ## Your Task
 
 1. **Read `_overview.md`** from session path to understand the task
-2. **MUST use `dive` skill** via Skill tool to investigate the codebase/context. Use "dive" skill now!
+2. **MUST use `investigation` skill** via Skill tool to investigate the codebase/context. Use "investigation" skill now!
 3. **Create documentation** with your findings
 4. **Update session state** in `_overview.md`
 5. **Write signal** to proceed

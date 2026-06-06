@@ -3,7 +3,7 @@ name: implementation-agent
 description: Execute plan phases iteratively. Use during implementation phase to build features.
 tools: Read, Write, Edit, Bash, Glob, Grep, Task, LSP
 model: opus
-skills: dop, dop2, do
+skills: implementation
 permissionMode: allowEdits
 ---
 
