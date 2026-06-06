@@ -7,6 +7,15 @@ from .config import (
     parse_samocode_file,
     resolve_session_path,
 )
+from .installer import (
+    InstallMode,
+    InstallOutcome,
+    InstallResult,
+    UninstallOutcome,
+    UninstallResult,
+    install,
+    uninstall,
+)
 from .logging import add_session_handler, setup_logging
 from .notifications import notify_blocked, notify_complete, notify_error, notify_waiting
 from .phases import (
@@ -60,6 +69,14 @@ __all__ = [
     "SamocodeConfig",
     "parse_samocode_file",
     "resolve_session_path",
+    # Installer
+    "InstallMode",
+    "InstallOutcome",
+    "InstallResult",
+    "UninstallOutcome",
+    "UninstallResult",
+    "install",
+    "uninstall",
     # Logging
     "add_session_handler",
     "setup_logging",

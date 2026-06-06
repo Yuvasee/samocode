@@ -25,6 +25,7 @@ from worker import (
     get_phase_config,
     get_phase_iteration_count,
     increment_total_iterations,
+    install,
     is_iteration_limit_exceeded,
     notify_blocked,
     notify_complete,
@@ -35,6 +36,7 @@ from worker import (
     resolve_session_path,
     run_ai_with_retry,
     setup_logging,
+    uninstall,
     update_phase,
     validate_signal_for_phase,
     validate_transition,
@@ -75,7 +77,9 @@ def validate_and_process_signal(
     # Check per-phase iteration limit
     if signal_phase:
         phase_iterations = get_phase_iteration_count(session_path, signal_phase)
-        exceeded, max_allowed = is_iteration_limit_exceeded(signal_phase, phase_iterations)
+        exceeded, max_allowed = is_iteration_limit_exceeded(
+            signal_phase, phase_iterations
+        )
         if exceeded:
             logger.error(
                 f"Phase '{signal_phase}' exceeded iteration limit: "
@@ -123,23 +127,13 @@ def validate_and_process_signal(
     return signal
 
 
-def parse_args() -> argparse.Namespace:
-    """Parse and validate command-line arguments."""
-    parser = argparse.ArgumentParser(
-        description="Samocode - Autonomous Session Orchestrator",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-  # Start new session
-  python main.py --config ~/project/.samocode --session my-task
+# === CLI ===
 
-  # Continue existing session (auto-resolves dated folders)
-  python main.py --config ~/project/.samocode --session my-task
+SUBCOMMANDS = ("run", "install", "uninstall")
 
-  # With initial dive topic
-  python main.py --config ~/project/.samocode --session explore-api --dive "auth endpoints"
-""",
-    )
+
+def add_run_arguments(parser: argparse.ArgumentParser) -> None:
+    """Attach orchestrator-run flags to a parser (the `run` subparser)."""
     parser.add_argument(
         "--config",
         required=True,
@@ -169,7 +163,68 @@ Examples:
         help="AI CLI provider to run orchestrator iterations with",
     )
 
-    return parser.parse_args()
+
+def build_parser() -> argparse.ArgumentParser:
+    """Build the top-level parser with run/install/uninstall subcommands."""
+    parser = argparse.ArgumentParser(
+        prog="samocode",
+        description="Samocode - Autonomous Session Orchestrator",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Start or continue a session (subcommand optional, defaults to `run`)
+  samocode run --config ~/project/.samocode --session my-task
+  python main.py --config ~/project/.samocode --session my-task
+
+  # With an initial dive topic
+  samocode run --config ~/project/.samocode --session explore-api --dive "auth endpoints"
+
+  # Install/uninstall samocode skills, agents, and commands
+  samocode install
+  samocode install --copy
+  samocode uninstall
+""",
+    )
+    subparsers = parser.add_subparsers(dest="command")
+
+    run_parser = subparsers.add_parser(
+        "run",
+        help="Run the orchestrator loop (default when no subcommand is given)",
+    )
+    add_run_arguments(run_parser)
+
+    install_parser = subparsers.add_parser(
+        "install",
+        help="Install samocode skills/agents/commands into provider dirs",
+    )
+    install_parser.add_argument(
+        "--copy",
+        action="store_true",
+        help="Force copy instead of symlink (e.g. for pip installs)",
+    )
+
+    subparsers.add_parser(
+        "uninstall",
+        help="Remove samocode-owned skills/agents/commands",
+    )
+
+    return parser
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    """Parse CLI args, defaulting to the `run` subcommand.
+
+    Backward compatibility: if no subcommand is supplied (the legacy
+    `--config/--session` invocation), an implicit `run` is injected so the
+    existing entrypoint keeps working without typing `run`.
+    """
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if not argv or argv[0] not in SUBCOMMANDS:
+        # No subcommand: a bare `-h`/`--help` still hits the top-level parser;
+        # everything else is treated as the implicit `run` command.
+        if not (argv and argv[0] in ("-h", "--help")):
+            argv = ["run", *argv]
+    return build_parser().parse_args(argv)
 
 
 def load_config(args: argparse.Namespace) -> SamocodeConfig:
@@ -224,9 +279,8 @@ def load_config(args: argparse.Namespace) -> SamocodeConfig:
     )
 
 
-def main() -> None:
-    """Main orchestrator entry point."""
-    args = parse_args()
+def run_orchestrator(args: argparse.Namespace) -> None:
+    """Run the autonomous orchestrator loop (the `run` command)."""
     samocode_dir = Path(__file__).parent
 
     config = load_config(args)
@@ -284,7 +338,11 @@ def main() -> None:
             phase_str = f"[{phase}]" if phase else ""
 
             logger.info(f"\n{'=' * 70}")
-            total_str = f" (total: {cumulative_iterations})" if cumulative_iterations > iteration else ""
+            total_str = (
+                f" (total: {cumulative_iterations})"
+                if cumulative_iterations > iteration
+                else ""
+            )
             logger.info(f"Iteration {iteration}{total_str} {phase_str}")
             logger.info("=" * 70)
 
@@ -307,7 +365,9 @@ def main() -> None:
                 if result.stderr:
                     logger.error(f"Last stderr: {result.stderr[:500]}")
                 if result.stdout:
-                    logger.error(f"Last stdout (last 500 chars): {result.stdout[-500:]}")
+                    logger.error(
+                        f"Last stdout (last 500 chars): {result.stdout[-500:]}"
+                    )
                 notify_error(
                     f"{config.ai_provider} execution failed: {result.status.value}",
                     session_display_name,
@@ -400,6 +460,35 @@ def main() -> None:
             # Network/system errors during notification are non-critical
             pass
         sys.exit(1)
+
+
+def cmd_install(args: argparse.Namespace) -> None:
+    """Install samocode assets into provider directories."""
+    # args.copy is True only with --copy; pass None for AUTO otherwise.
+    install(copy=True if args.copy else None)
+
+
+def cmd_uninstall(_args: argparse.Namespace) -> None:
+    """Remove samocode-owned assets from provider directories."""
+    uninstall()
+
+
+def main() -> None:
+    """CLI entry point: parse args and dispatch to the chosen command."""
+    args = parse_args()
+
+    handlers = {
+        "run": run_orchestrator,
+        "install": cmd_install,
+        "uninstall": cmd_uninstall,
+    }
+    # parse_args() guarantees a command (defaults to "run"); the get() guard
+    # keeps the dispatcher total and future-proof.
+    handler = handlers.get(args.command or "run")
+    if handler is None:
+        build_parser().print_help()
+        sys.exit(2)
+    handler(args)
 
 
 if __name__ == "__main__":
