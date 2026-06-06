@@ -60,10 +60,12 @@ samocode creates a worktree, spawns the AI CLI, walks the task through phases, a
 To hack on samocode itself, clone the repo instead:
 ```bash
 git clone https://github.com/Yuvasee/samocode ~/samocode
-cd ~/samocode && ./install.sh && pip install -r requirements.txt
+cd ~/samocode && pip install -r requirements.txt && samocode install
 ```
 
-`install.sh` links samocode skills into both `~/.claude/skills` and `~/.codex/skills`. Claude-only slash commands and agent files are linked into `~/.claude`; Codex provider runs read the phase agent files directly from the installed samocode package.
+`samocode install` links samocode skills into both `~/.claude/skills` and `~/.codex/skills`. Claude-only slash commands and agent files are linked into `~/.claude`; Codex provider runs read the phase agent files directly from the installed samocode package. From a repo checkout it symlinks (so edits go live); from a `pip install` it copies — pass `--copy` to force copying. It's idempotent (re-running refreshes its own links) and never clobbers real files you own. Reverse it with `samocode uninstall`.
+
+After a `pip install`, run `samocode install --copy` once to make the skills, agents, and commands available to your provider.
 
 → See [`examples/`](examples/) for runnable scenarios.
 
