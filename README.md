@@ -63,9 +63,15 @@ git clone https://github.com/Yuvasee/samocode ~/samocode
 cd ~/samocode && pip install -r requirements.txt && samocode install
 ```
 
-`samocode install` links samocode skills into both `~/.claude/skills` and `~/.codex/skills`. Claude-only slash commands and agent files are linked into `~/.claude`; Codex provider runs read the phase agent files directly from the installed samocode package. From a repo checkout it symlinks (so edits go live); from a `pip install` it copies — pass `--copy` to force copying. It's idempotent (re-running refreshes its own links) and never clobbers real files you own. Reverse it with `samocode uninstall`.
+`samocode install` links samocode skills into both `~/.claude/skills` and `~/.codex/skills`. Claude-only slash commands and agent files are linked into `~/.claude`; Codex provider runs read the phase agent files directly from the installed samocode package. From a repo checkout it symlinks (so edits go live); from a `pip install` it auto-detects and copies — use `--copy` only to force copying from a checkout. samocode never clobbers real files or foreign symlinks you own.
 
-After a `pip install`, run `samocode install --copy` once to make the skills, agents, and commands available to your provider.
+Re-run behavior depends on mode: **symlink** installs are idempotent (re-running refreshes samocode's own links), while **copy** installs are placed once and skipped on re-run — to update a copy install, run `samocode uninstall` (or delete the copied files) and install again.
+
+`samocode uninstall` removes only samocode-owned **symlinks**. Copy-mode installs are real files samocode cannot prove it created, so they are left in place and reported as skipped — delete them manually if needed.
+
+After a `pip install`, run `samocode install` once to make the skills, agents, and commands available to your provider (it auto-copies from a packaged install).
+
+> **Upgrading from the old `install.sh`?** Skills that were removed or renamed (e.g. `adhd`, `gemini`) leave dangling symlinks in `~/.claude/skills` and `~/.codex/skills`. Remove them manually: `rm ~/.claude/skills/adhd ~/.codex/skills/gemini` (ignore "No such file" errors).
 
 → See [`examples/`](examples/) for runnable scenarios.
 

@@ -164,25 +164,34 @@ def install_asset(
     src: Path,
     target: Path,
     mode: InstallMode = InstallMode.AUTO,
+    src_root: Path | None = None,
 ) -> InstallResult:
     """Symlink or copy a single asset (file or dir) to target.
 
     Idempotency rules:
     - target does not exist -> create (INSTALLED)
-    - target is a symlink (any target) -> refresh: remove + recreate (UPDATED)
+    - target is a samocode-owned symlink -> refresh: remove + recreate (UPDATED)
+    - target is a foreign symlink (points outside src_root) -> warn and skip (SKIPPED)
     - target is a real file/dir (not a symlink) -> warn and skip (SKIPPED)
 
+    Only symlinks resolving into the samocode source tree are refreshed; foreign
+    symlinks (user-managed or installed by another tool) are never clobbered.
+
     Args:
-        src:    Absolute path to the asset inside the samocode source tree.
-        target: Absolute path where the asset should appear.
-        mode:   InstallMode.AUTO resolves via resolve_install_mode(src.parent).
+        src:      Absolute path to the asset inside the samocode source tree.
+        target:   Absolute path where the asset should appear.
+        mode:     InstallMode.AUTO resolves via resolve_install_mode(src.parent).
+        src_root: Samocode source root used for the ownership check. Defaults to
+                  resolve_asset_source_dir() so the primitive works standalone.
 
     Returns:
         InstallResult describing what happened. Never raises on skipped assets.
     """
     if not src.exists():
-        # Caller mistake - raise so Phase 2 can surface it clearly.
+        # Caller mistake - raise so callers can surface it clearly.
         raise FileNotFoundError(f"Asset source does not exist: {src}")
+
+    owner_root = src_root if src_root is not None else resolve_asset_source_dir()
 
     # Resolve AUTO before any branching so result.mode is always concrete.
     resolved_mode = (
@@ -191,8 +200,22 @@ def install_asset(
 
     # Existing target handling
     if target.is_symlink():
-        target.unlink()
-        outcome_on_create = InstallOutcome.UPDATED
+        if _is_samocode_owned(target, owner_root):
+            target.unlink()
+            outcome_on_create = InstallOutcome.UPDATED
+        else:
+            # Foreign symlink - never clobber a link we do not own.
+            warning = (
+                f"{target} is a symlink not managed by samocode; skipping. "
+                "Remove it manually if you want samocode to manage it."
+            )
+            return InstallResult(
+                src=src,
+                target=target,
+                outcome=InstallOutcome.SKIPPED,
+                mode=resolved_mode,
+                warning=warning,
+            )
     elif target.exists():
         # Real file or directory - never clobber
         warning = (
@@ -265,7 +288,11 @@ def _enumerate_asset_entries(asset_class: AssetClass, src_root: Path) -> list[Pa
         return []
     if asset_class.is_dir_asset:
         return sorted(p for p in src_dir.iterdir() if p.is_dir())
-    return sorted(src_dir.glob("*.md"))
+    # Exclude *_TEMPLATE.md placeholders (e.g. agents/AGENT_TEMPLATE.md) - they
+    # are scaffolding, not real installable assets.
+    return sorted(
+        p for p in src_dir.glob("*.md") if not p.name.endswith("_TEMPLATE.md")
+    )
 
 
 # === Ownership check ===
@@ -287,9 +314,11 @@ def _is_samocode_owned(target: Path, src_root: Path) -> bool:
     try:
         resolved = target.resolve()
     except OSError:
-        # Broken symlink - conservatively leave it for manual cleanup.
+        # Symlink loop / permission error - conservatively leave it alone.
         return False
-    return str(resolved).startswith(str(src_root))
+    # Path-aware containment (not string prefix) so a sibling tree like
+    # "<src_root>-backup" is never mistaken for the samocode source tree.
+    return resolved == src_root or src_root in resolved.parents
 
 
 # === Single-asset uninstall primitive ===
@@ -429,7 +458,14 @@ def install(copy: bool | None = None) -> list[InstallResult]:
             target_dir = resolve_target_dir(asset_class, provider)
             _print_install_section(asset_class.name, provider)
             for src in entries:
-                result = install_asset(src, target_dir / src.name, mode)
+                target = target_dir / src.name
+                try:
+                    result = install_asset(src, target, mode, src_root=src_root)
+                except OSError as e:
+                    # Permission denied, read-only dir, disk full, etc. Report
+                    # and keep going so one bad target does not abort the rest.
+                    print(f"  Error: failed to install {src.name}: {e}")
+                    continue
                 results.append(result)
                 _print_install_item(result)
 
@@ -460,7 +496,11 @@ def uninstall() -> list[UninstallResult]:
             target_dir = resolve_target_dir(asset_class, provider)
             _print_uninstall_section(asset_class.name, provider)
             for src in entries:
-                result = _uninstall_asset(target_dir / src.name, src_root)
+                try:
+                    result = _uninstall_asset(target_dir / src.name, src_root)
+                except OSError as e:
+                    print(f"  Error: failed to remove {src.name}: {e}")
+                    continue
                 results.append(result)
                 _print_uninstall_item(result)
 
