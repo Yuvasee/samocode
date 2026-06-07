@@ -168,6 +168,11 @@ Examples:
         choices=["claude", "codex"],
         help="AI CLI provider to run orchestrator iterations with",
     )
+    parser.add_argument(
+        "--once",
+        action="store_true",
+        help="Run exactly one orchestrator iteration, then stop even on continue.",
+    )
 
     return parser.parse_args()
 
@@ -369,6 +374,9 @@ def main() -> None:
                 break
 
             if signal.status == SignalStatus.CONTINUE:
+                if args.once:
+                    logger.info("One-shot mode - pausing after continue signal")
+                    break
                 logger.info("Continuing to next iteration...")
                 continue
 
