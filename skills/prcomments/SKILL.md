@@ -71,7 +71,7 @@ If GitHub CLI is unavailable or unauthenticated, report the blocker and ask the 
 
    ## Summary
 
-   | Issue | Severity | Validity | Code Value | Risk |
+   | Issue | Severity | Validity | Code Volume | Risk |
    | ----- | -------- | -------- | ---------- | ---- |
    | ...   | ...      | ...      | ...        | ...  |
 
@@ -94,7 +94,7 @@ If GitHub CLI is unavailable or unauthenticated, report the blocker and ask the 
    ```
 
 7. Report:
-   - A table for all issues with columns: Severity, Validity, Code Value, Risk.
+   - A table for all issues with columns: Severity, Validity, Code Volume, Risk.
    - Which comments are valid, invalid, or partial.
    - The recommended fixes.
    - Ask which issues to address.
@@ -105,13 +105,13 @@ If GitHub CLI is unavailable or unauthenticated, report the blocker and ask the 
 - Do not dismiss a comment without reading the relevant code path.
 - If a reviewer cites stale code or the wrong path, say so and explain the live path.
 - Preserve uncertainty: use `Partial` when the concern is directionally right but the proposed fix or cited location is wrong.
-- Always include a compact triage matrix for every issue, both in the session report and in the final user-facing summary, with exactly these columns: `Severity`, `Validity`, `Code Value`, `Risk`.
+- Always include a compact triage matrix for every issue, both in the session report and in the final user-facing summary, with exactly these columns: `Severity`, `Validity`, `Code Volume`, `Risk`.
 
 ## Triage Matrix Columns
 
 - **Severity**: impact if the issue ships. Use values like `Blocking`, `Important`, or `Suggestion`.
 - **Validity**: investigation result. Use `Valid`, `Partial`, or `Invalid`.
-- **Code Value**: expected value of fixing in this PR, not implementation size. Use concise labels such as `High`, `Medium`, or `Low`, optionally with a short reason.
+- **Code Volume**: amount of code affected by the fix (implementation size). Use concise labels such as `Small`, `Medium`, or `Large`, optionally with a short reason.
 - **Risk**: implementation/regression risk of the fix. Use concise labels such as `Low`, `Medium`, or `High`, optionally with a short reason.
 
 ## Triage Principles
