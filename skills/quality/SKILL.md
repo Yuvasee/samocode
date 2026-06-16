@@ -1,11 +1,41 @@
 ---
 name: quality
-description: Code quality analysis through cleanup analysis and multi-perspective reviews.
+description: Code quality analysis through cleanup analysis, multi-perspective reviews, and explicit finding decisions.
 ---
 
 # Quality
 
 Analyze code quality through different lenses: cleanup analysis for technical debt and multi-perspective reviews for holistic assessment.
+
+## Important Finding Policy
+
+Any **blocking** or **important** finding is not complete when it is merely documented. It must receive an explicit decision:
+
+| Decision | Required evidence |
+|---|---|
+| **Fix now** | Link or describe the code/test change that will resolve it |
+| **Defer** | Ticket/link or concrete follow-up owner/reason |
+| **Reject** | Evidence that the finding is false, inapplicable, or intentionally accepted |
+
+Do not mark quality work done while blocking or important findings remain undecided.
+
+## Review Debt Ledger
+
+Maintain `_review_debt.md` for important review debt. Use the active session path when known; otherwise use the original invocation directory. Never write the ledger into a temporary review worktree that will be removed.
+
+Ledger rows:
+
+```markdown
+| ID | Source | Severity | Finding | Location | Decision | Evidence / Ticket | Status |
+|---|---|---|---|---|---|---|---|
+| Q-001 | quality/multi-review | important | [title] | path:line | undecided |  | open |
+```
+
+Rules:
+- Add every validated blocking or important finding unless it is fixed during the same quality loop.
+- Keep `Status` as `open` until the finding is fixed, deferred with ticket/reason, or rejected with evidence.
+- Preserve existing rows and update them in place when a decision is made.
+- Suggestions and observations do not go into `_review_debt.md` unless the human explicitly asks to track them.
 
 ## Requirements
 
@@ -68,6 +98,12 @@ Analyze changed code for quality issues and technical debt.
    |-------|---------------|----------|-----------|
    | ...   | ...           | ...      | ...       |
 
+   ## Required Decisions
+
+   | ID | Priority | Issue | Recommendation | Decision | Evidence / Ticket | Status |
+   |----|----------|-------|----------------|----------|-------------------|--------|
+   | C-001 | High | ... | ... | undecided |  | open |
+
    ## Implementation Phases
 
    ### Phase 1: High Priority
@@ -80,7 +116,9 @@ Analyze changed code for quality issues and technical debt.
    - [ ] [Action item]
    ```
 
-4. **Report back:** Summary of issues found by priority
+4. **Update review debt ledger:** Add high/medium cleanup issues to `_review_debt.md` when they remain open after the report.
+
+5. **Report back:** Summary of issues found by priority and any required decisions. Do not call cleanup complete while high/medium issues remain undecided.
 
 ---
 
@@ -133,7 +171,32 @@ Before running reviewer passes, set up the review environment:
    summary, nothing else.
    ```
 
-   Combine the commit messages with the haiku agent's diff summary into a change context block. Include it in every reviewer agent's instructions so each understands the purpose and substance of the change. Do NOT read the diff yourself.
+   Combine the commit messages with the haiku agent's diff summary into a change context block. Include it in every reviewer agent's instructions so each understands the purpose and substance of the change. Do not do a full subjective review pass yourself before agents; keep your own pre-synthesis inspection limited to the deterministic checks below.
+
+4. **Run deterministic architecture invariant checks:**
+   Run these from the review directory yourself before synthesis. They are not a replacement for reviewer judgment; they catch repeatable structural risks that reviewers often miss.
+
+   - **New avoncore symbols/importers/name collisions:**
+     - Identify changed `avoncore` exports and public symbols: `git diff origin/main...HEAD -- avoncore`
+     - For each new or promoted symbol, count current Python service importers with `rg "from avoncore|import avoncore" .`
+     - Promotion into `avoncore` requires **2+ current Python service consumers**. A frontend mirror does not count. A future consumer means ticket/TODO, not premature promotion.
+     - Check for confusing name collisions with existing domain/service symbols using `rg "<symbol_name>" .`
+   - **Controller/service/repository boundaries:**
+     - Controllers/routes should not own persistence details or business rules.
+     - Services should not reach through repositories into raw database clients unless that is the established local pattern.
+     - Repositories should not perform user-facing orchestration, queue publishing, or controller response shaping.
+   - **Queue + DB source-of-truth/write ordering:**
+     - Identify every path that writes DB state and publishes/consumes queue messages.
+     - Verify the source of truth is explicit.
+     - Check failure ordering: queue succeeds/DB fails, DB succeeds/queue fails, duplicate delivery, retry after partial failure.
+   - **Background fan-out/concurrency/retry assumptions:**
+     - Look for `gather`, task creation, worker pools, batch loops, queue consumers, and webhook fan-out.
+     - Verify concurrency is bounded, cancellation/error propagation is intentional, and important work has durable retry or a documented reason it does not need one.
+   - **Duplicate config/default sources:**
+     - Search for new env vars/defaults in settings, service constructors, frontend config, tests, and docs.
+     - Flag duplicate default values or independent parsing paths that can drift.
+
+   Record any invariant failure as a blocking or important finding in synthesis, even if no agent independently reports it.
 
 #### Shared Output Schema
 
@@ -165,8 +228,9 @@ Before listing findings, follow this reasoning process:
 1. Read the diff and understand what this change accomplishes
 2. Identify the key operations, data flows, and integration points
 3. Evaluate each against your review checklist below
-4. For each potential concern, verify it is genuine by checking surrounding context
-5. Only report findings you can support with specific evidence from the diff
+4. Walk the feature edge-case prompts that apply to this diff
+5. For each potential concern, verify it is genuine by checking surrounding context
+6. Only report findings you can support with specific evidence from the diff
 ```
 
 #### Reviewer Execution Instructions
@@ -243,6 +307,11 @@ CHECKLIST:
 - Single responsibility -- are concerns properly separated?
 - Extensibility -- how difficult will it be to modify this path later?
 - Error handling strategy -- consistent with the rest of the system?
+- New shared package exports -- especially avoncore symbols -- are justified by current consumers, not speculative future use
+- Controller/service/repository boundaries are preserved: controllers orchestrate requests, services own business logic, repositories own persistence
+- Queue + DB workflows have one explicit source of truth and a defensible write/order/retry strategy
+- Background fan-out is bounded, observable, and backed by durable retry assumptions where failure matters
+- Config defaults come from one source; no duplicate env/default definitions drift across modules
 - Additionally, flag any other architectural concern you notice
 ```
 
@@ -278,6 +347,14 @@ CHECKLIST:
 - Failure modes -- what does the user experience when things go wrong?
 - Missing validation that could let users reach bad states
 - Additionally, flag any other product or user-impact concern you notice
+
+FEATURE EDGE-CASE PROMPTS:
+- All validators enabled, a partial validator set enabled, and all validators disabled
+- Queue succeeds but DB write fails; DB write succeeds but queue publish fails
+- Two users revalidate the same KI or shared entity concurrently
+- Large uploads, empty uploads, and unsupported file/content types
+- API-key user missing email/name or other human-profile fields
+- Retry after partial failure, refresh after background completion, and stale UI state
 ```
 
 ---
@@ -347,6 +424,9 @@ Instructions (for root agent):
    - State mutation side effects
    - Contract violations between caller and callee
    - Boundary conditions and overflow potential
+   - Queue/DB consistency when one write succeeds and the other fails
+   - Concurrent revalidation or background fan-out races
+   - Missing API-key user profile fields such as email/name
 
    For each finding provide ALL fields:
    - file: [exact path]
@@ -400,6 +480,9 @@ Instructions (for root agent):
    - State mutation side effects
    - Contract violations between caller and callee
    - Boundary conditions and overflow potential
+   - Queue/DB consistency when one write succeeds and the other fails
+   - Concurrent revalidation or background fan-out races
+   - Missing API-key user profile fields such as email/name
 
    For each finding provide ALL fields:
    - file: [exact path]
@@ -474,6 +557,10 @@ Instructions (for root agent):
    - Are the tests adequate for the scope of these changes?
    - Missing test coverage for new code paths
    - Missing edge case tests (empty input, boundary values, error paths)
+   - Missing tests for all/partial/no validators enabled
+   - Missing tests for queue succeeds/DB fails and DB succeeds/queue fails
+   - Missing tests for concurrent revalidation of the same KI/shared entity
+   - Missing tests for large uploads and API-key users missing email/name
    - Test quality -- do tests verify behavior or just exercise code?
    - Brittle tests that will break on unrelated changes
    - Missing integration or contract tests for new interfaces
@@ -522,6 +609,10 @@ Instructions (for root agent):
    - Are the tests adequate for the scope of these changes?
    - Missing test coverage for new code paths
    - Missing edge case tests (empty input, boundary values, error paths)
+   - Missing tests for all/partial/no validators enabled
+   - Missing tests for queue succeeds/DB fails and DB succeeds/queue fails
+   - Missing tests for concurrent revalidation of the same KI/shared entity
+   - Missing tests for large uploads and API-key users missing email/name
    - Test quality -- do tests verify behavior or just exercise code?
    - Brittle tests that will break on unrelated changes
    - Missing integration or contract tests for new interfaces
@@ -595,7 +686,28 @@ Note: preserve any explicit strengths or positive observations from agents -- th
 
 Number each finding and order by priority (blocking first, then important). For each, state the concrete fix required. This becomes the implementation checklist if the human approves fixes.
 
-##### Step 5: Human Review Guide
+##### Step 5: Required Decisions
+
+Create a **Required Decisions** table for every blocking or important finding:
+
+| ID | Severity | Finding | Recommended fix | Decision | Evidence / Ticket | Status |
+|---|---|---|---|---|---|---|
+| Q-001 | important | [title] | [concrete action] | undecided |  | open |
+
+Decision values are only:
+- `fix now`
+- `defer`
+- `reject`
+- `undecided`
+
+Rules:
+- Default every blocking/important finding to `undecided` unless the human has already provided an explicit decision.
+- `defer` requires a ticket/link or concrete follow-up reason/owner.
+- `reject` requires evidence from the codebase, product requirement, or explicit human direction.
+- If any row remains `undecided`, quality is **not done**. Report that decisions are required and stop.
+- Update `_review_debt.md` with every row whose status is still open. If a row is fixed in the same loop, mark it `fixed` with the commit/test evidence instead of leaving it open.
+
+##### Step 6: Human Review Guide
 
 Create a short guide for the human reviewer: what this PR is about, what sequence to review files in, and any context needed. Keep it concise.
 
@@ -607,11 +719,13 @@ Present the synthesized review as:
 2. Human review guide
 3. Blocking issues (if any)
 4. Important issues
-5. Suggestions
-6. Observations (low-confidence, for awareness)
-7. What's good / don't change
+5. Required Decisions table
+6. `_review_debt.md` updates made
+7. Suggestions
+8. Observations (low-confidence, for awareness)
+9. What's good / don't change
 
-Each finding in sections 3-6 should include: agreement level tag, file, lines, title, description, and recommended fix.
+Each finding in sections 3-4 and 7-8 should include: agreement level tag, file, lines, title, description, and recommended fix.
 
 #### Cleanup
 
@@ -624,4 +738,4 @@ git worktree remove --force "../review-$ARGUMENTS" 2>/dev/null || true
 
 #### Important
 
-Do NOT start fixing anything. After presenting the review, STOP and wait for explicit confirmation on which items to fix. Ask which issues to address before making any changes.
+Do NOT start fixing anything. After presenting the review, STOP and wait for explicit confirmation on which blocking/important items to fix, defer, or reject. If any blocking or important item remains undecided, say clearly that quality is pending and must not be marked done.

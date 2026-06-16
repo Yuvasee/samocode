@@ -20,6 +20,7 @@ class Phase(Enum):
     IMPLEMENTATION = "implementation"
     TESTING = "testing"
     QUALITY = "quality"
+    PR_READINESS = "pr-readiness"
     DONE = "done"
 
 
@@ -86,7 +87,7 @@ PHASE_CONFIGS: dict[Phase, PhaseConfig] = {
     Phase.TESTING: PhaseConfig(
         phase=Phase.TESTING,
         agent_name="testing-agent",
-        allowed_next=frozenset({Phase.QUALITY, Phase.DONE}),
+        allowed_next=frozenset({Phase.QUALITY, Phase.PR_READINESS}),
         allowed_signals=frozenset({"continue", "blocked"}),
         max_iterations=20,
     ),
@@ -94,9 +95,17 @@ PHASE_CONFIGS: dict[Phase, PhaseConfig] = {
         phase=Phase.QUALITY,
         agent_name="quality-agent",
         # Can skip regression testing if no fixes made or no tests
-        allowed_next=frozenset({Phase.TESTING, Phase.DONE}),
+        allowed_next=frozenset({Phase.TESTING, Phase.PR_READINESS}),
         allowed_signals=frozenset({"continue", "blocked"}),
         max_iterations=10,
+    ),
+    Phase.PR_READINESS: PhaseConfig(
+        phase=Phase.PR_READINESS,
+        agent_name="pr-readiness-agent",
+        allowed_next=frozenset({Phase.DONE}),
+        allowed_signals=frozenset({"continue", "blocked"}),
+        max_iterations=5,
+        requires_gate=True,
     ),
     Phase.DONE: PhaseConfig(
         phase=Phase.DONE,

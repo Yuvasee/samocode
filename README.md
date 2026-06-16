@@ -107,7 +107,7 @@ Each iteration is **stateless**: the child CLI starts fresh, reads `_overview.md
 
 Phases:
 ```
-init → investigation → requirements → planning → implementation → testing → quality → done
+init → investigation → requirements → planning → implementation → testing → quality → pr-readiness → done
                             ↑              ↑
                        human gate     human gate
                        (answer Q&A)   (approve plan)
@@ -164,7 +164,8 @@ init → investigation → requirements → planning → implementation → test
 | planning | Create phased plan, wait for approval (human gate) |
 | implementation | Execute plan phases iteratively |
 | testing | Verify by fresh agent (not ad-hoc tests) |
-| quality | Review + fix blocking issues (max 3 iterations) |
+| quality | Review, fix blocking issues, require decisions for important issues (max 3 iterations) |
+| pr-readiness | Final-head gate after fixes, merges, and manual debugging |
 | done | Generate summary, signal complete |
 
 ## Signal protocol
@@ -204,6 +205,9 @@ Standalone utilities, work without the orchestrator:
 | `/dop`, `/dop2` | Execute plan phase (single / dual-agent) |
 | `/cleanup` | Code cleanup analysis |
 | `/multi-review` | Multi-perspective code review |
+| `/merge` | Guarded merge from `origin/main` or another source branch |
+| `/prcomments` | Investigate and triage PR review comments |
+| `/pr-readiness` | Final-head PR readiness gate before summary/merge |
 | `/session-start`, `/session-continue`, `/session-archive` | Session management |
 
 ## Examples
