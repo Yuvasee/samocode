@@ -66,7 +66,7 @@ init -> investigation -> requirements -> planning -> implementation -> testing -
 - **planning**: Create phased implementation plan → **WAIT for human approval**
 - **implementation**: Execute plan phases iteratively (dop/dop2/do)
 - **testing**: Formal verification by fresh agent (NOT ad-hoc tests during implementation)
-- **quality**: Review, fix blocking issues, and require decisions for important issues (max 3 iterations)
+- **quality**: Review, fix blocking issues, and require decisions for important issues — ONE step per iteration (cleanup → review → triage/fix → verify, dispatched via `Quality Step`; max 3 fix iterations). Chaining review fan-outs + fixes in one run blows the context and dies on long-response API errors.
 - **pr-readiness**: Final-head gate after fixes, merges, and manual debugging
 - **done**: Generate summary, signal complete
 
@@ -80,7 +80,8 @@ init -> investigation -> requirements -> planning -> implementation -> testing -
 Phase: [init|investigation|requirements|planning|implementation|testing|quality|pr-readiness|done]
 Iteration: [number]
 Blocked: [no|waiting_human]
-Quality Iteration: [number, only during quality]
+Quality Iteration: [number, only during quality — counts fix loops]
+Quality Step: [cleanup|review|triage|verify, only during quality — one step per iteration]
 Last Action: [what just happened]
 Next: [what should happen next]
 ```

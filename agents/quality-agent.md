@@ -19,55 +19,84 @@ Session context is provided via --append-system-prompt by the orchestrator:
 - Current phase and iteration
 - Project configuration
 
-## Your Task
+## Your Task — exactly ONE step per process run
 
-### Initial Review (Quality Iteration: 1)
+Each samocode iteration runs you as a FRESH process. Do exactly ONE of the steps
+below, persist its results to session files, write `_signal.json`, and exit.
+
+**Never chain two steps in one run.** Each review action fans out to multiple
+subagents whose outputs land in your context; chaining cleanup + multi-review +
+a fix loop in one run accumulates a context so large that long responses start
+failing with connection errors and the run exceeds its time limit. One step per
+run keeps every process short and its context small — the orchestrator loops
+you until the phase completes.
+
+Dispatch on the `Quality Step` field in the Status section of `_overview.md`
+(field absent → step 1):
+
+### Step 1 — Cleanup (no `Quality Step` field yet)
 
 1. **MUST use `quality` skill (cleanup action)** via Skill tool to analyze changed code. Use the "quality" skill cleanup action now!
-2. **MUST use `quality` skill (multi-review action)** via Skill tool to get multiple review perspectives. Use the "quality" skill multi-review action now!
-3. **Set `Quality Iteration: 1`** in Status section
-4. **Create quality document:** `[SESSION_PATH]/[TIMESTAMP_FILE]-quality-review.md`
+2. Write findings to `[SESSION_PATH]/[TIMESTAMP_FILE]-quality-cleanup.md`
+3. Set in Status: `Quality Step: review`, `Quality Iteration: 1`
+4. Signal: `{"status": "continue", "phase": "quality"}`
 
-### Triage Findings
+### Step 2 — Multi-review (`Quality Step: review`)
 
-Parse review documents for:
-- Issues marked with `severity: blocking` or blocking emoji
-- Critical security concerns
-- Breaking functionality
-- Issues marked with `severity: important`
-- High/medium cleanup issues promoted by the quality skill
+1. **MUST use `quality` skill (multi-review action)** via Skill tool to get multiple review perspectives. Use the "quality" skill multi-review action now!
+2. Write the synthesized review to `[SESSION_PATH]/[TIMESTAMP_FILE]-quality-review.md`
+3. Set in Status: `Quality Step: triage`
+4. Signal: `{"status": "continue", "phase": "quality"}`
 
-Every blocking or important finding must have an explicit decision:
-- `fix now` — code/test change will resolve it in this session
-- `defer` — ticket/link or concrete owner/reason exists
-- `reject` — evidence shows the finding is false, inapplicable, or intentionally accepted
+### Step 3 — Triage + fix (`Quality Step: triage`)
 
-Update or create `[SESSION_PATH]/_review_debt.md` with all open blocking/important findings. Do not mark quality complete while any row remains `undecided`.
+1. Read the cleanup and review docs from the session folder and collect:
+   - Issues marked with `severity: blocking` or blocking emoji
+   - Critical security concerns and breaking functionality
+   - Issues marked with `severity: important`
+   - High/medium cleanup issues promoted by the quality skill
 
-**If blocking issues exist:** Enter fix loop.
+2. Every blocking or important finding must have an explicit decision:
+   - `fix now` — code/test change will resolve it in this session
+   - `defer` — ticket/link or concrete owner/reason exists
+   - `reject` — evidence shows the finding is false, inapplicable, or intentionally accepted
 
-**If important issues exist but are undecided:** Signal `blocked` with `needs=human_decision`.
+   Update or create `[SESSION_PATH]/_review_debt.md` with all open
+   blocking/important findings. Do not mark quality complete while any row
+   remains `undecided`.
 
-**If no blocking issues and all important issues are fixed/deferred/rejected:** Transition to testing (second run) or PR readiness if no fixes were made and no tests are needed.
+3. Route on the triage outcome:
+   - **Blocking issues, or important issues decided `fix now`:** for each,
+     **use `implementation` skill** via Skill tool (follow the "do" action) to
+     fix it, then commit:
+     `cd [WORKING_DIR] && git add -A && git commit -m "fix: quality review - [brief]"`
+     (one commit per fix for traceability). Then set `Quality Step: verify`
+     and signal `{"status": "continue", "phase": "quality"}`.
+   - **Important issues remain `undecided`:** signal `blocked` with
+     `needs=human_decision` (see Signals).
+   - **No blocking issues and every important issue is fixed/deferred/rejected:**
+     remove the `Quality Step` field and transition — testing (second run) by
+     default, or pr-readiness if no fixes were made and no tests are needed.
 
-### Fix Loop (max 3 iterations)
+### Step 4 — Verify fixes (`Quality Step: verify`)
 
-1. For each blocking issue, and for any important issue explicitly selected as `fix now`:
-   - **MUST use `implementation` skill** via Skill tool, follow the "do" action to fix
-   - Commit: `cd [WORKING_DIR] && git add -A && git commit -m "fix: quality review - [brief]"`
+1. Re-run the `quality` skill (multi-review action) via Skill tool, scoped to
+   the fix commits (review the diff of the fixes, not the whole branch again).
+2. **If clean** (no blocking issues, no undecided important issues): remove the
+   `Quality Step` field and transition (testing for regression, since fixes
+   were made).
+3. **If blocking issues remain:** increment `Quality Iteration` in Status.
+   - **If Quality Iteration > 3:** signal `blocked` with "Quality issues remain after 3 iterations"
+   - **Else:** set `Quality Step: triage` and signal `{"status": "continue", "phase": "quality"}`
+4. **If important issues remain undecided:** signal `blocked` with "Quality decisions required"
 
-2. Re-run the `quality` skill (multi-review action) via Skill tool to verify
+## Context discipline (applies to every step)
 
-3. Increment `Quality Iteration` in Status
-
-4. **If Quality Iteration > 3:**
-   - Signal `blocked` with "Quality issues remain after 3 iterations"
-
-5. **If blocking issues remain:** Repeat fix loop
-
-6. **If important issues remain undecided:** Signal `blocked` with "Quality decisions required"
-
-7. **If no blocking issues and no undecided important issues:** Transition to testing, or PR readiness if no fixes were made and no tests are needed
+- Review the branch DIFF (`git diff origin/main...HEAD` or the merge-base
+  form), never the whole repo.
+- Reviewer/subagent outputs belong in session files. When a later step needs
+  them, read back only the findings sections — never full reviewer transcripts.
+- Do not re-read prior phase documents unless a finding requires it.
 
 ## Quality Review Document Structure
 
@@ -80,11 +109,8 @@ Iteration: [N]
 ## Review Summary
 [Overall assessment]
 
-## Cleanup Analysis
-[Results from cleanup skill]
-
 ## Multi-Perspective Review
-[Results from multi-review skill]
+[Synthesized results from multi-review action]
 
 ## Blocking Issues
 - [ ] [Issue 1] - [severity: blocking]
@@ -113,15 +139,15 @@ Iteration: [N]
 ## State Updates
 
 Edit `_overview.md`:
-- Status: Update `Quality Iteration`, `Last Action`, `Next`
-- When clean: `Last Action: Quality review complete`, `Next: Regression testing`
-- Flow Log: `- [TIMESTAMP_ITERATION] Quality review (iter N) -> [filename].md`
+- Status: Update `Quality Step`, `Quality Iteration`, `Last Action`, `Next`
+- When clean: remove `Quality Step`, `Last Action: Quality review complete`, `Next: Regression testing`
+- Flow Log: `- [TIMESTAMP_ITERATION] Quality [step] (iter N) -> [filename].md`
 
 **Do NOT update Phase field** - orchestrator handles it based on signal.
 
 ## Signals
 
-**Continue (during fix loop):**
+**Continue (between quality steps and during fix loop):**
 ```json
 {"status": "continue", "phase": "quality"}
 ```
@@ -152,6 +178,6 @@ Edit `_overview.md`:
 - Blocking issues must be fixed before leaving quality
 - Important issues must be fixed, deferred with ticket/reason, or rejected with evidence before leaving quality
 - Suggestions are logged but not actioned unless explicitly requested
-- Max 3 fix iterations to prevent infinite loops
+- Max 3 fix iterations (`Quality Iteration`) to prevent infinite loops
 - Commit each fix separately for traceability
 - Always re-review after fixes to catch regressions
