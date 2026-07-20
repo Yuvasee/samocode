@@ -1,34 +1,57 @@
 ---
 name: learn
-description: Extract learnings from current conversation and add to project's CLAUDE.md.
+description: Extract durable lessons from the current conversation, classify them, and route each to the narrowest enforceable code, test, skill, or scoped instruction source without growing a generic CLAUDE.md memory dump.
 ---
 
 # Learn
 
-Extract learnings from the current conversation and add them to the project's CLAUDE.md.
+Turn repeated friction into durable, scoped improvements. Do not treat every
+incident as standing prompt context.
 
-## Steps
+## Workflow
 
-1. **Review current conversation for friction moments:**
-   - Commands/approaches that failed before finding the right way
-   - Non-obvious solutions or workarounds discovered
-   - If nothing notable was learned: report "No new learnings to capture." and STOP.
+1. **Extract candidates**
+   - Look for repeated failures, non-obvious constraints, and corrections that changed the successful approach.
+   - If nothing durable was learned, report `No new learnings to capture.` and stop.
 
-2. **Resolve project CLAUDE.md:**
-   - If active session exists: read Working Dir from `_overview.md`, use `[Working Dir]/CLAUDE.md`
-   - Otherwise: use `git rev-parse --show-toplevel` to find repo root, use `[repo root]/CLAUDE.md`
-   - If CLAUDE.md doesn't exist: create it
+2. **Load the instruction architecture**
+   - Resolve the active repository from the session `Working Dir`, or use `git rev-parse --show-toplevel`.
+   - Read applicable `AGENTS.md`, `CLAUDE.md`, rule-loading tables, scoped rules, and the active skill before choosing a destination.
 
-3. **Append learnings:**
-   - Find or create `## Learnings` section in CLAUDE.md
-   - Add one line per learning, format: `- When [situation], [do this / don't do that]`
-   - **Generalize as much as possible.** Never reference specific files, variables, or code locations. Extract only generic techniques, rules, and patterns that apply broadly across projects and sessions.
-   - Keep it terse — one line, no paragraphs
-   - Don't duplicate entries already present
+3. **Qualify each candidate**
+   - Keep only guidance that is recurring, non-obvious, actionable, and likely to remain true.
+   - Reject one-off incidents, stale version facts, task state, specific PR history, advice obvious from source, and behavior better enforced mechanically.
 
-4. **Commit:**
-   - `cd [repo root] && git add CLAUDE.md && git commit -m "docs: add learnings"`
+4. **Choose exactly one destination**
+   - **Code, test, validator, or script:** behavior can be enforced mechanically.
+   - **Skill:** procedure belongs to a named workflow or tool.
+   - **Scoped rule:** guidance applies only to a folder, domain, or trigger.
+   - **Project instruction:** stable project-wide policy with no narrower home.
+   - **Session artifact:** active task state, decision, or handoff detail.
+   - **Drop:** no durable value after the task ends.
 
-5. **Report:**
-   - List the learnings added
-   - Or: "No new learnings to capture."
+5. **Pass the mandatory duplicate gate before writing**
+   - Do not write a learning until this gate is complete.
+   - Search every applicable project, team, and personal instruction source, plus the active skill and proposed destination.
+   - Search by the candidate's key concepts, synonyms, and expected behavior; an exact-text search alone is insufficient.
+   - Classify each match as duplicate, partial overlap, conflict, or distinct.
+   - For a duplicate, make no addition. For partial overlap, refine or replace the existing rule instead of appending another version. Resolve conflicts before writing.
+   - Record the sources searched and the duplicate disposition for the final report.
+
+6. **Merge instead of append**
+   - Never create or append to a generic `## Learnings` section automatically.
+   - Keep the destination concise; move details to on-demand references when necessary.
+
+7. **Validate routing**
+   - Confirm every changed scoped rule is reachable from its rule-loading table or skill.
+   - Re-read the final text for duplication, stale specifics, and conflicting instructions.
+   - Run any repository-provided instruction or skill validator.
+
+8. **Commit only when appropriate**
+   - Do not create a commit unless the user requested it or the active workflow explicitly requires it.
+   - Never commit directly on a protected/default branch when project instructions require a feature branch.
+   - Stage only the instruction, skill, test, or tooling files changed by this workflow.
+
+9. **Report dispositions**
+   - List each candidate as retained, merged, enforced, deferred, or dropped, with its destination.
+   - Include the sources searched by the duplicate gate and whether the candidate was duplicate, overlapping, conflicting, or distinct.
