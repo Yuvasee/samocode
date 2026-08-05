@@ -19,24 +19,6 @@ Any **blocking** or **important** finding is not complete when it is merely docu
 
 Do not mark quality work done while blocking or important findings remain undecided.
 
-## Review Debt Ledger
-
-Maintain `_review_debt.md` for important review debt. Use the active session path when known; otherwise use the original invocation directory. Never write the ledger into a temporary review worktree that will be removed.
-
-Ledger rows:
-
-```markdown
-| ID | Source | Severity | Finding | Location | Decision | Evidence / Ticket | Status |
-|---|---|---|---|---|---|---|---|
-| Q-001 | quality/multi-review | important | [title] | path:line | undecided |  | open |
-```
-
-Rules:
-- Add every validated blocking or important finding unless it is fixed during the same quality loop.
-- Keep `Status` as `open` until the finding is fixed, deferred with ticket/reason, or rejected with evidence.
-- Preserve existing rows and update them in place when a decision is made.
-- Suggestions and observations do not go into `_review_debt.md` unless the human explicitly asks to track them.
-
 ## Requirements
 
 - None (both actions work independently)
@@ -116,9 +98,7 @@ Analyze changed code for quality issues and technical debt.
    - [ ] [Action item]
    ```
 
-4. **Update review debt ledger:** Add high/medium cleanup issues to `_review_debt.md` when they remain open after the report.
-
-5. **Report back:** Summary of issues found by priority and any required decisions. Do not call cleanup complete while high/medium issues remain undecided.
+4. **Report back:** Summary of issues found by priority and any required decisions. Do not call cleanup complete while high/medium issues remain undecided.
 
 ---
 
@@ -705,7 +685,6 @@ Rules:
 - `defer` requires a ticket/link or concrete follow-up reason/owner.
 - `reject` requires evidence from the codebase, product requirement, or explicit human direction.
 - If any row remains `undecided`, quality is **not done**. Report that decisions are required and stop.
-- Update `_review_debt.md` with every row whose status is still open. If a row is fixed in the same loop, mark it `fixed` with the commit/test evidence instead of leaving it open.
 
 ##### Step 6: Human Review Guide
 
@@ -720,12 +699,11 @@ Present the synthesized review as:
 3. Blocking issues (if any)
 4. Important issues
 5. Required Decisions table
-6. `_review_debt.md` updates made
-7. Suggestions
-8. Observations (low-confidence, for awareness)
-9. What's good / don't change
+6. Suggestions
+7. Observations (low-confidence, for awareness)
+8. What's good / don't change
 
-Each finding in sections 3-4 and 7-8 should include: agreement level tag, file, lines, title, description, and recommended fix.
+Each finding in sections 3-4 and 6-7 should include: agreement level tag, file, lines, title, description, and recommended fix.
 
 #### Cleanup
 
