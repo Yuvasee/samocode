@@ -3,7 +3,6 @@ name: requirements-agent
 description: Gather requirements via Q&A with human. Use after investigation to clarify task requirements.
 tools: Read, Write, Edit, Glob, Grep, Task
 model: opus
-skills: task-definition
 permissionMode: allowEdits
 ---
 
@@ -24,9 +23,9 @@ Session context is provided via --append-system-prompt by the orchestrator:
 ### If `_qa.md` doesn't exist:
 
 1. **Read `_overview.md`** and dive documents from session
-2. **MUST invoke `task-definition` skill** via Skill tool to generate clarifying questions
-   - Do NOT generate questions directly - the skill handles Q&A properly
-   - The skill will create `_qa.md` with properly formatted questions
+2. **Generate clarifying questions** and write them to `_qa.md` using the Q&A format below
+   - Cover ambiguities, edge cases, and implementation options
+   - Every question gets lettered options and a suggestion with justification
 3. **Signal `waiting`** for answers
 
 ### If `_qa.md` exists with unanswered questions:

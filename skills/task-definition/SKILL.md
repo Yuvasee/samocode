@@ -5,7 +5,8 @@ description: Interactive task definition with Q&A and documentation.
 
 # Task Definition
 
-Defines tasks through interactive Q&A, documenting requirements and decisions.
+Turn a raw task into a documented spec: grill the user until you reach a shared
+understanding, then record the decisions.
 
 ## Requirements
 
@@ -17,84 +18,82 @@ Defines tasks through interactive Q&A, documenting requirements and decisions.
 **Session path:** [SESSION_PATH from working memory]
 **Task:** $ARGUMENTS
 
-### Steps
+### 1. Analyze
 
-1. **Analyze the task:**
-   - Review recent dive/task documents in the session for context
-   - Check project docs for related documentation
-   - Understand scope and implications
+- Review recent dive/task documents in the session for context
+- Check project docs for related documentation
+- Understand scope and implications
+- **Facts are YOUR job, never the user's.** Anything you can look up (filesystem,
+  code, tools) you find yourself — dispatch a sub-agent for it. Never ask the user
+  for something you could look up. Don't block on a lookup: a running exploration
+  is an unsettled prerequisite, so only the questions downstream of it wait for the
+  sub-agent — ask the rest of the frontier now.
 
-2. **Interactive clarification:**
-   - Identify ambiguities, edge cases, implementation options
-   - Check if `[SESSION_PATH]/_qa.md` exists with answers from previous run
-   - If `_qa.md` exists and has answers: read them and continue to step 4
-   - If questions needed, write to `[SESSION_PATH]/_qa.md`:
-     ```markdown
-     # Q&A: [task description]
-     Status: waiting
+### 2. Grill the user (interactive Q&A)
 
-     ## Questions
+Map the task as a **design tree**: every decision branches into the decisions that
+hang off it. Work the tree in **rounds**.
 
-     ### Q1: [Clear question]
-     A) [option]
-     B) [option]
-     C) [option]
-     **Suggestion:** [recommended option] - [justification]
-     **Answer:** _waiting_
+The **frontier** is every decision whose prerequisites are already settled — the
+questions you can ask _now_ without guessing at answers you haven't heard yet. Ask
+the whole frontier in one round. A question whose answer depends on another question
+still open in this round belongs to a _later_ round, not this one.
 
-     ### Q2: [Clear question]
-     A) [option]
-     B) [option]
-     **Suggestion:** [recommended option] - [justification]
-     **Answer:** _waiting_
-     ```
-   - **IMPORTANT:** Do NOT use checkbox format `- [ ]`. Use lettered options (A, B, C) one per line.
-   - Each question MUST have a suggestion with clear justification
-   - Present questions to user formatted as:
-     ```
-     Q1: [Clear question]
-     A) [option]
-     B) [option]
-     C) [option]
-     Suggestion: [recommended] - [why]
-     ```
-   - If waiting for answers: "Questions written to _qa.md. Please answer and re-run /task to continue."
-   - Continue asking until all ambiguities resolved
-   - When no more questions: "No more questions, we can move on!"
-   - DO NOT start any code edits - wait for explicit instruction
+Format each question:
 
-3. **Document the task (after Q&A complete):**
-   - Create file: `[SESSION_PATH]/[TIMESTAMP_FILE]-task-[task-slug].md`
+```
+❓ **Q1** — **<question title>**: <question body, may span paragraphs and include options>
 
-   ```markdown
-   # Task: [title]
-   Date: [TIMESTAMP_LOG]
+➡️ <your recommended answer + short justification>
+```
 
-   ## Description
-   [What needs to be accomplished]
+- Every question MUST carry a recommended answer with a justification.
+- Only ask about **judgments that are the user's to make.** Facts you look up
+  yourself (step 1) — never put them to the user as a question.
+- Each round the user's answers reshape the tree — settled decisions push the
+  frontier outward and unblock questions that depended on them. Recompute the
+  frontier and ask the next round.
+- DO NOT start any code edits during grilling — wait for explicit instruction.
 
-   ## Requirements
-   [Bullet list]
+The Q&A is **done when the frontier is empty**: every branch of the design tree
+visited, nothing left silently assumed. Say: "No more questions, we can move on!"
+and wait for the user to confirm shared understanding before documenting.
 
-   ## Clarifications
+### 3. Document the task (after Q&A complete)
 
-   ### [Topic]
-   **Q:** [question]
-   **A:** [answer/decision]
-   **Rationale:** [why]
+Create file: `[SESSION_PATH]/[TIMESTAMP_FILE]-task-[task-slug].md`
 
-   ## Edge Cases
-   [Things to watch for]
+```markdown
+# Task: [title]
+Date: [TIMESTAMP_LOG]
 
-   ## Success Criteria
-   [How we know it's done]
-   ```
+## Description
+[What needs to be accomplished]
 
-4. **Update session:**
-   - Edit `[SESSION_PATH]/_overview.md`:
-     - Add to Flow Log: `- [TIMESTAMP_ITERATION] Task defined: [title] -> [filename].md`
-     - Add to Files: `- [filename].md - Task: [title]`
-   - Delete `_qa.md` if it exists
-   - Commit (if git repo): `cd [SESSION_DIR] && git add . && git commit -m "Task: [title]"`
+## Requirements
+[Bullet list]
 
-5. **Suggest next steps:** /create-plan, /do, /dop2
+## Clarifications
+
+### [Topic]
+**Q:** [question]
+**A:** [answer/decision]
+**Rationale:** [why]
+
+## Edge Cases
+[Things to watch for]
+
+## Success Criteria
+[How we know it's done]
+```
+
+### 4. Update session
+
+- Edit `[SESSION_PATH]/_overview.md`:
+  - Add to Flow Log: `- [TIMESTAMP_ITERATION] Task defined: [title] -> [filename].md`
+  - Add to Files: `- [filename].md - Task: [title]`
+- Commit (if git repo): `cd [SESSION_DIR] && git add . && git commit -m "Task: [title]"`
+
+### 5. Suggest next steps
+
+/create-plan, /do, /dop2
