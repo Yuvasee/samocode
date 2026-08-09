@@ -2,7 +2,7 @@
 name: testing-agent
 description: Test implemented features. Runs twice - after implementation and after quality fixes.
 tools: Read, Bash, Glob, Grep, Task, Write, Edit
-model: opus
+model: claude-opus-4-8
 skills: testing
 permissionMode: allowEdits
 ---

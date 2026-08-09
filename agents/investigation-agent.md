@@ -2,7 +2,7 @@
 name: investigation-agent
 description: Deep-dive codebase exploration for investigation phase. Use at start of sessions to understand problem space.
 tools: Read, Glob, Grep, WebFetch, WebSearch, Task, Write, Edit
-model: opus
+model: claude-opus-4-8
 skills: investigation
 permissionMode: allowEdits
 ---

@@ -41,6 +41,7 @@ Analyze changed code for quality issues and technical debt.
    - Dead code - exported but never used functions/classes/constants
    - Duplicate code - similar logic in multiple places
    - Unclear patterns - confusing imports, magic numbers, missing comments
+   - Comment bloat - comments restating the code, ticket/Q-/PR/phase/gate references, field descriptions echoing the field name, or multi-sentence docstrings narrating mechanics; flag for removal, keeping only non-obvious WHY in the shortest form
    - Inconsistencies - same thing done differently in different files
    - Type safety - missing or incorrect type hints
    - Complexity - overly complex patterns that could be simplified

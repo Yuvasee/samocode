@@ -16,6 +16,20 @@ Executes implementation tasks using different approaches: direct execution, dual
 
 These steps apply to ALL actions after implementation is complete.
 
+### Comment Discipline (all generated code)
+Write the fewest comments possible; the shorter, the better. A comment earns its
+place only by carrying non-obvious WHY the code cannot — a constraint, invariant,
+tradeoff, workaround, or surprising ordering — in one short line, essence only.
+Before committing, delete:
+- Any comment or docstring that restates what the code does.
+- Ticket / issue / Q- / PR / phase / gate references ("ENG-1234", "Q-009",
+  "moved verbatim from X", "later phase", "accepted at the … gate") — state the
+  actual reason, never the process history.
+- Multi-sentence docstrings narrating mechanics; keep one line, or none when the
+  signature is self-evident.
+Field/schema descriptions follow the same rule: drop any that merely restate the
+field name.
+
 ### Working Dir Resolution
 - Read Working Dir from session `_overview.md`
 - If not set: check project `.samocode` file for `MAIN_REPO`, or use git root, or ask user

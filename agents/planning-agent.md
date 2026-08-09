@@ -2,7 +2,7 @@
 name: planning-agent
 description: Create phased implementation plans. Use after requirements are finalized.
 tools: Read, Write, Edit, Glob, Grep, Task, Bash
-model: opus
+model: claude-opus-4-8
 skills: planning
 permissionMode: allowEdits
 ---

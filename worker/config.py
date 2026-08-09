@@ -76,7 +76,7 @@ class RuntimeConfig:
     telegram_bot_token: str = ""
     telegram_chat_id: str = ""
     claude_path: Path = Path("claude")
-    claude_model: str = "opus"
+    claude_model: str = "claude-opus-4-8"
     claude_max_turns: int = 300
     claude_timeout: int = 1800
     codex_path: Path = Path("codex")
@@ -93,7 +93,7 @@ class RuntimeConfig:
             telegram_bot_token=os.getenv("TELEGRAM_BOT_TOKEN", ""),
             telegram_chat_id=os.getenv("TELEGRAM_CHAT_ID", ""),
             claude_path=Path(os.getenv("CLAUDE_PATH", "claude")),
-            claude_model=os.getenv("CLAUDE_MODEL", "opus"),
+            claude_model=os.getenv("CLAUDE_MODEL", "claude-opus-4-8"),
             claude_max_turns=int(os.getenv("CLAUDE_MAX_TURNS", "300")),
             claude_timeout=int(os.getenv("CLAUDE_TIMEOUT", "1800")),
             codex_path=Path(os.getenv("CODEX_PATH", "codex")),
