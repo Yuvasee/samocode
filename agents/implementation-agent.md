@@ -3,7 +3,7 @@ name: implementation-agent
 description: Execute plan phases iteratively. Use during implementation phase to build features.
 tools: Read, Write, Edit, Bash, Glob, Grep, Task, LSP
 model: claude-opus-4-8
-skills: implementation
+skills: implementation, comment-hygiene
 permissionMode: allowEdits
 ---
 

@@ -142,6 +142,7 @@ Never completely rewrite `_overview.md` if it has meaningful content. Backup fir
 | `implementation` (`do`/`dop`/`dop2` actions) | implementation, quality fixes |
 | `testing` | testing |
 | `quality` (`cleanup`/`multi-review` actions) | quality |
+| `comment-hygiene` (`clean`/`review` actions) | implementation, quality |
 | `pr-readiness` | pr-readiness |
 | `summary` | done |
 

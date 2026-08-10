@@ -41,7 +41,7 @@ Analyze changed code for quality issues and technical debt.
    - Dead code - exported but never used functions/classes/constants
    - Duplicate code - similar logic in multiple places
    - Unclear patterns - confusing imports, magic numbers, missing comments
-   - Comment bloat - comments restating the code, ticket/Q-/PR/phase/gate references, field descriptions echoing the field name, or multi-sentence docstrings narrating mechanics; flag for removal, keeping only non-obvious WHY in the shortest form
+   - Comment bloat - per the `comment-hygiene` skill: flag comments/docstrings that restate the code, echo the field name, record process history (ticket/Q-/PR/phase/gate references), or narrate mechanics, plus stale comments that contradict the code; keep only the non-obvious WHY in the shortest form
    - Inconsistencies - same thing done differently in different files
    - Type safety - missing or incorrect type hints
    - Complexity - overly complex patterns that could be simplified
@@ -255,6 +255,10 @@ CHECKLIST:
 - Functions doing too many things (violating single responsibility)
 - Cognitive load -- how much context must a reader hold simultaneously?
 - "Why was this done this way?" moments with no answer in code or comments
+- Comment hygiene (per the `comment-hygiene` skill): flag AI-slop or code-restating
+  comments and stale comments that contradict the code; equally, flag load-bearing
+  WHY that was deleted or is missing where the code is non-obvious. Do not flag a
+  concise comment that genuinely explains non-obvious WHY.
 - Additionally, flag any other maintainability concern you notice
 ```
 

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Comment Hygiene"
+  short_description: "Curate comments: cut slop, keep the why"
+  default_prompt: "Use $comment-hygiene to curate comments in this diff — cut the slop, keep the load-bearing why, and never change code."

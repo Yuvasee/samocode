@@ -3,7 +3,7 @@ name: quality-agent
 description: Code review and cleanup. Reviews code quality, records important decisions, and fixes blocking issues.
 tools: Read, Edit, Glob, Grep, Task, Bash, Write
 model: claude-opus-4-8
-skills: quality, implementation
+skills: quality, implementation, comment-hygiene
 permissionMode: allowEdits
 ---
 
