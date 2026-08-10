@@ -72,17 +72,33 @@ Create a new work session.
 
    # Create worktree from remote default branch
    git worktree add -b [BRANCH_NAME] [WORKTREES]/[YY-MM-DD]-[session-name] origin/$DEFAULT_BRANCH
+
+   # Point upstream at the branch's own remote ref. `-b` from origin/$DEFAULT_BRANCH
+   # inherits the default branch's tracking: bare `git pull` would merge it in, and PR
+   # tooling (gh, octo.nvim) reads @{u} to detect the PR branch. The remote ref
+   # appears on first `git push`.
+   git config branch.[BRANCH_NAME].remote origin
+   git config branch.[BRANCH_NAME].merge refs/heads/[BRANCH_NAME]
    ```
 
    If worktree creation fails (branch already exists), try attaching to existing branch:
    ```bash
    git worktree add [WORKTREES]/[YY-MM-DD]-[session-name] [BRANCH_NAME]
+   # Normalize upstream the same way — pre-existing branches may track origin/$DEFAULT_BRANCH
+   git config branch.[BRANCH_NAME].remote origin
+   git config branch.[BRANCH_NAME].merge refs/heads/[BRANCH_NAME]
    ```
 
    **Working Dir** = `[WORKTREES]/[YY-MM-DD]-[session-name]`
 
    **Restore gitignored env files in the worktree** (`git worktree add` does not copy gitignored files):
    - If the project relies on a `.env` (or per-service `.env`) that lives outside git, copy it from the main repo, or seed it from a secrets store. Path layout is project-specific — check `MAIN_REPO`'s `.env*` files and the project README.
+
+   **Run the project's per-worktree setup hook (if present):** some projects need per-worktree setup beyond env files (LSP config, editable-install shims). If an executable hook exists at `[PROJECT_DIR]/.claude/hooks/post-worktree-create.sh` — where `[PROJECT_DIR]` is the directory containing `.samocode` — run it with the new worktree path. Non-fatal: log any failure and continue.
+   ```bash
+   HOOK="[PROJECT_DIR]/.claude/hooks/post-worktree-create.sh"
+   [ -x "$HOOK" ] && "$HOOK" "[Working Dir]" || true
+   ```
 
    **If WORKTREES not set** (non-repo project): fall back to `MAIN_REPO`, or `git rev-parse --show-toplevel`, or current directory.
 
