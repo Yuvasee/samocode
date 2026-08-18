@@ -1,6 +1,6 @@
 ---
-name: clarity-review
-description: Review changed code for human comprehension cost — names, local reasoning, hidden state, working-memory load — and report findings with an impact/cost/risk assessment table. Review-only; never modifies code. Use when asked for a clarity review, readability review, comprehension-cost analysis of a diff/PR, or when running /clarity-review. Works in Claude Code and Codex.
+name: code-clarity
+description: Review changed code for human comprehension cost — names, local reasoning, hidden state, working-memory load — and report findings with an impact/cost/risk assessment table. Review-only; never modifies code. Use when asked for a clarity review, readability review, comprehension-cost analysis of a diff/PR, or when running /code-clarity. Works in Claude Code and Codex.
 ---
 
 # Code Clarity Review

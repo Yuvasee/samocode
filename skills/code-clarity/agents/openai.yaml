@@ -1,0 +1,4 @@
+interface:
+  display_name: "Clarity Review"
+  short_description: "Review changed code for human comprehension cost"
+  default_prompt: "Use $code-clarity to review this change set for human comprehension cost — findings plus the impact/cost/risk table, review-only, no fixes."
