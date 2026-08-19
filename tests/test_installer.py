@@ -331,3 +331,54 @@ def test_install_copy_skipped_on_rerun(installed_env: Path):
     results = install(copy=True)
     skill_results = [r for r in results if r.src.name in ("investigation", "planning")]
     assert all(r.outcome is InstallOutcome.SKIPPED for r in skill_results)
+
+
+# === install() prune + skill/command shadowing ===
+
+
+def test_install_prunes_deleted_source_asset(installed_env: Path, fake_src_root: Path):
+    install(copy=False)
+    claude_commands = installed_env / ".claude" / "commands"
+    assert (claude_commands / "samocode-run.md").is_symlink()
+
+    (fake_src_root / "commands" / "samocode-run.md").unlink()
+    install(copy=False)
+    assert not (claude_commands / "samocode-run.md").is_symlink()
+
+
+def test_install_prune_leaves_foreign_entries(installed_env: Path, fake_src_root: Path):
+    claude_commands = installed_env / ".claude" / "commands"
+    claude_commands.mkdir(parents=True)
+    (claude_commands / "user-note.md").write_text("mine")
+    foreign_src = installed_env / "elsewhere.md"
+    foreign_src.write_text("foreign")
+    (claude_commands / "foreign.md").symlink_to(foreign_src)
+
+    install(copy=False)
+    assert (claude_commands / "user-note.md").exists()
+    assert (claude_commands / "foreign.md").is_symlink()
+
+
+def test_install_skips_command_shadowed_by_skill(
+    installed_env: Path, fake_src_root: Path
+):
+    (fake_src_root / "commands" / "investigation.md").write_text("trampoline")
+    install(copy=False)
+    claude_commands = installed_env / ".claude" / "commands"
+    assert not (claude_commands / "investigation.md").exists()
+    assert (claude_commands / "samocode-run.md").is_symlink()
+
+
+def test_reinstall_prunes_newly_shadowed_command(
+    installed_env: Path, fake_src_root: Path
+):
+    """A command installed before the same-named skill existed must disappear."""
+    (fake_src_root / "commands" / "newskill.md").write_text("trampoline")
+    install(copy=False)
+    claude_commands = installed_env / ".claude" / "commands"
+    assert (claude_commands / "newskill.md").is_symlink()
+
+    (fake_src_root / "skills" / "newskill").mkdir()
+    (fake_src_root / "skills" / "newskill" / "SKILL.md").write_text("skill")
+    install(copy=False)
+    assert not (claude_commands / "newskill.md").exists()

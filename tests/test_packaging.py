@@ -19,3 +19,12 @@ def test_pytest_ignores_session_worktrees() -> None:
 
     assert 'testpaths = ["tests"]' in pyproject
     assert '"worktrees"' in pyproject
+
+
+def test_no_command_shadows_a_skill() -> None:
+    """Skills and commands share the /<name> namespace in Claude Code; a
+    same-named pair renders as duplicate slash-command suggestions."""
+    skill_names = {p.name for p in Path("skills").iterdir() if p.is_dir()}
+    command_names = {p.stem for p in Path("commands").glob("*.md")}
+
+    assert not skill_names & command_names

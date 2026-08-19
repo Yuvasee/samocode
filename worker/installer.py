@@ -346,6 +346,31 @@ def _uninstall_asset(target: Path, src_root: Path) -> UninstallResult:
     return UninstallResult(target=target, outcome=UninstallOutcome.SKIPPED, note=note)
 
 
+# === Prune primitive ===
+
+
+def _prune_stale_assets(
+    target_dir: Path, expected_names: set[str], src_root: Path
+) -> list[Path]:
+    """Remove samocode-owned symlinks in target_dir with no current source asset.
+
+    Keeps repeated installs convergent: an asset deleted from (or newly
+    shadowed in) the source tree disappears from provider dirs instead of
+    lingering as a stale or dangling symlink. Copy-mode installs are
+    indistinguishable from user files and are never pruned.
+    """
+    if not target_dir.is_dir():
+        return []
+    pruned: list[Path] = []
+    for target in sorted(target_dir.iterdir()):
+        if target.name in expected_names:
+            continue
+        if _is_samocode_owned(target, src_root):
+            target.unlink()
+            pruned.append(target)
+    return pruned
+
+
 # === Printing helpers ===
 
 
@@ -452,11 +477,23 @@ def install(copy: bool | None = None) -> list[InstallResult]:
     src_root = resolve_asset_source_dir()
     results: list[InstallResult] = []
 
+    skill_class = next(ac for ac in ASSET_CLASSES if ac.name == "skills")
+    skill_names = {p.name for p in _enumerate_asset_entries(skill_class, src_root)}
+
     for asset_class in ASSET_CLASSES:
         entries = _enumerate_asset_entries(asset_class, src_root)
+        # Claude Code merged commands into skills: both create /<name>, so a
+        # command shadowed by a same-named skill would surface as a duplicate
+        # slash-command suggestion. Never install the command half of the pair.
+        shadowed: list[Path] = []
+        if asset_class.name == "commands":
+            shadowed = [e for e in entries if e.stem in skill_names]
+            entries = [e for e in entries if e.stem not in skill_names]
         for provider in asset_class.providers:
             target_dir = resolve_target_dir(asset_class, provider)
             _print_install_section(asset_class.name, provider)
+            for skipped in shadowed:
+                print(f"  Skipping: {skipped.name} (shadowed by the same-named skill)")
             for src in entries:
                 target = target_dir / src.name
                 try:
@@ -468,6 +505,11 @@ def install(copy: bool | None = None) -> list[InstallResult]:
                     continue
                 results.append(result)
                 _print_install_item(result)
+            stale_links = _prune_stale_assets(
+                target_dir, {e.name for e in entries}, src_root
+            )
+            for stale in stale_links:
+                print(f"  Pruning: {stale.name} (no longer installed from source)")
 
     _print_install_summary(results, src_root)
     return results
