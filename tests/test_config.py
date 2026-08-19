@@ -204,7 +204,7 @@ class TestRuntimeConfigFromEnv:
             config = RuntimeConfig.from_env()
 
         assert config.ai_provider == "claude"
-        assert config.claude_model == "opus"
+        assert config.claude_model == "claude-opus-4-8"
         assert config.claude_max_turns == 300
         assert config.claude_timeout == 1800
         assert config.codex_path == Path("codex")
