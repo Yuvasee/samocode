@@ -36,6 +36,12 @@ from .phases import (
     validate_signal_for_phase,
     validate_transition,
 )
+from .routing import (
+    ProfileSource,
+    ResolvedProfile,
+    resolve_workflow_profile,
+    validate_workflow_overrides,
+)
 from .runner import (
     ExecutionResult,
     ExecutionStatus,
@@ -109,6 +115,11 @@ __all__ = [
     "is_iteration_limit_exceeded",
     "validate_signal_for_phase",
     "validate_transition",
+    # Routing
+    "ProfileSource",
+    "ResolvedProfile",
+    "resolve_workflow_profile",
+    "validate_workflow_overrides",
     # Runner
     "ExecutionResult",
     "ExecutionStatus",
