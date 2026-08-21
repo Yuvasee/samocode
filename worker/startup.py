@@ -182,6 +182,9 @@ def _validate_provider(
             except GlobalConfigError as exc:
                 errors.append(str(exc))
             for phase, phase_config in PHASE_CONFIGS.items():
+                # An override supersedes default_profile; validated above.
+                if phase.value in global_config.workflow_overrides:
+                    continue
                 if selected.profile(phase_config.default_profile) is None:
                     errors.append(
                         f"phase {phase.value!r} default profile "
