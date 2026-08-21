@@ -136,6 +136,7 @@ class ExecutionProfileSource(Enum):
     WORKFLOW_OVERRIDE = "workflow_override"
     PHASE_DEFAULT = "phase_default"
     GLOBAL_DEFAULT = "global_default"
+    LEGACY = "legacy"  # env-model synthesized target when global_config is absent
 
 
 _WORKFLOW_SOURCE_MAP: dict[ProfileSource, ExecutionProfileSource] = {

@@ -132,9 +132,9 @@ class CodexAdapter:
             "exec",
             "--skip-git-repo-check",
             "--dangerously-bypass-approvals-and-sandbox",
-            "--model",
-            target.model,
         ]
+        if target.model:
+            args += ["--model", target.model]
         if target.effort is not None:
             args += ["-c", f"model_reasoning_effort={target.effort}"]
         args.append(

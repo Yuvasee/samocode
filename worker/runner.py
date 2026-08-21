@@ -12,9 +12,14 @@ from enum import Enum
 from pathlib import Path
 from typing import IO, TextIO
 
-from .adapters import build_codex_agent_prompt
+from .adapters import AdapterInputs, build_codex_agent_prompt, get_adapter
 from .config import SamocodeConfig
 from .phases import Phase, get_agent_for_phase
+from .routing import (
+    ExecutionProfileSource,
+    ExecutionTarget,
+    resolve_execution_target,
+)
 from .timestamps import file_timestamp, iteration_timestamp, jsonl_timestamp, log_timestamp
 
 logger = logging.getLogger("samocode")
@@ -87,6 +92,109 @@ class ExecutionResult:
 # =============================================================================
 
 
+@dataclass(frozen=True)
+class IterationPlan:
+    """Every routing decision for one orchestration iteration, resolved once.
+
+    `run_ai_with_retry` builds this before the retry loop; each attempt replays
+    the identical object. Because `target` and `command` are fixed here, a retry
+    cannot re-resolve, switch provider/model, or advance the plan phase.
+    """
+
+    target: ExecutionTarget  # routed target, or synthesized legacy target
+    provider_name: str
+    agent_name: str
+    phase: str
+    iteration: int
+    session_path: Path
+    working_dir: Path
+    session_context: str
+    command: list[str]
+    timeout: int
+
+
+def resolve_iteration_plan(
+    workflow_prompt_path: Path,
+    session_path: Path,
+    config: SamocodeConfig,
+    initial_dive: str | None = None,
+    initial_task: str | None = None,
+) -> IterationPlan:
+    """Resolve the single immutable plan for one orchestration iteration.
+
+    Determines phase/agent (new session -> init-agent; else current phase),
+    working dir, the execution target (routed via global config, or a synthesized
+    legacy target), the frozen session context, and the full provider argv built
+    through the adapter registry.
+
+    Raises:
+        SessionStructureError: deprecated nested _samocode structure.
+        ValueError: unknown phase without an agent, or missing MAIN_REPO.
+        PlanResolutionError/GlobalConfigError/ExecutionResolutionError: routed
+            resolution failed (fail-fast, before any model call).
+    """
+    for warning in validate_session_structure(session_path):
+        logger.warning(warning)
+
+    if not (session_path / "_overview.md").exists():
+        phase: str | None = "init"
+        iteration: int | None = 1
+        agent_name: str | None = "init-agent"
+        logger.info("New session detected, using init-agent")
+    else:
+        phase = extract_phase(session_path)
+        iteration = extract_iteration(session_path)
+        agent_name = get_agent_for_phase(phase)
+        if agent_name is None:
+            raise ValueError(
+                f"Unknown phase '{phase}' has no agent. "
+                f"Valid phases: {', '.join(p.value for p in Phase)}"
+            )
+
+    # Never parse Working Dir from _overview.md - it's AI-generated and unreliable.
+    if config.repo_path is None:
+        raise ValueError(
+            "MAIN_REPO is required. Either:\n"
+            "  1. Pass --repo /path to the orchestrator, or\n"
+            "  2. Set MAIN_REPO in .samocode file"
+        )
+    working_dir = _resolve_working_dir(config, session_path, phase)
+    logger.info(f"Working Dir: {working_dir}")
+    logger.info(f"Using agent: {agent_name} (phase: {phase})")
+
+    target = _resolve_target(config, phase, session_path)
+    session_context = build_session_context(
+        workflow_prompt_path=workflow_prompt_path,
+        session_path=session_path,
+        config=config,
+        phase=phase,
+        iteration=iteration,
+        initial_dive=initial_dive,
+        initial_task=initial_task,
+        target=target,
+    )
+    inputs = AdapterInputs(
+        agent_name=agent_name,
+        session_context=session_context,
+        agents_dir=workflow_prompt_path.parent / "agents",
+        max_turns=config.claude_max_turns,
+    )
+    command = get_adapter(target.provider).build_command(target, inputs)
+
+    return IterationPlan(
+        target=target,
+        provider_name=target.provider,
+        agent_name=agent_name,
+        phase=phase or "unknown",
+        iteration=iteration or 1,
+        session_path=session_path,
+        working_dir=working_dir,
+        session_context=session_context,
+        command=command,
+        timeout=target.timeout,
+    )
+
+
 def run_ai_with_retry(
     workflow_prompt_path: Path,
     session_path: Path,
@@ -95,19 +203,19 @@ def run_ai_with_retry(
     initial_task: str | None = None,
     on_line: Callable[[str], None] | None = None,
 ) -> ExecutionResult:
-    """Execute configured AI CLI with retry logic for transient failures."""
-    result: ExecutionResult | None = None
+    """Execute configured AI CLI with retry logic for transient failures.
 
+    Resolves the iteration plan ONCE, then replays the same plan on every attempt
+    so a retry never re-resolves the provider, model, or plan phase.
+    """
+    plan = resolve_iteration_plan(
+        workflow_prompt_path, session_path, config, initial_dive, initial_task
+    )
+    _log_iteration_target(plan)
+
+    result: ExecutionResult | None = None
     for attempt in range(1, config.max_retries + 1):
-        result = run_ai_once(
-            workflow_prompt_path,
-            session_path,
-            config,
-            attempt,
-            initial_dive if attempt == 1 else None,
-            initial_task if attempt == 1 else None,
-            on_line,
-        )
+        result = _execute_plan(plan, attempt, on_line)
 
         if result.status == ExecutionStatus.SUCCESS:
             return result
@@ -120,25 +228,7 @@ def run_ai_with_retry(
             time.sleep(config.retry_delay)
 
     logger.error(f"All {config.max_retries} attempts failed")
-
-    if result is None:
-        return ExecutionResult(
-            status=ExecutionStatus.RETRY_EXHAUSTED,
-            stdout="",
-            stderr="No attempts made",
-            returncode=None,
-            attempt=0,
-            log_file=None,
-        )
-
-    return ExecutionResult(
-        status=ExecutionStatus.RETRY_EXHAUSTED,
-        stdout=result.stdout,
-        stderr=result.stderr,
-        returncode=result.returncode,
-        attempt=config.max_retries,
-        log_file=result.log_file,
-    )
+    return _retry_exhausted(result, config.max_retries)
 
 
 def run_ai_once(
@@ -150,86 +240,15 @@ def run_ai_once(
     initial_task: str | None = None,
     on_line: Callable[[str], None] | None = None,
 ) -> ExecutionResult:
-    """Execute configured AI CLI once with timeout protection and log streaming.
+    """Resolve the iteration plan and execute it once.
 
-    Uses phase-specific agent based on session state:
-    - New session (no _overview.md): uses init-agent
-    - Existing session: uses agent for current phase
-    - Unknown phase: raises error (no fallback)
-
-    Raises SessionStructureError if session has invalid nested structure.
+    Kept as a standalone entrypoint for direct callers; the retry loop uses
+    `resolve_iteration_plan` + `_execute_plan` so it resolves exactly once.
     """
-    logger.info(f"Executing {config.ai_provider} CLI (attempt {attempt})...")
-
-    # Validate session structure (fail-fast on deprecated nested _samocode pattern)
-    structure_warnings = validate_session_structure(session_path)
-    for warning in structure_warnings:
-        logger.warning(warning)
-
-    # Determine agent based on session state
-    is_new_session = not (session_path / "_overview.md").exists()
-    if is_new_session:
-        phase = "init"
-        iteration = 1
-        agent_name = "init-agent"
-        logger.info("New session detected, using init-agent")
-    else:
-        phase = extract_phase(session_path)
-        iteration = extract_iteration(session_path)
-        agent_name = get_agent_for_phase(phase)
-        if agent_name is None:
-            raise ValueError(
-                f"Unknown phase '{phase}' has no agent. "
-                f"Valid phases: {', '.join(p.value for p in Phase)}"
-            )
-
-    # Use config.repo_path (from --repo CLI arg or MAIN_REPO in .samocode)
-    # Never parse Working Dir from _overview.md - it's AI-generated and unreliable
-    if config.repo_path is None:
-        raise ValueError(
-            "MAIN_REPO is required. Either:\n"
-            "  1. Pass --repo /path to the orchestrator, or\n"
-            "  2. Set MAIN_REPO in .samocode file"
-        )
-    # Determine working directory: worktree if exists, else main repo
-    # (mirrors logic in build_session_context)
-    session_name = session_path.name
-    worktree_path = config.worktrees_dir / session_name
-    if phase == "init" or not worktree_path.exists():
-        working_dir = config.repo_path
-    else:
-        working_dir = worktree_path
-    logger.info(f"Working Dir: {working_dir}")
-
-    logger.info(f"Using agent: {agent_name} (phase: {phase})")
-    session_context = build_session_context(
-        workflow_prompt_path=workflow_prompt_path,
-        session_path=session_path,
-        config=config,
-        phase=phase,
-        iteration=iteration,
-        initial_dive=initial_dive,
-        initial_task=initial_task,
+    plan = resolve_iteration_plan(
+        workflow_prompt_path, session_path, config, initial_dive, initial_task
     )
-    cli_args = _build_cli_args(
-        config=config,
-        agent_name=agent_name,
-        session_context=session_context,
-        workflow_prompt_path=workflow_prompt_path,
-    )
-
-    log_file = generate_log_filename(session_path, phase, iteration)
-    logger.info(f"Streaming logs to: {log_file}")
-
-    return _execute_process(
-        cli_args=cli_args,
-        working_dir=working_dir,
-        log_file=log_file,
-        timeout=config.ai_timeout,
-        attempt=attempt,
-        provider_name=config.ai_provider,
-        on_line=on_line,
-    )
+    return _execute_plan(plan, attempt, on_line)
 
 
 def run_claude_with_retry(
@@ -269,6 +288,118 @@ def run_claude_once(
         initial_dive,
         initial_task,
         on_line,
+    )
+
+
+def _execute_plan(
+    plan: IterationPlan,
+    attempt: int,
+    on_line: Callable[[str], None] | None,
+) -> ExecutionResult:
+    """Run the frozen plan's command once with timeout protection and streaming."""
+    logger.info(f"Executing {plan.provider_name} CLI (attempt {attempt})...")
+    log_file = generate_log_filename(plan.session_path, plan.phase, plan.iteration)
+    logger.info(f"Streaming logs to: {log_file}")
+    return _execute_process(
+        cli_args=plan.command,
+        working_dir=plan.working_dir,
+        log_file=log_file,
+        timeout=plan.timeout,
+        attempt=attempt,
+        provider_name=plan.provider_name,
+        on_line=on_line,
+    )
+
+
+def _retry_exhausted(
+    last: ExecutionResult | None, max_retries: int
+) -> ExecutionResult:
+    """Build the RETRY_EXHAUSTED result from the last attempt (or none)."""
+    if last is None:
+        return ExecutionResult(
+            status=ExecutionStatus.RETRY_EXHAUSTED,
+            stdout="",
+            stderr="No attempts made",
+            returncode=None,
+            attempt=0,
+            log_file=None,
+        )
+    return ExecutionResult(
+        status=ExecutionStatus.RETRY_EXHAUSTED,
+        stdout=last.stdout,
+        stderr=last.stderr,
+        returncode=last.returncode,
+        attempt=max_retries,
+        log_file=last.log_file,
+    )
+
+
+def _resolve_working_dir(
+    config: SamocodeConfig, session_path: Path, phase: str | None
+) -> Path:
+    """Worktree if it exists (and not init), else the main repo."""
+    worktree_path = config.worktrees_dir / session_path.name
+    if phase == "init" or not worktree_path.exists():
+        return config.repo_path
+    return worktree_path
+
+
+def _resolve_target(
+    config: SamocodeConfig, phase: str | None, session_path: Path
+) -> ExecutionTarget:
+    """Routed target from the global config, or a synthesized legacy target."""
+    phase_enum = Phase((phase or "init").lower())
+    if config.global_config is not None:
+        return resolve_execution_target(
+            provider_name=config.ai_provider,
+            workflow_phase=phase_enum,
+            session_dir=session_path,
+            config=config.global_config,
+            runtime=config.runtime,
+        )
+    return _legacy_target(config, phase_enum)
+
+
+def _legacy_target(config: SamocodeConfig, phase_enum: Phase) -> ExecutionTarget:
+    """Synthesize an ExecutionTarget from legacy env settings (no global config).
+
+    Lets legacy and routed modes share the one adapter-driven execution path.
+    """
+    if config.ai_provider == "claude":
+        model, executable, timeout = (
+            config.claude_model,
+            config.claude_path,
+            config.claude_timeout,
+        )
+    else:
+        model, executable, timeout = (
+            config.codex_model,
+            config.codex_path,
+            config.codex_timeout,
+        )
+    return ExecutionTarget(
+        provider=config.ai_provider,
+        profile="(legacy)",
+        model=model,
+        effort=None,
+        executable=executable,
+        timeout=timeout,
+        workflow_phase=phase_enum,
+        plan_phase=None,
+        source=ExecutionProfileSource.LEGACY,
+    )
+
+
+def _log_iteration_target(plan: IterationPlan) -> None:
+    """Emit the one routing log line for this iteration."""
+    target = plan.target
+    pp = target.plan_phase
+    plan_label = f"{pp.phase_label}:{pp.phase_title}" if pp and pp.phase_label else "-"
+    logger.info(
+        f"Routing | provider={target.provider} profile={target.profile} "
+        f"model={target.model} effort={target.effort or '-'} "
+        f"workflow={target.workflow_phase.value} plan={plan_label} "
+        f"source={target.source.value}"
     )
 
 
@@ -376,10 +507,14 @@ def build_session_context(
     iteration: int | None = None,
     initial_dive: str | None = None,
     initial_task: str | None = None,
+    target: ExecutionTarget | None = None,
 ) -> str:
     """Build session context for --append-system-prompt injection.
 
-    Includes workflow.md (common context for all phases) plus session-specific details.
+    Includes workflow.md (common context for all phases) plus session-specific
+    details. When `target` carries a plan phase (implementation only), the active
+    plan file/phase/profile/source are injected so the agent executes exactly the
+    runner-selected phase.
     """
     # Start with workflow.md - common context for all phases
     lines = [workflow_prompt_path.read_text().strip()]
@@ -407,8 +542,8 @@ def build_session_context(
     if iteration:
         lines.append(f"**Iteration:** {iteration}")
 
-    # Add time limit so agent knows constraints
-    timeout = config.ai_timeout
+    # Add time limit so agent knows constraints; prefer the resolved target timeout.
+    timeout = target.timeout if target is not None else config.ai_timeout
     lines.append(f"**Time limit:** {timeout}s ({timeout // 60} min)")
 
     # Add injected timestamps section
@@ -424,11 +559,36 @@ def build_session_context(
     lines.append("")
     lines.extend(_build_config_section(session_path, config))
 
+    if target is not None and target.plan_phase is not None:
+        lines.append("")
+        lines.extend(_build_plan_phase_section(target))
+
     if initial_dive or initial_task:
         lines.append("")
         lines.extend(_build_initial_instructions(initial_dive, initial_task))
 
     return "\n".join(lines)
+
+
+def _build_plan_phase_section(target: ExecutionTarget) -> list[str]:
+    """Active implementation-plan phase context (implementation iterations only)."""
+    plan = target.plan_phase
+    assert plan is not None
+    lines = ["## Active Implementation Plan Phase", f"- **Plan file:** `{plan.plan_path}`"]
+    if plan.all_complete:
+        lines.append(
+            "- **Status:** all plan tasks complete; perform the outer workflow "
+            "transition (testing/quality) per workflow.md."
+        )
+    else:
+        lines.append(f"- **Plan phase:** `{plan.phase_label}` — {plan.phase_title}")
+    lines.append(
+        f"- **Profile:** `{target.profile}` (model `{target.model}`, "
+        f"effort `{target.effort or 'default'}`)"
+    )
+    lines.append(f"- **Profile source:** {target.source.value}")
+    lines.append("Execute exactly this phase; do not independently pick another.")
+    return lines
 
 
 def generate_log_filename(
@@ -562,53 +722,20 @@ def _build_cli_args(
     session_context: str,
     workflow_prompt_path: Path,
 ) -> list[str]:
-    """Build provider-specific CLI arguments."""
-    if config.ai_provider == "claude":
-        return _build_claude_cli_args(config, agent_name, session_context)
-    if config.ai_provider == "codex":
-        return _build_codex_cli_args(
-            config,
-            _build_codex_prompt(
-                agent_name=agent_name,
-                session_context=session_context,
-                workflow_prompt_path=workflow_prompt_path,
-            ),
-        )
-    raise ValueError(f"Unsupported provider: {config.ai_provider}")
+    """Build provider CLI arguments via the adapter registry (legacy target).
 
-
-def _build_claude_cli_args(
-    config: SamocodeConfig, agent_name: str, session_context: str
-) -> list[str]:
-    """Build Claude CLI arguments."""
-    args = [
-        str(config.claude_path),
-        "--dangerously-skip-permissions",
-        "--model",
-        config.claude_model,
-        "--max-turns",
-        str(config.claude_max_turns),
-        "--verbose",
-        "--output-format",
-        "stream-json",
-    ]
-    args.extend(["--agent", agent_name, "--append-system-prompt", session_context])
-    args.extend(["-p", "Start"])
-    return args
-
-
-def _build_codex_cli_args(config: SamocodeConfig, prompt: str) -> list[str]:
-    """Build Codex CLI arguments."""
-    args = [
-        str(config.codex_path),
-        "exec",
-        "--skip-git-repo-check",
-        "--dangerously-bypass-approvals-and-sandbox",
-    ]
-    if config.codex_model:
-        args.extend(["--model", config.codex_model])
-    args.append(prompt)
-    return args
+    Thin shim over the Phase-6 adapters, kept for direct callers/tests. The
+    per-iteration path builds argv through `resolve_iteration_plan`; this reuses a
+    synthesized legacy target so both share the one adapter code path.
+    """
+    target = _legacy_target(config, Phase.INIT)
+    inputs = AdapterInputs(
+        agent_name=agent_name,
+        session_context=session_context,
+        agents_dir=workflow_prompt_path.parent / "agents",
+        max_turns=config.claude_max_turns,
+    )
+    return get_adapter(config.ai_provider).build_command(target, inputs)
 
 
 def _build_codex_prompt(

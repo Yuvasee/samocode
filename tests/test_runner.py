@@ -10,13 +10,18 @@ This module tests:
 - CLI execution (mocked)
 """
 
+import logging
 import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 
 from worker.config import ProjectConfig, RuntimeConfig, SamocodeConfig
+from worker.global_config import default_config
 from worker.phases import Phase, get_agent_for_phase
+from worker.routing import ExecutionProfileSource
 from worker.runner import (
     ExecutionResult,
     ExecutionStatus,
@@ -26,6 +31,7 @@ from worker.runner import (
     extract_iteration,
     extract_phase,
     generate_log_filename,
+    resolve_iteration_plan,
     run_claude_once,
     run_claude_with_retry,
     update_phase,
@@ -499,61 +505,47 @@ class TestRunClaudeOnce:
         assert result.status == ExecutionStatus.TIMEOUT
 
 
+def _result(status: ExecutionStatus, attempt: int) -> ExecutionResult:
+    return ExecutionResult(
+        status=status, stdout="", stderr="", returncode=0, attempt=attempt
+    )
+
+
 class TestRunClaudeWithRetry:
-    """Tests for run_claude_with_retry - retry wrapper."""
+    """Tests for run_claude_with_retry - resolve-once + retry wrapper."""
 
     def test_success_first_attempt(self, tmp_path: Path) -> None:
-        """Returns immediately on first success."""
+        """Returns immediately on first success; resolves the plan once."""
         workflow = tmp_path / "workflow.md"
         workflow.write_text("# Workflow")
         session = tmp_path / "session"
         session.mkdir()
         config = make_config(tmp_path)
 
-        with patch("worker.runner.run_ai_once") as mock_run:
-            mock_run.return_value = ExecutionResult(
-                status=ExecutionStatus.SUCCESS,
-                stdout="ok",
-                stderr="",
-                returncode=0,
-                attempt=1,
-            )
-
+        with patch("worker.runner._execute_plan") as mock_exec:
+            mock_exec.return_value = _result(ExecutionStatus.SUCCESS, 1)
             result = run_claude_with_retry(workflow, session, config)
 
         assert result.status == ExecutionStatus.SUCCESS
-        assert mock_run.call_count == 1
+        assert mock_exec.call_count == 1
 
     def test_success_after_retry(self, tmp_path: Path) -> None:
-        """Returns SUCCESS after failed attempt then success."""
+        """Returns SUCCESS after a failed attempt then success."""
         workflow = tmp_path / "workflow.md"
         workflow.write_text("# Workflow")
         session = tmp_path / "session"
         session.mkdir()
         config = make_config(tmp_path)
 
-        with patch("worker.runner.run_ai_once") as mock_run:
-            mock_run.side_effect = [
-                ExecutionResult(
-                    status=ExecutionStatus.FAILURE,
-                    stdout="",
-                    stderr="error",
-                    returncode=1,
-                    attempt=1,
-                ),
-                ExecutionResult(
-                    status=ExecutionStatus.SUCCESS,
-                    stdout="ok",
-                    stderr="",
-                    returncode=0,
-                    attempt=2,
-                ),
+        with patch("worker.runner._execute_plan") as mock_exec:
+            mock_exec.side_effect = [
+                _result(ExecutionStatus.FAILURE, 1),
+                _result(ExecutionStatus.SUCCESS, 2),
             ]
-
             result = run_claude_with_retry(workflow, session, config)
 
         assert result.status == ExecutionStatus.SUCCESS
-        assert mock_run.call_count == 2
+        assert mock_exec.call_count == 2
 
     def test_retry_exhausted(self, tmp_path: Path) -> None:
         """Returns RETRY_EXHAUSTED when all attempts fail."""
@@ -563,16 +555,231 @@ class TestRunClaudeWithRetry:
         session.mkdir()
         config = make_config(tmp_path)
 
-        with patch("worker.runner.run_ai_once") as mock_run:
-            mock_run.return_value = ExecutionResult(
-                status=ExecutionStatus.FAILURE,
-                stdout="",
-                stderr="error",
-                returncode=1,
-                attempt=1,
-            )
-
+        with patch("worker.runner._execute_plan") as mock_exec:
+            mock_exec.return_value = _result(ExecutionStatus.FAILURE, 1)
             result = run_claude_with_retry(workflow, session, config)
 
         assert result.status == ExecutionStatus.RETRY_EXHAUSTED
-        assert mock_run.call_count == config.max_retries
+        assert mock_exec.call_count == config.max_retries
+
+    def test_same_plan_object_across_retries(self, tmp_path: Path) -> None:
+        """The identical IterationPlan is replayed on every attempt (resolve-once).
+
+        Proves retry stability and no provider switch: the command/target cannot
+        change between attempts because the same frozen object is reused.
+        """
+        workflow = tmp_path / "workflow.md"
+        workflow.write_text("# Workflow")
+        session = tmp_path / "session"
+        session.mkdir()
+        config = make_config(tmp_path)
+
+        seen = []
+        with patch("worker.runner._execute_plan") as mock_exec:
+            mock_exec.side_effect = lambda plan, attempt, on_line: (
+                seen.append(plan)
+                or _result(ExecutionStatus.FAILURE, attempt)
+            )
+            run_claude_with_retry(workflow, session, config)
+
+        assert len(seen) == config.max_retries
+        assert all(p is seen[0] for p in seen)
+        assert all(p.command is seen[0].command for p in seen)
+        assert all(p.target.provider == config.ai_provider for p in seen)
+
+
+def make_routed_config(tmp_path: Path, provider: str = "claude") -> SamocodeConfig:
+    """Config with a real GlobalConfig (canonical profiles) and selected provider."""
+    base = make_config(tmp_path)
+    runtime = base.runtime
+    if provider == "codex":
+        codex = tmp_path / "codex"
+        codex.touch()
+        runtime = RuntimeConfig(
+            ai_provider="codex",
+            claude_path=base.runtime.claude_path,
+            codex_path=codex,
+            codex_model="",
+            claude_timeout=30,
+            codex_timeout=45,
+            claude_max_turns=10,
+            max_retries=2,
+            retry_delay=0,
+        )
+    return SamocodeConfig(
+        project=base.project,
+        runtime=runtime,
+        session_path=base.session_path,
+        provider=provider,
+        global_config=default_config(),
+    )
+
+
+def write_impl_session(
+    tmp_path: Path, phases_md: str, *, phase: str = "implementation"
+) -> Path:
+    """Create a session dir with _overview.md (+ plan) for routed resolution."""
+    session = tmp_path / "routed-session"
+    session.mkdir()
+    (session / "_overview.md").write_text(
+        f"Phase: {phase}\nIteration: 3\n\n## Plans\n- plan.md - test plan\n"
+    )
+    (session / "plan.md").write_text("## Implementation Phases\n" + phases_md)
+    return session
+
+
+class TestRoutedIterationResolution:
+    """Phase 8: routed ExecutionTarget resolution + session-context injection."""
+
+    def _workflow(self, tmp_path: Path) -> Path:
+        workflow = tmp_path / "workflow.md"
+        workflow.write_text("# Workflow")
+        return workflow
+
+    def test_explicit_plan_profile_wins(self, tmp_path: Path) -> None:
+        """An explicit `**Profile:**` on the active phase selects that profile."""
+        workflow = self._workflow(tmp_path)
+        session = write_impl_session(
+            tmp_path, "### Phase 1: Foundation\n**Profile:** `strong`\n\n- [ ] do it\n"
+        )
+        config = make_routed_config(tmp_path)
+
+        plan = resolve_iteration_plan(workflow, session, config)
+
+        assert plan.target.profile == "strong"
+        assert plan.target.model == "claude-opus-4-8"
+        assert plan.target.source == ExecutionProfileSource.PLAN_PHASE_EXPLICIT
+        assert plan.target.plan_phase is not None
+        assert plan.target.plan_phase.phase_label == "1"
+
+    def test_plan_phase_injected_into_context(self, tmp_path: Path) -> None:
+        """Implementation context carries plan file, phase, profile, source."""
+        workflow = self._workflow(tmp_path)
+        session = write_impl_session(
+            tmp_path, "### Phase 2: Wire it\n**Profile:** `strong`\n\n- [ ] task\n"
+        )
+        config = make_routed_config(tmp_path)
+
+        plan = resolve_iteration_plan(workflow, session, config)
+
+        ctx = plan.session_context
+        assert "Active Implementation Plan Phase" in ctx
+        assert "plan.md" in ctx
+        assert "`2`" in ctx
+        assert "Wire it" in ctx
+        assert "strong" in ctx
+        assert "plan_phase_explicit" in ctx
+
+    def test_all_complete_falls_back_to_workflow_default(self, tmp_path: Path) -> None:
+        """When every task is checked, the implementation workflow default applies."""
+        workflow = self._workflow(tmp_path)
+        session = write_impl_session(
+            tmp_path, "### Phase 1: Done\n**Profile:** `strong`\n\n- [x] finished\n"
+        )
+        config = make_routed_config(tmp_path)
+
+        plan = resolve_iteration_plan(workflow, session, config)
+
+        assert plan.target.plan_phase is not None
+        assert plan.target.plan_phase.all_complete is True
+        assert plan.target.profile == "standard"
+        assert plan.target.model == "claude-sonnet-4-6"
+        assert plan.target.source == ExecutionProfileSource.PHASE_DEFAULT
+
+    def test_non_implementation_has_no_plan_phase(self, tmp_path: Path) -> None:
+        """Outside implementation, no plan is read and no plan block is injected."""
+        workflow = self._workflow(tmp_path)
+        session = write_impl_session(
+            tmp_path, "### Phase 1: x\n\n- [ ] t\n", phase="investigation"
+        )
+        config = make_routed_config(tmp_path)
+
+        plan = resolve_iteration_plan(workflow, session, config)
+
+        assert plan.target.plan_phase is None
+        assert plan.target.workflow_phase == Phase.INVESTIGATION
+        assert plan.target.profile == "strong"  # investigation default
+        assert "Active Implementation Plan Phase" not in plan.session_context
+
+    def test_no_provider_switch_uses_selected_provider(self, tmp_path: Path) -> None:
+        """The resolved provider is the process-selected one, never the phase's."""
+        workflow = self._workflow(tmp_path)
+        agents = workflow.parent / "agents"
+        agents.mkdir()
+        (agents / "implementation-agent.md").write_text("# Impl")
+        session = write_impl_session(
+            tmp_path, "### Phase 1: x\n**Profile:** `max`\n\n- [ ] t\n"
+        )
+        config = make_routed_config(tmp_path, provider="codex")
+
+        plan = resolve_iteration_plan(workflow, session, config)
+
+        assert plan.target.provider == "codex"
+        assert plan.command[0] == str(config.codex_path)
+        assert plan.target.model == "gpt-5.6-sol"  # codex max
+
+    def test_routing_log_line_emitted(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """One per-iteration routing line carries all routing fields."""
+        workflow = self._workflow(tmp_path)
+        session = write_impl_session(
+            tmp_path, "### Phase 1: x\n**Profile:** `strong`\n\n- [ ] t\n"
+        )
+        config = make_routed_config(tmp_path)
+
+        with caplog.at_level(logging.INFO, logger="samocode"):
+            with patch("worker.runner._execute_plan") as mock_exec:
+                mock_exec.return_value = _result(ExecutionStatus.SUCCESS, 1)
+                run_claude_with_retry(workflow, session, config)
+
+        routing = [r for r in caplog.records if r.getMessage().startswith("Routing |")]
+        assert len(routing) == 1
+        msg = routing[0].getMessage()
+        for token in ("provider=claude", "profile=strong", "model=", "effort=", "workflow=implementation", "source=plan_phase_explicit"):
+            assert token in msg
+
+
+class TestLegacyIterationResolution:
+    """Legacy mode (no global config) synthesizes a target and stays unchanged."""
+
+    def test_legacy_synthesizes_target(self, tmp_path: Path) -> None:
+        """global_config=None yields a LEGACY target with the env model."""
+        workflow = tmp_path / "workflow.md"
+        workflow.write_text("# Workflow")
+        session = tmp_path / "s"
+        session.mkdir()
+        (session / "_overview.md").write_text("Phase: implementation\nIteration: 2\n")
+        config = make_config(tmp_path)  # no global_config
+
+        plan = resolve_iteration_plan(workflow, session, config)
+
+        assert plan.target.source == ExecutionProfileSource.LEGACY
+        assert plan.target.profile == "(legacy)"
+        assert plan.target.model == "opus"
+        assert plan.target.plan_phase is None
+        assert "Active Implementation Plan Phase" not in plan.session_context
+        assert "opus" in plan.command
+
+    def test_legacy_codex_empty_model_omits_flag(self, tmp_path: Path) -> None:
+        """A legacy Codex target with empty model produces no --model flag."""
+        workflow = tmp_path / "workflow.md"
+        workflow.write_text("# Workflow")
+        agents = workflow.parent / "agents"
+        agents.mkdir()
+        (agents / "init-agent.md").write_text("# Init")
+        session = tmp_path / "s"
+        session.mkdir()
+        codex = tmp_path / "codex"
+        codex.touch()
+        base = make_config(tmp_path)
+        runtime = RuntimeConfig(
+            ai_provider="codex", codex_path=codex, codex_model="", max_retries=2
+        )
+        config = SamocodeConfig(
+            project=base.project, runtime=runtime, session_path=base.session_path
+        )
+
+        plan = resolve_iteration_plan(workflow, session, config)
+
+        assert "--model" not in plan.command
