@@ -724,7 +724,7 @@ def _build_cli_args(
 ) -> list[str]:
     """Build provider CLI arguments via the adapter registry (legacy target).
 
-    Thin shim over the Phase-6 adapters, kept for direct callers/tests. The
+    Thin shim over the adapter registry, kept for direct callers/tests. The
     per-iteration path builds argv through `resolve_iteration_plan`; this reuses a
     synthesized legacy target so both share the one adapter code path.
     """

@@ -107,6 +107,7 @@ Edit `_overview.md`:
 - Status: `Blocked: waiting_human`, `Last Action: Plan created`, `Next: Await plan approval`
 - Flow Log: `- [TIMESTAMP_ITERATION] Plan created -> [filename].md`
 - Files: `- [filename].md - Implementation plan`
+- Plans (REQUIRED — append under a `## Plans` heading; create the heading if absent): `- [filename].md - [one-line description]`. Implementation-phase model routing reads the LAST entry here; omitting it makes `resolve_plan_phase` raise `PlanResolutionError` on the first implementation iteration.
 
 **Do NOT update Phase field** - orchestrator handles it based on signal.
 

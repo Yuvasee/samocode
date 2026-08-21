@@ -12,8 +12,10 @@ import sys
 from pathlib import Path
 
 from worker import (
+    ExecutionResolutionError,
     ExecutionStatus,
     GlobalConfigError,
+    PlanResolutionError,
     Signal,
     SignalStatus,
     add_session_handler,
@@ -328,13 +330,31 @@ def run_orchestrator(args: argparse.Namespace) -> None:
                 logger.info(f"Previous signal: {previous_signal}")
             logger.info("Cleared signal file")
 
-            result = run_ai_with_retry(
-                workflow_prompt_path,
-                session_path,
-                config,
-                initial_dive if iteration == 1 else None,
-                initial_task if iteration == 1 else None,
-            )
+            try:
+                result = run_ai_with_retry(
+                    workflow_prompt_path,
+                    session_path,
+                    config,
+                    initial_dive if iteration == 1 else None,
+                    initial_task if iteration == 1 else None,
+                )
+            except (
+                PlanResolutionError,
+                GlobalConfigError,
+                ExecutionResolutionError,
+            ) as exc:
+                # Config/plan misconfiguration is recoverable by a human, not a
+                # crash: fail fast to a blocked state instead of the generic
+                # "Orchestrator crashed" handler.
+                logger.error(f"Resolution failed ({type(exc).__name__}): {exc}")
+                notify_blocked(
+                    str(exc),
+                    session_display_name,
+                    "human_decision",
+                    config.telegram_bot_token,
+                    config.telegram_chat_id,
+                )
+                break
 
             if result.status != ExecutionStatus.SUCCESS:
                 logger.error(f"{config.ai_provider} execution failed after retries")

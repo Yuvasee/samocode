@@ -6,7 +6,7 @@ selects the first phase with an unchecked task.
 
 Pure parsing (Markdown text -> dataclasses) is kept separate from resolution
 (filesystem reads + selection) so the parser is testable with plain strings.
-This module knows nothing about `GlobalConfig` or `Provider`; Phase 5's
+This module knows nothing about `GlobalConfig` or `Provider`; the
 execution-target resolver in `worker/routing.py` validates an explicit plan
 profile name against the selected provider's profile table.
 """
@@ -61,7 +61,7 @@ class PlanPhase:
 class PlanPhaseSelection:
     """Resolved active implementation-plan phase.
 
-    Consumed by Phase 5's execution target and Phase 8's runner context.
+    Consumed by the execution target and the runner's session context.
     `profile` is None when the phase omits `**Profile:**` (or all phases are
     complete); the caller then applies the workflow `implementation` default.
     """
@@ -283,6 +283,12 @@ def resolve_plan_phase(session_dir: Path) -> PlanPhaseSelection:
 
     plan_path = select_active_plan(session_dir, overview_path.read_text())
     phases = parse_implementation_phases(plan_path.read_text())
+    if not phases:
+        raise PlanResolutionError(
+            f"{plan_path} has an `## Implementation Phases` section but no "
+            "`### Phase <label>:` blocks; add at least one phase before "
+            "implementation (empty section must not be read as all-complete)"
+        )
     active = select_active_phase(phases)
 
     if active is None:

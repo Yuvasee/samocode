@@ -8,8 +8,8 @@ build argv only; child-environment safety stays centralized in
 `worker.config`.
 
 The registry (`register_adapter`/`get_adapter`/`supported_providers`) is the
-extension point for future providers and the seam Phase 7 reuses to replace the
-hard-coded `{"claude", "codex"}` provider validation.
+extension point for future providers and the seam startup validation reuses to
+replace the hard-coded `{"claude", "codex"}` provider validation.
 """
 
 from dataclasses import dataclass

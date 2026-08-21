@@ -35,7 +35,7 @@ class ProfileSource(Enum):
 
 @dataclass(frozen=True)
 class ResolvedProfile:
-    """A profile name plus where it came from, for logging and the Phase 5
+    """A profile name plus where it came from, for logging and the
     execution target."""
 
     name: str
@@ -50,7 +50,7 @@ def resolve_workflow_profile(
     Order: workflow_overrides[phase] -> PhaseConfig.default_profile ->
     GlobalConfig.default_profile. The last tier is unreachable while every Phase
     member has a PHASE_CONFIGS entry; kept for parity with the plan-phase lookup
-    order Phase 4/5 add.
+    order.
 
     Raises GlobalConfigError if workflow_overrides names an unknown phase
     anywhere in the table, or if the resolved profile is unavailable for
@@ -76,7 +76,7 @@ def validate_workflow_overrides(config: GlobalConfig, provider: Provider) -> Non
     """Reject an unknown override phase or an override profile unavailable for
     `provider`, across the whole table.
 
-    Public so Phase 7's once-at-startup validation can fail fast before any
+    Public so startup's once-at-startup validation can fail fast before any
     iteration resolves, in addition to the per-call check in
     resolve_workflow_profile.
     """
@@ -152,8 +152,8 @@ class ExecutionTarget:
 
     Built once by `resolve_execution_target()` and reused verbatim across every
     retry within that iteration, so a retry cannot switch provider, model, or
-    plan phase. Phase 6 adapters build Claude/Codex argv directly from
-    `model`/`effort`; Phase 8 injects `plan_phase` into agent session context.
+    plan phase. Adapters build Claude/Codex argv directly from
+    `model`/`effort`; the runner injects `plan_phase` into agent session context.
     """
 
     provider: str  # GlobalConfig.providers key, e.g. "claude", "codex"
@@ -253,7 +253,7 @@ def _resolve_path_and_timeout(
 
     Only claude/codex have dedicated RuntimeConfig fields today; any other
     configured provider falls back to its global-config `executable` and
-    DEFAULT_TIMEOUT_SECONDS. Phase 7 may generalize RuntimeConfig without
+    DEFAULT_TIMEOUT_SECONDS. RuntimeConfig may later generalize without
     changing this return shape.
     """
     if provider_name == "claude":

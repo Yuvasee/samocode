@@ -37,7 +37,9 @@ from .phases import (
     validate_signal_for_phase,
     validate_transition,
 )
+from .plan_resolver import PlanResolutionError
 from .routing import (
+    ExecutionResolutionError,
     ProfileSource,
     ResolvedProfile,
     resolve_workflow_profile,
@@ -124,6 +126,8 @@ __all__ = [
     "validate_signal_for_phase",
     "validate_transition",
     # Routing
+    "ExecutionResolutionError",
+    "PlanResolutionError",
     "ProfileSource",
     "ResolvedProfile",
     "resolve_workflow_profile",

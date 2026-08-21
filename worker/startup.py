@@ -3,7 +3,7 @@
 Single place that loads the global model-routing config once, selects the
 process-wide provider by precedence, validates it against the adapter registry
 and the global-config sections, and composes one immutable SamocodeConfig. No
-TOML is read after this; Phase 8 reuses the carried GlobalConfig per iteration.
+TOML is read after this; the runner reuses the carried GlobalConfig per iteration.
 
 Sits above config/global_config/routing/adapters so it can import the registry
 freely; config.py must not import adapters (adapters -> routing -> config cycle).
@@ -17,6 +17,7 @@ from pathlib import Path
 from .adapters import supported_providers
 from .config import ProjectConfig, RuntimeConfig, SamocodeConfig, resolve_session_path
 from .global_config import GlobalConfig, GlobalConfigError, global_config_path
+from .phases import PHASE_CONFIGS
 from .routing import validate_workflow_overrides
 
 # === Constants ===
@@ -152,7 +153,9 @@ def _validate_provider(
     - Selected provider must have a registered adapter (replaces hard-coded
       {"claude","codex"}).
     - When global config is present, the selected provider must have a
-      [providers.<name>] section, and its workflow_overrides must be valid.
+      [providers.<name>] section, its workflow_overrides must be valid, and
+      every PhaseConfig.default_profile must be available for it (so no phase
+      can pass startup yet crash on its first iteration).
     - Unselected future-provider sections are never inspected (allowed).
 
     CLI availability and numeric bounds are checked by RuntimeConfig.validate.
@@ -178,4 +181,12 @@ def _validate_provider(
                 validate_workflow_overrides(global_config, selected)
             except GlobalConfigError as exc:
                 errors.append(str(exc))
+            for phase, phase_config in PHASE_CONFIGS.items():
+                if selected.profile(phase_config.default_profile) is None:
+                    errors.append(
+                        f"phase {phase.value!r} default profile "
+                        f"{phase_config.default_profile!r} is not available for "
+                        f"provider {provider!r} (known profiles: "
+                        f"{sorted(selected.profiles)})."
+                    )
     return errors

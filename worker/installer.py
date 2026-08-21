@@ -1,6 +1,6 @@
 """Installer primitives: source resolution, target computation, asset linking/copying.
 
-Phase 2 (install/uninstall orchestration) builds on these atoms.
+Install/uninstall orchestration builds on these atoms.
 No file walking or orchestration here.
 """
 
@@ -50,7 +50,7 @@ class InstallResult:
 class AssetClass:
     """Describes one class of installable assets.
 
-    Phase 2 iterates ASSET_CLASSES to drive install/uninstall without
+    Install/uninstall iterates ASSET_CLASSES to drive both flows without
     hard-coding the three asset types.
     """
 
@@ -206,6 +206,7 @@ def install_asset(
     )
 
     # Existing target handling
+    backup_warning: str | None = None
     if target.is_symlink():
         if _is_samocode_owned(target, owner_root):
             target.unlink()
@@ -225,13 +226,11 @@ def install_asset(
             )
     elif target.exists():
         if managed and resolved_mode is InstallMode.COPY:
-            # Samocode itself wrote this real file on a prior copy install, so
-            # replacing it is the intended refresh. In SYMLINK mode a real file
-            # here is a user file and stays protected on the branch below.
-            if target.is_dir():
-                shutil.rmtree(target)
-            else:
-                target.unlink()
+            # COPY-mode managed targets are always refreshed. The code cannot
+            # prove samocode (not the user) wrote this real file, so back it up
+            # to `<name>.bak` before replacing to avoid silent data loss.
+            # SYMLINK mode leaves a real file here protected on the branch below.
+            backup_warning = _backup_before_replace(target)
             outcome_on_create = InstallOutcome.REPLACED
         else:
             # Real file or directory - never clobber
@@ -265,7 +264,23 @@ def install_asset(
         target=target,
         outcome=outcome_on_create,
         mode=resolved_mode,
+        warning=backup_warning,
     )
+
+
+def _backup_before_replace(target: Path) -> str:
+    """Move an existing real target to `<name>.bak` before it is replaced.
+
+    Overwrites any prior `.bak`. Returns a warning naming the backup path so the
+    caller can surface it; the user recovers manual edits from the backup.
+    """
+    backup = target.with_name(target.name + ".bak")
+    if backup.is_dir() and not backup.is_symlink():
+        shutil.rmtree(backup)
+    elif backup.exists() or backup.is_symlink():
+        backup.unlink()
+    target.rename(backup)
+    return f"{target} existed; backed up to {backup} before replacing."
 
 
 # === Uninstall data model ===

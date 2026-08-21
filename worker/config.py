@@ -140,7 +140,7 @@ class SamocodeConfig:
     runtime: RuntimeConfig
     session_path: Path
     provider: str = ""  # authoritative selected provider; "" -> use runtime tier
-    global_config: GlobalConfig | None = None  # None => legacy mode; carried for Phase 8
+    global_config: GlobalConfig | None = None  # None => legacy mode; carried for routing
 
     @property
     def main_repo(self) -> Path:
@@ -214,8 +214,8 @@ class SamocodeConfig:
 
         Global config present -> the selected provider's default-profile model
         (env CLAUDE_MODEL/CODEX_MODEL never override a valid profile). Absent ->
-        legacy env model. Phase 8 refines this per workflow/plan phase via
-        ExecutionTarget; this is the startup/log baseline only.
+        legacy env model. Per-iteration routing refines this per workflow/plan
+        phase via ExecutionTarget; this is the startup/log baseline only.
         """
         if self.global_config is not None:
             profile = self.global_config.profile(
