@@ -1,5 +1,6 @@
 """Samocode worker package - core orchestrator components."""
 
+from .adapters import supported_providers
 from .config import (
     ProjectConfig,
     RuntimeConfig,
@@ -64,6 +65,13 @@ from .signals import (
     SignalStatus,
     clear_signal_file,
     read_signal_file,
+)
+from .startup import (
+    LEGACY_DEFAULT_PROVIDER,
+    StartupComposition,
+    compose_startup,
+    load_global_config,
+    select_provider,
 )
 from .timestamps import (
     FILE_TIMESTAMP_PATTERN,
@@ -140,6 +148,13 @@ __all__ = [
     "SignalStatus",
     "clear_signal_file",
     "read_signal_file",
+    # Startup
+    "LEGACY_DEFAULT_PROVIDER",
+    "StartupComposition",
+    "compose_startup",
+    "load_global_config",
+    "select_provider",
+    "supported_providers",
     # Timestamps
     "FILE_TIMESTAMP_PATTERN",
     "FOLDER_TIMESTAMP_PATTERN",
