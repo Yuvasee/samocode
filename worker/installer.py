@@ -427,6 +427,8 @@ def _print_install_item(result: InstallResult) -> None:
         print(f"  Refreshing: {name}")
     else:
         print(f"  Warning: {name} exists and is not a symlink, skipping")
+    if result.warning:
+        print(f"    {result.warning}")
 
 
 def _print_uninstall_item(result: UninstallResult) -> None:
