@@ -8,7 +8,7 @@ so you can hand off multi-hour engineering work and walk away.
 
 [![PyPI](https://img.shields.io/pypi/v/samocode.svg)](https://pypi.org/project/samocode/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/)
 [![CI](https://github.com/Yuvasee/samocode/actions/workflows/ci.yml/badge.svg)](https://github.com/Yuvasee/samocode/actions/workflows/ci.yml)
 
 [Quick start](#quick-start) · [How it works](#how-it-works) · [vs alternatives](#vs-alternatives) · [Examples](examples/)
@@ -146,13 +146,27 @@ init → investigation → requirements → planning → implementation → test
 |----------|---------|-------------|
 | `SAMOCODE_PROVIDER` | `claude` | Provider: `claude` or `codex` |
 | `CLAUDE_PATH` | `claude` | Path to Claude CLI |
-| `CLAUDE_MODEL` | `opus` | Claude model |
+| `CLAUDE_MODEL` | `opus` | Claude model (**legacy only** — ignored when a global config exists) |
 | `CLAUDE_TIMEOUT` | `1800` | Claude timeout per iteration (seconds) |
 | `CODEX_PATH` | `codex` | Path to Codex CLI |
-| `CODEX_MODEL` | empty | Codex model (empty = use `~/.codex/config.toml`) |
+| `CODEX_MODEL` | empty | Codex model, **legacy only** (empty = use `~/.codex/config.toml`) |
 | `CODEX_TIMEOUT` | `1800` | Codex timeout per iteration (seconds) |
 | `TELEGRAM_BOT_TOKEN` | - | Telegram notifications |
 | `TELEGRAM_CHAT_ID` | - | Telegram notifications |
+
+### Global model routing (`config.toml`)
+
+Samocode routes every iteration through a **semantic profile** (`light`, `standard`,
+`strong`, `max`, or custom) that resolves to a concrete model and optional reasoning
+effort for the one selected provider. The user-global config lives at
+`$XDG_CONFIG_HOME/samocode/config.toml` (fallback `~/.config/samocode/config.toml`)
+and is created from defaults by `samocode install` — it is never overwritten.
+
+Without it, samocode runs in **legacy mode** using `CLAUDE_MODEL`/`CODEX_MODEL`. With a
+valid config, profile model/effort is authoritative and those env vars are ignored.
+Requires **Python 3.11+**.
+
+→ Full concepts, default table, profile syntax, overrides, and migration: [docs/model-routing.md](docs/model-routing.md)
 
 ## Phase reference
 
