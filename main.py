@@ -13,6 +13,7 @@ from pathlib import Path
 
 from worker import (
     ExecutionStatus,
+    GlobalConfigError,
     ProjectConfig,
     RuntimeConfig,
     SamocodeConfig,
@@ -473,7 +474,15 @@ def run_orchestrator(args: argparse.Namespace) -> None:
 def cmd_install(args: argparse.Namespace) -> None:
     """Install samocode assets into provider directories."""
     # args.copy is True only with --copy; pass None for AUTO otherwise.
-    install(copy=True if args.copy else None)
+    try:
+        install(copy=True if args.copy else None)
+    except GlobalConfigError as exc:
+        print(f"\nError: existing global config is invalid.\n{exc}", file=sys.stderr)
+        print(
+            "Fix the file above or delete it to regenerate defaults.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
 
 def cmd_uninstall(_args: argparse.Namespace) -> None:

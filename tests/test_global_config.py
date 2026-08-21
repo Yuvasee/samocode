@@ -10,13 +10,48 @@ import pytest
 from worker.global_config import (
     CANONICAL_PROFILES,
     CONFIG_VERSION,
+    ConfigBootstrapStatus,
     GlobalConfig,
     GlobalConfigError,
     Provider,
     default_config,
     default_config_toml,
+    ensure_global_config,
     global_config_path,
 )
+
+
+class TestEnsureGlobalConfig:
+    """Bootstrap: create-when-absent, preserve-when-present, validate."""
+
+    def test_creates_when_absent(self, tmp_path: Path) -> None:
+        target = tmp_path / "samocode" / "config.toml"
+        result = ensure_global_config(target)
+        assert result.status is ConfigBootstrapStatus.CREATED
+        assert target.is_file()
+        assert target.read_text() == default_config_toml()
+        assert result.config.default_provider == "claude"
+
+    def test_preserves_existing_byte_for_byte(self, tmp_path: Path) -> None:
+        target = tmp_path / "config.toml"
+        custom = default_config_toml().replace(
+            'default_profile = "standard"', 'default_profile = "strong"'
+        )
+        target.write_text(custom)
+        before = target.read_bytes()
+        result = ensure_global_config(target)
+        assert result.status is ConfigBootstrapStatus.PRESERVED
+        assert target.read_bytes() == before
+        assert result.config.default_profile == "strong"
+
+    def test_invalid_existing_raises_actionable(self, tmp_path: Path) -> None:
+        target = tmp_path / "config.toml"
+        target.write_text("version = 1\n")
+        with pytest.raises(GlobalConfigError) as exc:
+            ensure_global_config(target)
+        msg = str(exc.value)
+        assert str(target) in msg
+        assert "providers" in msg
 
 
 class TestDefaultConfig:

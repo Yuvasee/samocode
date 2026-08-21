@@ -7,6 +7,14 @@ from .config import (
     parse_samocode_file,
     resolve_session_path,
 )
+from .global_config import (
+    ConfigBootstrapResult,
+    ConfigBootstrapStatus,
+    GlobalConfig,
+    GlobalConfigError,
+    ensure_global_config,
+    global_config_path,
+)
 from .installer import (
     InstallMode,
     InstallOutcome,
@@ -19,9 +27,9 @@ from .installer import (
 from .logging import add_session_handler, setup_logging
 from .notifications import notify_blocked, notify_complete, notify_error, notify_waiting
 from .phases import (
+    PHASE_CONFIGS,
     Phase,
     PhaseConfig,
-    PHASE_CONFIGS,
     get_agent_for_phase,
     get_phase_config,
     is_iteration_limit_exceeded,
@@ -69,6 +77,13 @@ __all__ = [
     "SamocodeConfig",
     "parse_samocode_file",
     "resolve_session_path",
+    # Global config
+    "ConfigBootstrapResult",
+    "ConfigBootstrapStatus",
+    "GlobalConfig",
+    "GlobalConfigError",
+    "ensure_global_config",
+    "global_config_path",
     # Installer
     "InstallMode",
     "InstallOutcome",

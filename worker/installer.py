@@ -10,6 +10,8 @@ from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 
+from worker.global_config import ConfigBootstrapResult, ensure_global_config
+
 # === Enums ===
 
 
@@ -26,6 +28,7 @@ class InstallOutcome(Enum):
 
     INSTALLED = "installed"  # New symlink/copy created
     UPDATED = "updated"  # Existing samocode-owned symlink refreshed
+    REPLACED = "replaced"  # Managed copy-mode target clobbered and rewritten
     SKIPPED = "skipped"  # Real (non-symlink) target exists; left untouched
 
 
@@ -55,6 +58,7 @@ class AssetClass:
     src_subdir: str  # Subdirectory under samocode root, e.g. "skills"
     is_dir_asset: bool  # True -> each entry is a dir; False -> *.md files
     providers: tuple[str, ...]  # Which providers receive this asset class
+    managed: bool = False  # Force-refresh real targets in COPY mode (agents only)
 
 
 # Registry - single source of truth for what gets installed where.
@@ -72,6 +76,7 @@ ASSET_CLASSES: tuple[AssetClass, ...] = (
         src_subdir="agents",
         is_dir_asset=False,
         providers=("claude",),
+        managed=True,  # Samocode-managed Claude agents: refresh copied targets
     ),
     AssetClass(
         name="commands",
@@ -165,6 +170,7 @@ def install_asset(
     target: Path,
     mode: InstallMode = InstallMode.AUTO,
     src_root: Path | None = None,
+    managed: bool = False,
 ) -> InstallResult:
     """Symlink or copy a single asset (file or dir) to target.
 
@@ -172,6 +178,7 @@ def install_asset(
     - target does not exist -> create (INSTALLED)
     - target is a samocode-owned symlink -> refresh: remove + recreate (UPDATED)
     - target is a foreign symlink (points outside src_root) -> warn and skip (SKIPPED)
+    - target is a real file/dir, managed=True, COPY mode -> replace (REPLACED)
     - target is a real file/dir (not a symlink) -> warn and skip (SKIPPED)
 
     Only symlinks resolving into the samocode source tree are refreshed; foreign
@@ -217,18 +224,28 @@ def install_asset(
                 warning=warning,
             )
     elif target.exists():
-        # Real file or directory - never clobber
-        warning = (
-            f"{target} exists and is not a samocode symlink; skipping. "
-            "Remove it manually if you want samocode to manage it."
-        )
-        return InstallResult(
-            src=src,
-            target=target,
-            outcome=InstallOutcome.SKIPPED,
-            mode=resolved_mode,
-            warning=warning,
-        )
+        if managed and resolved_mode is InstallMode.COPY:
+            # Samocode itself wrote this real file on a prior copy install, so
+            # replacing it is the intended refresh. In SYMLINK mode a real file
+            # here is a user file and stays protected on the branch below.
+            if target.is_dir():
+                shutil.rmtree(target)
+            else:
+                target.unlink()
+            outcome_on_create = InstallOutcome.REPLACED
+        else:
+            # Real file or directory - never clobber
+            warning = (
+                f"{target} exists and is not a samocode symlink; skipping. "
+                "Remove it manually if you want samocode to manage it."
+            )
+            return InstallResult(
+                src=src,
+                target=target,
+                outcome=InstallOutcome.SKIPPED,
+                mode=resolved_mode,
+                warning=warning,
+            )
     else:
         outcome_on_create = InstallOutcome.INSTALLED
 
@@ -391,6 +408,8 @@ def _print_install_item(result: InstallResult) -> None:
         print(f"  Installing: {name}")
     elif result.outcome is InstallOutcome.UPDATED:
         print(f"  Updating: {name}")
+    elif result.outcome is InstallOutcome.REPLACED:
+        print(f"  Refreshing: {name}")
     else:
         print(f"  Warning: {name} exists and is not a symlink, skipping")
 
@@ -403,6 +422,26 @@ def _print_uninstall_item(result: UninstallResult) -> None:
         print(f"  Skipping: {result.target.name}")
         if result.note:
             print(f"    {result.note}")
+
+
+def _print_config_summary(result: ConfigBootstrapResult) -> None:
+    """Print config path, created/preserved status, and a profile table.
+
+    Always runs during install so users see exactly which config is in effect.
+    """
+    cfg = result.config
+    print("\nGlobal config:")
+    print(f"  Path: {result.path}")
+    print(f"  Status: {result.status.value}")
+    print(f"  Default: provider={cfg.default_provider} profile={cfg.default_profile}")
+    print(f"  {'PROVIDER':<10} {'PROFILE':<10} {'MODEL':<28} EFFORT")
+    for pname in sorted(cfg.providers):
+        provider = cfg.providers[pname]
+        for prof_name in sorted(provider.profiles):
+            prof = provider.profiles[prof_name]
+            print(
+                f"  {pname:<10} {prof_name:<10} {prof.model:<28} {prof.effort or '-'}"
+            )
 
 
 def _print_install_summary(results: list[InstallResult], src_root: Path) -> None:
@@ -454,9 +493,13 @@ def _print_uninstall_summary(results: list[UninstallResult]) -> None:
 def install(copy: bool | None = None) -> list[InstallResult]:
     """Install all samocode assets (skills, agents, commands) to provider dirs.
 
-    Walks ASSET_CLASSES x providers, enumerates source entries, and calls
+    First bootstraps the global model-routing config (creating it only when
+    absent, validating it when present) and prints it. Then walks
+    ASSET_CLASSES x providers, enumerates source entries, and calls
     install_asset() for each (src, target) pair. Prints per-item lines, a
     summary, and the .samocode project-setup reminder to stdout.
+
+    Raises GlobalConfigError if a pre-existing global config is invalid.
 
     Args:
         copy: None  -> InstallMode.AUTO    (symlink in git repo; copy elsewhere)
@@ -467,6 +510,11 @@ def install(copy: bool | None = None) -> list[InstallResult]:
         All InstallResult objects, in order, so callers can aggregate by
         outcome without re-parsing stdout.
     """
+    # Bootstrap + validate the global config before touching assets; always
+    # print it. A malformed pre-existing config raises GlobalConfigError here.
+    bootstrap = ensure_global_config()
+    _print_config_summary(bootstrap)
+
     if copy is None:
         mode = InstallMode.AUTO
     elif copy:
@@ -497,7 +545,13 @@ def install(copy: bool | None = None) -> list[InstallResult]:
             for src in entries:
                 target = target_dir / src.name
                 try:
-                    result = install_asset(src, target, mode, src_root=src_root)
+                    result = install_asset(
+                        src,
+                        target,
+                        mode,
+                        src_root=src_root,
+                        managed=asset_class.managed,
+                    )
                 except OSError as e:
                     # Permission denied, read-only dir, disk full, etc. Report
                     # and keep going so one bad target does not abort the rest.

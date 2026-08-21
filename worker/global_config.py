@@ -12,6 +12,7 @@ import os
 import tomllib
 from collections.abc import Mapping
 from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
 
 # === Constants ===
@@ -186,6 +187,43 @@ def default_config() -> GlobalConfig:
 def default_config_toml() -> str:
     """Return the canonical default config as TOML text (for the installer)."""
     return _DEFAULT_CONFIG_TOML
+
+
+# === Bootstrap ===
+
+
+class ConfigBootstrapStatus(Enum):
+    """Outcome of ensure_global_config()."""
+
+    CREATED = "created"  # File (and parent dir) written from defaults
+    PRESERVED = "preserved"  # Pre-existing file kept and validated
+
+
+@dataclass(frozen=True)
+class ConfigBootstrapResult:
+    """Result of ensuring the global config exists and is valid."""
+
+    path: Path
+    status: ConfigBootstrapStatus
+    config: GlobalConfig
+
+
+def ensure_global_config(path: Path | None = None) -> ConfigBootstrapResult:
+    """Create the global config from defaults only when absent; else validate it.
+
+    Missing -> create parent dir + file from default_config_toml(), then load.
+    Present -> load and validate in place; the file's bytes are never rewritten.
+
+    Raises GlobalConfigError if a pre-existing file is malformed or invalid.
+    """
+    target = path if path is not None else global_config_path()
+    if target.exists():
+        config = GlobalConfig.from_file(target)
+        return ConfigBootstrapResult(target, ConfigBootstrapStatus.PRESERVED, config)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(default_config_toml())
+    config = GlobalConfig.from_file(target)
+    return ConfigBootstrapResult(target, ConfigBootstrapStatus.CREATED, config)
 
 
 # === Validation internals ===

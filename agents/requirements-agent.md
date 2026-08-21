@@ -2,7 +2,7 @@
 name: requirements-agent
 description: Gather requirements via Q&A with human. Use after investigation to clarify task requirements.
 tools: Read, Write, Edit, Glob, Grep, Task
-model: claude-opus-4-8
+model: inherit
 permissionMode: allowEdits
 ---
 

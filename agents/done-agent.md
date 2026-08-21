@@ -2,7 +2,7 @@
 name: done-agent
 description: Session wrap-up and summary generation. Use after PR readiness passes.
 tools: Read, Glob, Grep, Task, Write, Edit
-model: claude-opus-4-8
+model: inherit
 skills: summary
 permissionMode: allowEdits
 ---
