@@ -34,6 +34,7 @@ Creates detailed implementation plans with phases, stored within the session fol
    - Prefer more small phases over fewer large ones
    - Include explicit edge-case acceptance checks when the feature touches validators, queues, DB writes, background fan-out, uploads, auth/API-key users, or shared package boundaries
    - **Do NOT label any phase "Manual browser verification" or similar.** Samocode's testing-agent runs browser E2E autonomously (container restart, data seeding, screenshots included). Carving it out as a "manual" phase gives the testing-agent permission to defer. Put browser verification criteria in the standard Testing phase or as acceptance checks on the UI-touching phases.
+   - **Model profile per phase (optional):** Immediately under a `### Phase N: [Name]` heading, add `**Profile:** \`name\`` (backtick-quoted) to route that phase through a non-default model profile — e.g. `strong` for architecture-heavy phases, `max` for the highest-stakes ones. Omit the line to inherit the workflow `implementation` default. The value must be a single non-empty backtick-quoted name and appear at most once per phase; an empty, unquoted, or duplicated line fails the session before any model call. Built-in names: `light`, `standard`, `strong`, `max` (plus any custom profiles in the user's global config). When unsure, omit it.
 
    Structure:
    ```markdown
@@ -53,6 +54,7 @@ Creates detailed implementation plans with phases, stored within the session fol
    ## Implementation Phases
 
    ### Phase 1: [Name]
+   **Profile:** `strong`
    - [ ] [Step]
    - [ ] [Step]
    - [ ] Run pyright/ruff or tsc - fix errors

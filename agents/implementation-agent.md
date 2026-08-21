@@ -27,8 +27,9 @@ Session context is provided via --append-system-prompt by the orchestrator:
 
 2. **Find next incomplete phase:**
    - Read plan file from session folder
-   - Find first phase with unchecked `- [ ]` items
+   - Find first phase with unchecked `- [ ]` items — this matches the rule `worker.plan_resolver.resolve_plan_phase()` uses (first phase in document order with an unchecked task; a partially-checked phase stays active and keeps its `**Profile:**`)
    - If all complete -> transition to testing
+   - **When the runner passes a resolved plan phase in session context** (plan file, phase label/title, profile — wired in later routing phases), execute exactly that phase. Do not re-scan the plan to pick a different one; the runner's selection is authoritative for the model profile already in flight this iteration.
 
 3. **Execute phase — choose approach based on phase type:**
 

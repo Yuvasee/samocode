@@ -4,10 +4,14 @@ Composes `worker.phases` (workflow metadata) with `worker.global_config`
 (provider/profile data) to answer one question: which profile applies to a
 given workflow phase, for the process's selected provider.
 
-Intended home for Phase 4's plan-phase resolution and Phase 5's immutable
-per-iteration execution target - both extend the functions here rather than
-relocate them. `phases` and `global_config` never import each other; only this
-module needs both vocabularies.
+Plan-phase resolution (parsing `_overview.md` and plan Markdown) lives in
+`worker.plan_resolver` - a distinct concern with no dependency on
+`GlobalConfig`/`Provider`. Phase 5's immutable per-iteration execution target
+composes `plan_resolver.resolve_plan_phase()` with `resolve_workflow_profile()`
+here: an explicit plan-phase profile wins, else the `implementation` workflow
+default. Extend each module for its own concern rather than relocating parsing
+here. `phases` and `global_config` never import each other; only this module
+needs both vocabularies.
 """
 
 from dataclasses import dataclass

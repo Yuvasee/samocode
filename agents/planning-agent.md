@@ -79,6 +79,7 @@ Created: [TIMESTAMP_LOG]
 ## Implementation Phases
 
 ### Phase 1: [name]
+**Profile:** `strong`
 [Description]
 - [ ] Task 1
 - [ ] Task 2
@@ -98,6 +99,7 @@ Created: [TIMESTAMP_LOG]
 - Include verification steps in each phase
 - Consider both "clean" and "minimal" approaches
 - Flag any areas requiring human decision
+- Add `**Profile:** \`name\`` immediately under a phase heading only when that phase warrants a non-default model (e.g. `strong`/`max` for architecture or cross-cutting phases); omit it so routine phases inherit the `implementation` default. The line must be the first line after the heading, backtick-quoted, and appear at most once per phase — malformed or duplicate lines block implementation before any model runs.
 
 ## State Updates
 
