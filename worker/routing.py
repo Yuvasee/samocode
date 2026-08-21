@@ -6,19 +6,23 @@ given workflow phase, for the process's selected provider.
 
 Plan-phase resolution (parsing `_overview.md` and plan Markdown) lives in
 `worker.plan_resolver` - a distinct concern with no dependency on
-`GlobalConfig`/`Provider`. Phase 5's immutable per-iteration execution target
-composes `plan_resolver.resolve_plan_phase()` with `resolve_workflow_profile()`
-here: an explicit plan-phase profile wins, else the `implementation` workflow
-default. Extend each module for its own concern rather than relocating parsing
-here. `phases` and `global_config` never import each other; only this module
-needs both vocabularies.
+`GlobalConfig`/`Provider`. `resolve_execution_target()` below is the single
+composition point: it combines `resolve_workflow_profile()`,
+`plan_resolver.resolve_plan_phase()`, the selected provider's profile table, and
+`worker.config.RuntimeConfig` path/timeout overrides into one immutable
+`ExecutionTarget` per iteration. An explicit plan-phase profile wins, else the
+`implementation` workflow default. `phases`, `global_config`, and `plan_resolver`
+never import each other or this module; only this module needs all vocabularies.
 """
 
 from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
 
-from worker.global_config import GlobalConfig, GlobalConfigError, Provider
+from worker.config import RuntimeConfig
+from worker.global_config import GlobalConfig, GlobalConfigError, Profile, Provider
 from worker.phases import PHASE_CONFIGS, Phase
+from worker.plan_resolver import PlanPhaseSelection, resolve_plan_phase
 
 
 class ProfileSource(Enum):
@@ -103,3 +107,156 @@ def _validated(
             f"(known profiles: {sorted(provider.profiles)})"
         )
     return ResolvedProfile(name=name, source=source)
+
+
+# === Per-iteration execution target ===
+
+DEFAULT_TIMEOUT_SECONDS = 1800  # Fallback for providers with no RuntimeConfig field
+
+
+class ExecutionResolutionError(ValueError):
+    """Raised when the selected provider itself is not configured.
+
+    Distinct from GlobalConfigError (TOML content is wrong) and
+    PlanResolutionError (plan Markdown is wrong): the caller asked to run a
+    provider the global config never defined.
+    """
+
+
+class ExecutionProfileSource(Enum):
+    """Where an ExecutionTarget's resolved profile ultimately came from.
+
+    Collapses ProfileSource (workflow-level) and PlanProfileSource
+    (only PLAN_PHASE_EXPLICIT ever surfaces here; an omitted plan profile falls
+    through to a ProfileSource-backed member) into one closed vocabulary a single
+    log line or session-context field can switch on.
+    """
+
+    PLAN_PHASE_EXPLICIT = "plan_phase_explicit"
+    WORKFLOW_OVERRIDE = "workflow_override"
+    PHASE_DEFAULT = "phase_default"
+    GLOBAL_DEFAULT = "global_default"
+
+
+_WORKFLOW_SOURCE_MAP: dict[ProfileSource, ExecutionProfileSource] = {
+    ProfileSource.WORKFLOW_OVERRIDE: ExecutionProfileSource.WORKFLOW_OVERRIDE,
+    ProfileSource.PHASE_DEFAULT: ExecutionProfileSource.PHASE_DEFAULT,
+    ProfileSource.GLOBAL_DEFAULT: ExecutionProfileSource.GLOBAL_DEFAULT,
+}
+
+
+@dataclass(frozen=True)
+class ExecutionTarget:
+    """The fully-resolved, immutable execution target for one iteration.
+
+    Built once by `resolve_execution_target()` and reused verbatim across every
+    retry within that iteration, so a retry cannot switch provider, model, or
+    plan phase. Phase 6 adapters build Claude/Codex argv directly from
+    `model`/`effort`; Phase 8 injects `plan_phase` into agent session context.
+    """
+
+    provider: str  # GlobalConfig.providers key, e.g. "claude", "codex"
+    profile: str  # resolved profile name
+    model: str  # Profile.model for (provider, profile)
+    effort: str | None  # Profile.effort for (provider, profile)
+    executable: Path  # resolved CLI path (RuntimeConfig override-aware)
+    timeout: int  # seconds (RuntimeConfig override-aware)
+    workflow_phase: Phase
+    plan_phase: PlanPhaseSelection | None  # None outside `implementation`
+    source: ExecutionProfileSource
+
+
+def resolve_execution_target(
+    *,
+    provider_name: str,
+    workflow_phase: Phase,
+    session_dir: Path,
+    config: GlobalConfig,
+    runtime: RuntimeConfig,
+) -> ExecutionTarget:
+    """Resolve the one immutable ExecutionTarget for an iteration.
+
+    Only `implementation` reads `session_dir` (via resolve_plan_phase); every
+    other phase leaves plan_phase=None and touches no filesystem. For
+    `implementation`, an explicit `**Profile:**` on the active plan phase wins;
+    otherwise resolution falls through to resolve_workflow_profile exactly like
+    every other phase.
+
+    Raises:
+        ExecutionResolutionError: provider_name has no matching
+            [providers.<name>] section.
+        GlobalConfigError: a resolved profile (workflow override or explicit
+            plan profile) is unavailable for the selected provider, or
+            workflow_overrides is malformed.
+        PlanResolutionError: (implementation only) plan/_overview.md missing,
+            stale, or malformed. Never caught here.
+    """
+    provider = config.providers.get(provider_name)
+    if provider is None:
+        raise ExecutionResolutionError(
+            f"selected provider {provider_name!r} has no "
+            f"[providers.{provider_name}] section in the global config "
+            f"(known providers: {sorted(config.providers)})"
+        )
+
+    plan_phase: PlanPhaseSelection | None = None
+    if workflow_phase is Phase.IMPLEMENTATION:
+        plan_phase = resolve_plan_phase(session_dir)
+
+    if plan_phase is not None and plan_phase.profile is not None:
+        profile_name = plan_phase.profile
+        source = ExecutionProfileSource.PLAN_PHASE_EXPLICIT
+        profile = _resolve_profile(
+            provider,
+            profile_name,
+            context=f"implementation-plan phase {plan_phase.phase_label!r}",
+        )
+    else:
+        resolved = resolve_workflow_profile(workflow_phase, provider, config)
+        profile_name = resolved.name
+        source = _WORKFLOW_SOURCE_MAP[resolved.source]
+        profile = _resolve_profile(
+            provider, profile_name, context=f"workflow phase {workflow_phase.value!r}"
+        )
+
+    executable, timeout = _resolve_path_and_timeout(provider_name, provider, runtime)
+
+    return ExecutionTarget(
+        provider=provider_name,
+        profile=profile_name,
+        model=profile.model,
+        effort=profile.effort,
+        executable=executable,
+        timeout=timeout,
+        workflow_phase=workflow_phase,
+        plan_phase=plan_phase,
+        source=source,
+    )
+
+
+def _resolve_profile(provider: Provider, name: str, *, context: str) -> Profile:
+    """Look up `name` on `provider`; raise GlobalConfigError if absent."""
+    profile = provider.profile(name)
+    if profile is None:
+        raise GlobalConfigError(
+            f"profile {name!r} for {context} is not available for provider "
+            f"{provider.name!r} (known profiles: {sorted(provider.profiles)})"
+        )
+    return profile
+
+
+def _resolve_path_and_timeout(
+    provider_name: str, provider: Provider, runtime: RuntimeConfig
+) -> tuple[Path, int]:
+    """Map the selected provider to its path/timeout override.
+
+    Only claude/codex have dedicated RuntimeConfig fields today; any other
+    configured provider falls back to its global-config `executable` and
+    DEFAULT_TIMEOUT_SECONDS. Phase 7 may generalize RuntimeConfig without
+    changing this return shape.
+    """
+    if provider_name == "claude":
+        return runtime.claude_path, runtime.claude_timeout
+    if provider_name == "codex":
+        return runtime.codex_path, runtime.codex_timeout
+    return Path(provider.executable), DEFAULT_TIMEOUT_SECONDS

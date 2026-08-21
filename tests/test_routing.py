@@ -11,9 +11,11 @@ Covers:
 
 import tomllib
 from collections.abc import Mapping
+from pathlib import Path
 
 import pytest
 
+from worker.config import RuntimeConfig
 from worker.global_config import (
     GlobalConfig,
     GlobalConfigError,
@@ -21,8 +23,13 @@ from worker.global_config import (
     default_config_toml,
 )
 from worker.phases import PHASE_CONFIGS, Phase, PhaseConfig
+from worker.plan_resolver import PlanProfileSource
 from worker.routing import (
+    DEFAULT_TIMEOUT_SECONDS,
+    ExecutionProfileSource,
+    ExecutionResolutionError,
     ProfileSource,
+    resolve_execution_target,
     resolve_workflow_profile,
 )
 
@@ -111,3 +118,270 @@ class TestPhaseConfigContract:
                 allowed_signals=frozenset({"continue"}),
                 max_iterations=1,
             )
+
+
+# === Phase 5: execution-target resolution ===
+
+
+def _deep_merge(base: dict[str, object], extra: Mapping[str, object]) -> None:
+    for key, value in extra.items():
+        existing = base.get(key)
+        if isinstance(existing, dict) and isinstance(value, Mapping):
+            _deep_merge(existing, value)
+        else:
+            base[key] = value
+
+
+def _config(extra_toml: str = "") -> GlobalConfig:
+    data = tomllib.loads(default_config_toml())
+    if extra_toml:
+        _deep_merge(data, tomllib.loads(extra_toml))
+    return GlobalConfig.from_mapping(data, source="<test>")
+
+
+def _write_plan(session_dir: Path, phase_block: str) -> None:
+    (session_dir / "plan.md").write_text(f"## Implementation Phases\n\n{phase_block}")
+    (session_dir / "_overview.md").write_text("## Plans\n- plan.md - the plan\n")
+
+
+class TestCustomProfiles:
+    def test_custom_profile_resolves(self, tmp_path: Path) -> None:
+        cfg = _config(
+            '\n[providers.claude.profiles.nightly]\nmodel = "claude-nightly"\n'
+            'effort = "low"\n[workflow_overrides]\ntesting = "nightly"\n'
+        )
+        target = resolve_execution_target(
+            provider_name="claude",
+            workflow_phase=Phase.TESTING,
+            session_dir=tmp_path,
+            config=cfg,
+            runtime=RuntimeConfig(),
+        )
+        assert target.model == "claude-nightly"
+        assert target.effort == "low"
+        assert target.source is ExecutionProfileSource.WORKFLOW_OVERRIDE
+
+
+class TestUnavailableProfiles:
+    def test_workflow_override_profile_unavailable_rejected(self) -> None:
+        cfg = _config('\n[workflow_overrides]\nquality = "ultra"\n')
+        with pytest.raises(GlobalConfigError, match="not available for provider"):
+            resolve_execution_target(
+                provider_name="claude",
+                workflow_phase=Phase.QUALITY,
+                session_dir=Path("/nonexistent"),
+                config=cfg,
+                runtime=RuntimeConfig(),
+            )
+
+    def test_explicit_plan_profile_unavailable_rejected(self, tmp_path: Path) -> None:
+        _write_plan(tmp_path, "### Phase 1: X\n**Profile:** `nonexistent`\n- [ ] one\n")
+        with pytest.raises(GlobalConfigError, match="implementation-plan phase '1'"):
+            resolve_execution_target(
+                provider_name="claude",
+                workflow_phase=Phase.IMPLEMENTATION,
+                session_dir=tmp_path,
+                config=_config(),
+                runtime=RuntimeConfig(),
+            )
+
+
+class TestInvalidOverrides:
+    def test_unknown_override_phase_rejected(self) -> None:
+        cfg = _config('\n[workflow_overrides]\nimplementaton = "strong"\n')
+        with pytest.raises(GlobalConfigError, match="unknown phase"):
+            resolve_execution_target(
+                provider_name="claude",
+                workflow_phase=Phase.QUALITY,
+                session_dir=Path("/nonexistent"),
+                config=cfg,
+                runtime=RuntimeConfig(),
+            )
+
+
+class TestSelectedOnlyValidation:
+    def test_other_providers_override_ignored_when_unselected(self) -> None:
+        cfg = _config(
+            '\n[providers.codex.profiles.ultra]\nmodel = "gpt-ultra"\n'
+            '[workflow_overrides]\nquality = "ultra"\n'
+        )
+        target = resolve_execution_target(
+            provider_name="codex",
+            workflow_phase=Phase.QUALITY,
+            session_dir=Path("/nonexistent"),
+            config=cfg,
+            runtime=RuntimeConfig(),
+        )
+        assert target.model == "gpt-ultra"
+
+    def test_unselected_future_provider_inert(self) -> None:
+        cfg = _config(
+            '\n[providers.gemini]\nexecutable = "gemini"\n'
+            '[providers.gemini.profiles.standard]\nmodel = "gemini-x"\n'
+        )
+        target = resolve_execution_target(
+            provider_name="claude",
+            workflow_phase=Phase.DONE,
+            session_dir=Path("/nonexistent"),
+            config=cfg,
+            runtime=RuntimeConfig(),
+        )
+        assert target.provider == "claude"
+
+
+class TestSelectedUnsupportedProvider:
+    def test_unconfigured_provider_rejected(self) -> None:
+        with pytest.raises(ExecutionResolutionError, match=r"no \[providers.gemini\]"):
+            resolve_execution_target(
+                provider_name="gemini",
+                workflow_phase=Phase.DONE,
+                session_dir=Path("/nonexistent"),
+                config=_config(),
+                runtime=RuntimeConfig(),
+            )
+
+
+class TestCrossProviderInvocation:
+    def test_same_profile_resolves_independently_per_provider(self) -> None:
+        cfg = _config()
+        claude_target = resolve_execution_target(
+            provider_name="claude",
+            workflow_phase=Phase.TESTING,
+            session_dir=Path("/nonexistent"),
+            config=cfg,
+            runtime=RuntimeConfig(),
+        )
+        codex_target = resolve_execution_target(
+            provider_name="codex",
+            workflow_phase=Phase.TESTING,
+            session_dir=Path("/nonexistent"),
+            config=cfg,
+            runtime=RuntimeConfig(),
+        )
+        assert claude_target.profile == codex_target.profile == "standard"
+        assert claude_target.model != codex_target.model
+
+
+class TestImplementationPrecedence:
+    def test_explicit_plan_profile_wins(self, tmp_path: Path) -> None:
+        _write_plan(tmp_path, "### Phase 1: X\n**Profile:** `strong`\n- [ ] one\n")
+        target = resolve_execution_target(
+            provider_name="claude",
+            workflow_phase=Phase.IMPLEMENTATION,
+            session_dir=tmp_path,
+            config=_config(),
+            runtime=RuntimeConfig(),
+        )
+        assert target.profile == "strong"
+        assert target.source is ExecutionProfileSource.PLAN_PHASE_EXPLICIT
+        assert target.plan_phase is not None
+        assert target.plan_phase.source is PlanProfileSource.PLAN_PHASE_EXPLICIT
+
+    def test_omitted_plan_profile_falls_back_to_workflow_default(
+        self, tmp_path: Path
+    ) -> None:
+        _write_plan(tmp_path, "### Phase 1: X\n- [ ] one\n")
+        target = resolve_execution_target(
+            provider_name="claude",
+            workflow_phase=Phase.IMPLEMENTATION,
+            session_dir=tmp_path,
+            config=_config(),
+            runtime=RuntimeConfig(),
+        )
+        assert target.profile == "standard"
+        assert target.source is ExecutionProfileSource.PHASE_DEFAULT
+
+    def test_all_complete_falls_back_to_workflow_default(self, tmp_path: Path) -> None:
+        _write_plan(tmp_path, "### Phase 1: X\n- [x] one\n")
+        target = resolve_execution_target(
+            provider_name="claude",
+            workflow_phase=Phase.IMPLEMENTATION,
+            session_dir=tmp_path,
+            config=_config(),
+            runtime=RuntimeConfig(),
+        )
+        assert target.plan_phase is not None
+        assert target.plan_phase.all_complete is True
+        assert target.source is ExecutionProfileSource.PHASE_DEFAULT
+
+    def test_workflow_override_beats_default_on_omission(self, tmp_path: Path) -> None:
+        _write_plan(tmp_path, "### Phase 1: X\n- [ ] one\n")
+        cfg = _config('\n[workflow_overrides]\nimplementation = "max"\n')
+        target = resolve_execution_target(
+            provider_name="claude",
+            workflow_phase=Phase.IMPLEMENTATION,
+            session_dir=tmp_path,
+            config=cfg,
+            runtime=RuntimeConfig(),
+        )
+        assert target.profile == "max"
+        assert target.source is ExecutionProfileSource.WORKFLOW_OVERRIDE
+
+
+class TestNonImplementationPhasesSkipPlanResolution:
+    def test_missing_session_dir_does_not_raise_outside_implementation(self) -> None:
+        target = resolve_execution_target(
+            provider_name="claude",
+            workflow_phase=Phase.QUALITY,
+            session_dir=Path("/definitely/does/not/exist"),
+            config=_config(),
+            runtime=RuntimeConfig(),
+        )
+        assert target.plan_phase is None
+
+
+class TestPathTimeoutOverrides:
+    def test_claude_uses_dedicated_runtime_fields(self) -> None:
+        runtime = RuntimeConfig(claude_path=Path("/custom/claude"), claude_timeout=42)
+        target = resolve_execution_target(
+            provider_name="claude",
+            workflow_phase=Phase.DONE,
+            session_dir=Path("/nonexistent"),
+            config=_config(),
+            runtime=runtime,
+        )
+        assert target.executable == Path("/custom/claude")
+        assert target.timeout == 42
+
+    def test_codex_uses_dedicated_runtime_fields(self) -> None:
+        runtime = RuntimeConfig(codex_path=Path("/custom/codex"), codex_timeout=99)
+        target = resolve_execution_target(
+            provider_name="codex",
+            workflow_phase=Phase.DONE,
+            session_dir=Path("/nonexistent"),
+            config=_config(),
+            runtime=runtime,
+        )
+        assert target.executable == Path("/custom/codex")
+        assert target.timeout == 99
+
+    def test_unknown_provider_falls_back_to_provider_executable(self) -> None:
+        # Phase.TESTING default profile is "standard", which gemini provides.
+        cfg = _config(
+            '\n[providers.gemini]\nexecutable = "gemini-cli"\n'
+            '[providers.gemini.profiles.standard]\nmodel = "gemini-x"\n'
+        )
+        target = resolve_execution_target(
+            provider_name="gemini",
+            workflow_phase=Phase.TESTING,
+            session_dir=Path("/nonexistent"),
+            config=cfg,
+            runtime=RuntimeConfig(),
+        )
+        assert target.executable == Path("gemini-cli")
+        assert target.timeout == DEFAULT_TIMEOUT_SECONDS
+
+
+class TestExecutionTargetImmutability:
+    def test_target_is_frozen(self) -> None:
+        import dataclasses
+
+        target = resolve_execution_target(
+            provider_name="claude",
+            workflow_phase=Phase.DONE,
+            session_dir=Path("/nonexistent"),
+            config=_config(),
+            runtime=RuntimeConfig(),
+        )
+        with pytest.raises(dataclasses.FrozenInstanceError):
+            target.profile = "other"  # type: ignore[misc]
