@@ -12,6 +12,7 @@ from enum import Enum
 from pathlib import Path
 from typing import IO, TextIO
 
+from .adapters import build_codex_agent_prompt
 from .config import SamocodeConfig
 from .phases import Phase, get_agent_for_phase
 from .timestamps import file_timestamp, iteration_timestamp, jsonl_timestamp, log_timestamp
@@ -613,23 +614,9 @@ def _build_codex_cli_args(config: SamocodeConfig, prompt: str) -> list[str]:
 def _build_codex_prompt(
     agent_name: str, session_context: str, workflow_prompt_path: Path
 ) -> str:
-    """Build a full prompt for Codex mode using the selected agent definition."""
-    agents_dir = workflow_prompt_path.parent / "agents"
-    agent_path = agents_dir / f"{agent_name}.md"
-    if not agent_path.exists():
-        raise ValueError(f"Agent prompt not found for codex mode: {agent_path}")
-
-    agent_instructions = agent_path.read_text().strip()
-    return (
-        f"{session_context}\n\n"
-        "## Execution Mode\n"
-        "You are running in samocode codex-provider mode. Execute one full phase iteration.\n"
-        "Follow the agent spec exactly. The agent frontmatter was written for Claude Code; "
-        "treat unavailable tool/model names as role metadata and use your available Codex "
-        "tools instead. Update session files and write the "
-        "final `_signal.json` status before exiting.\n\n"
-        f"## Agent Spec: {agent_name}\n"
-        f"{agent_instructions}\n"
+    """Backward-compat delegator to adapters.build_codex_agent_prompt."""
+    return build_codex_agent_prompt(
+        agent_name, session_context, workflow_prompt_path.parent / "agents"
     )
 
 
