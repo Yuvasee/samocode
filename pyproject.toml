@@ -8,7 +8,7 @@ version = "0.0.1"
 description = "Walk-away AI coding sessions, locally orchestrated"
 readme = "README.md"
 license = { file = "LICENSE" }
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 authors = [{ name = "Yuri Vasilchikov", email = "yuri.v9v@gmail.com" }]
 keywords = ["claude", "claude-code", "codex", "ai", "agent", "orchestrator", "automation"]
 classifiers = [
@@ -19,7 +19,6 @@ classifiers = [
   "Operating System :: POSIX :: Linux",
   "Operating System :: MacOS",
   "Programming Language :: Python :: 3",
-  "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
