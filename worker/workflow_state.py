@@ -42,6 +42,7 @@ class OverviewParseError(Enum):
     """Typed cause of a strict overview-state parse failure."""
 
     FILE_NOT_FOUND = "file_not_found"
+    READ_FAILED = "read_failed"  # OSError/UnicodeDecodeError reading the file
     MISSING_PHASE = "missing_phase"
     DUPLICATE_PHASE = "duplicate_phase"
     MALFORMED_PHASE = "malformed_phase"  # value not a Phase enum member
@@ -187,7 +188,13 @@ def read_overview_state(session_path: Path) -> OverviewParseResult:
         return _parse_failure(
             OverviewParseError.FILE_NOT_FOUND, f"No _overview.md at {overview_path}"
         )
-    return parse_overview_state(overview_path.read_text())
+    try:
+        content = overview_path.read_text()
+    except (OSError, UnicodeDecodeError) as exc:
+        return _parse_failure(
+            OverviewParseError.READ_FAILED, f"Cannot read {overview_path}: {exc}"
+        )
+    return parse_overview_state(content)
 
 
 # =============================================================================
