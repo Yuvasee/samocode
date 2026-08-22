@@ -102,14 +102,54 @@ def _project(tmp_path: Path) -> ProjectConfig:
 
 
 class TestProcessSignalBootstrap:
-    def test_source_phase_none_passes_through_unrecorded(self, tmp_path: Path) -> None:
+    def test_no_overview_validates_and_records_against_init(
+        self, tmp_path: Path
+    ) -> None:
+        # No overview yet: bootstrap validates against init, records an audit row.
         session = tmp_path / "_sessions" / "task"
         session.mkdir(parents=True)
-        sig = _sig(SignalStatus.CONTINUE, phase="investigation")
+        sig = _sig(SignalStatus.CONTINUE)
 
         result = main.process_signal(sig, None, session, 1, _logger())
 
-        assert result is sig
+        assert result.status is SignalStatus.CONTINUE
+        rows = _history_rows(session)
+        assert len(rows) == 1
+        assert rows[0]["source_phase"] == "init"
+        assert rows[0]["accepted"] is True
+
+    def test_no_overview_enforces_init_iteration_limit(self, tmp_path: Path) -> None:
+        # init max_iterations = 5; the 6th run in init trips the limit.
+        session = tmp_path / "_sessions" / "task"
+        session.mkdir(parents=True)
+        for i in range(1, 6):
+            main.process_signal(_sig(SignalStatus.CONTINUE), None, session, i, _logger())
+
+        result = main.process_signal(_sig(SignalStatus.CONTINUE), None, session, 6, _logger())
+
+        assert result.status is SignalStatus.BLOCKED
+        assert "iteration limit" in (result.reason or "")
+
+    def test_parseable_overview_uses_recorded_phase(self, tmp_path: Path) -> None:
+        # Child created a valid overview during this run: its phase is authoritative.
+        session = _session(tmp_path, "investigation")
+        sig = _sig(SignalStatus.CONTINUE)
+
+        result = main.process_signal(sig, None, session, 1, _logger())
+
+        assert result.status is SignalStatus.CONTINUE
+        assert _history_rows(session)[0]["source_phase"] == "investigation"
+
+    def test_unparseable_overview_blocks(self, tmp_path: Path) -> None:
+        session = tmp_path / "_sessions" / "task"
+        session.mkdir(parents=True)
+        (session / "_overview.md").write_text("# no status fields here\n")
+        sig = _sig(SignalStatus.CONTINUE)
+
+        result = main.process_signal(sig, None, session, 1, _logger())
+
+        assert result.status is SignalStatus.BLOCKED
+        assert result.needs == "investigation"
         assert not (session / "_signal_history.jsonl").exists()
 
 

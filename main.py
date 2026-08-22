@@ -37,7 +37,10 @@ from worker import (
     notify_complete,
     notify_error,
     notify_waiting,
+    OverviewParseError,
+    Phase,
     process_workflow_event,
+    read_overview_state,
     read_signal_file,
     record_processed_outcome,
     run_ai_with_retry,
@@ -61,10 +64,18 @@ def process_signal(
     Accepted events return the child's original signal unchanged; rejected events
     become an explicit BLOCKED with a truthful reason and needs.
     """
-    # Bootstrap: a brand-new session has no authoritative prior phase yet (the child
-    # creates _overview.md during this run). Nothing to validate, count, or record.
     if source_phase is None:
-        return signal
+        source_phase = _resolve_bootstrap_phase(session_path, logger)
+        if source_phase is None:
+            # Overview exists but is unparseable: block rather than guess a phase.
+            reason = "Overview exists but is unparseable; cannot validate signal"
+            logger.error(reason)
+            return Signal(
+                status=SignalStatus.BLOCKED,
+                phase=None,
+                reason=reason,
+                needs="investigation",
+            )
 
     # source_iterations must count this run: history is written AFTER processing, so
     # the current iteration is not yet recorded. validate_workflow_event trips on
@@ -79,6 +90,24 @@ def process_signal(
     record_processed_outcome(session_path, signal, iteration, outcome)
 
     return _signal_for_outcome(signal, outcome, source_phase, logger)
+
+
+def _resolve_bootstrap_phase(
+    session_path: Path, logger: logging.Logger
+) -> str | None:
+    """Resolve the source phase for an iteration whose pre-run phase was unknown.
+
+    No overview yet -> the session is bootstrapping at init (validated/counted/recorded
+    against init). A now-parseable overview (the child just created it) -> its recorded
+    phase. An overview that exists but cannot be parsed -> None so the caller blocks.
+    """
+    parsed = read_overview_state(session_path)
+    if parsed.error is OverviewParseError.FILE_NOT_FOUND:
+        return Phase.INIT.value
+    if parsed.state is None:
+        logger.error(f"Bootstrap overview parse failed: {parsed.message}")
+        return None
+    return parsed.state.phase.value
 
 
 # Rejections a human (not the agent) must resolve; all others need more investigation.
