@@ -139,6 +139,7 @@ def _resolve_bootstrap_phase(
         # so a retained smuggled phase would make source_phase non-None and bypass this
         # guard entirely, letting the child reach an arbitrary phase after restart.
         # A CAS on the smuggled phase makes the reset idempotent and race-safe.
+        overview_path = session_path / OVERVIEW_FILENAME
         reset = apply_overview_transition(
             session_path,
             OverviewTransition(
@@ -150,11 +151,23 @@ def _resolve_bootstrap_phase(
             ),
             expected_source=written,
         )
-        reset_note = (
-            "; overview reset to init"
-            if reset.ok
-            else f"; overview reset FAILED ({reset.message})"
-        )
+        if reset.ok:
+            reset_note = "; overview reset to init"
+        else:
+            # Independent quarantine: the in-place reset failed, so rename the overview
+            # aside with a distinct syscall. A restart then finds no overview and cleanly
+            # re-bootstraps to init instead of trusting the retained smuggled phase.
+            try:
+                os.replace(overview_path, session_path / "_overview.rejected.md")
+                reset_note = (
+                    f"; overview reset FAILED ({reset.message}); overview quarantined "
+                    "(renamed to _overview.rejected.md) so restart re-bootstraps to init"
+                )
+            except OSError as exc:
+                reset_note = (
+                    f"; overview reset FAILED ({reset.message}); quarantine rename also "
+                    f"FAILED ({exc})"
+                )
         reason = (
             f"Bootstrap overview declares phase '{written.value}', which init cannot "
             f"reach; refusing to trust a smuggled phase{reset_note}"

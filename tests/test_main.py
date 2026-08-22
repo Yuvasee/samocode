@@ -21,6 +21,7 @@ from worker.phases import Phase
 from worker.signals import Signal, SignalStatus
 from worker.workflow_event import RejectionReason
 from worker.workflow_state import (
+    OverviewParseError,
     OverviewWriteError,
     OverviewWriteResult,
     read_overview_state,
@@ -229,6 +230,56 @@ class TestProcessSignalBootstrap:
         assert result.status is SignalStatus.BLOCKED
         assert "reset to init" in (result.reason or "")
         assert _overview_phase(session) is Phase.INIT
+
+    def test_failed_reset_quarantines_overview_so_restart_rebootstraps(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # RV3-002: when the in-place reset write fails, the overview must not survive to
+        # be trusted on restart. Bootstrap quarantines it (rename aside) so a restart
+        # sees no overview and cleanly re-bootstraps to init.
+        session = _session(tmp_path, "quality")
+
+        def fail(*_a: object, **_k: object) -> OverviewWriteResult:
+            return OverviewWriteResult(
+                ok=False, error=OverviewWriteError.WRITE_FAILED, message="boom"
+            )
+
+        monkeypatch.setattr(main, "apply_overview_transition", fail)
+        bootstrap = main._resolve_bootstrap_phase(session, _logger())
+
+        assert bootstrap.phase is None
+        assert "quarantined" in (bootstrap.block_reason or "")
+        assert not (session / "_overview.md").exists()
+        assert (session / "_overview.rejected.md").exists()
+
+        # Restart: overview gone -> FILE_NOT_FOUND -> re-bootstrap to init (not trusted).
+        assert read_overview_state(session).error is OverviewParseError.FILE_NOT_FOUND
+        restart = main._resolve_bootstrap_phase(session, _logger())
+        assert restart.phase == Phase.INIT.value
+
+    def test_failed_reset_and_failed_quarantine_reports_both(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # RV3-002: if the reset AND the quarantine rename both fail, the block reason
+        # records both failures and the run stays blocked.
+        session = _session(tmp_path, "quality")
+
+        def fail(*_a: object, **_k: object) -> OverviewWriteResult:
+            return OverviewWriteResult(
+                ok=False, error=OverviewWriteError.WRITE_FAILED, message="boom"
+            )
+
+        def bad_replace(_src: object, _dst: object) -> None:
+            raise OSError("rename boom")
+
+        monkeypatch.setattr(main, "apply_overview_transition", fail)
+        monkeypatch.setattr(main.os, "replace", bad_replace)
+        bootstrap = main._resolve_bootstrap_phase(session, _logger())
+
+        assert bootstrap.phase is None
+        reason = bootstrap.block_reason or ""
+        assert "reset FAILED" in reason
+        assert "quarantine rename also FAILED" in reason
 
 
 # =============================================================================
