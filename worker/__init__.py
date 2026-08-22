@@ -1,6 +1,17 @@
 """Samocode worker package - core orchestrator components."""
 
 from .adapters import supported_providers
+from .approval import (
+    ApprovalCheck,
+    ApprovalOutcome,
+    ApprovalPlan,
+    ApprovalRejection,
+    ApprovalResult,
+    approve,
+    approve_session,
+    check_approval,
+    exit_code_for,
+)
 from .config import (
     ProjectConfig,
     RuntimeConfig,
@@ -116,6 +127,16 @@ from .timestamps import (
 )
 
 __all__ = [
+    # Approval
+    "ApprovalCheck",
+    "ApprovalOutcome",
+    "ApprovalPlan",
+    "ApprovalRejection",
+    "ApprovalResult",
+    "approve",
+    "approve_session",
+    "check_approval",
+    "exit_code_for",
     # Config
     "ProjectConfig",
     "RuntimeConfig",

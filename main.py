@@ -146,7 +146,7 @@ def validate_and_process_signal(
 
 # === CLI ===
 
-SUBCOMMANDS = ("run", "install", "uninstall")
+SUBCOMMANDS = ("run", "install", "uninstall", "approve")
 
 
 def add_run_arguments(parser: argparse.ArgumentParser) -> None:
@@ -230,6 +230,21 @@ Examples:
     subparsers.add_parser(
         "uninstall",
         help="Remove samocode-owned skills/agents/commands",
+    )
+
+    approve_parser = subparsers.add_parser(
+        "approve",
+        help="Approve the current phase's pending approval gate and advance it",
+    )
+    approve_parser.add_argument(
+        "--config",
+        required=True,
+        help="Path to .samocode config file (e.g., ~/project/.samocode)",
+    )
+    approve_parser.add_argument(
+        "--session",
+        required=True,
+        help="Session name, not path (e.g., 'my-task' or '26-01-21-my-task')",
     )
 
     return parser
@@ -493,6 +508,28 @@ def cmd_install(args: argparse.Namespace) -> None:
         sys.exit(1)
 
 
+def cmd_approve(args: argparse.Namespace) -> None:
+    """Approve a session's pending gate without loading model routing.
+
+    Imported locally so the approval path pulls no provider/routing modules; loads
+    only ProjectConfig. Maps the typed result to an actionable exit code.
+    """
+    from worker.approval import ApprovalOutcome, approve, exit_code_for
+
+    result = approve(Path(args.config).expanduser().resolve(), args.session)
+    succeeded = result.outcome in (
+        ApprovalOutcome.APPROVED,
+        ApprovalOutcome.ALREADY_ADVANCED,
+        ApprovalOutcome.APPROVED_SIGNAL_RETAINED,
+    )
+    stream = sys.stdout if succeeded else sys.stderr
+    detail = result.message or (
+        result.rejection.value if result.rejection else result.outcome.value
+    )
+    print(detail, file=stream)
+    sys.exit(exit_code_for(result))
+
+
 def cmd_uninstall(_args: argparse.Namespace) -> None:
     """Remove samocode-owned assets from provider directories."""
     uninstall()
@@ -506,6 +543,7 @@ def main() -> None:
         "run": run_orchestrator,
         "install": cmd_install,
         "uninstall": cmd_uninstall,
+        "approve": cmd_approve,
     }
     # parse_args() guarantees a command (defaults to "run"); the get() guard
     # keeps the dispatcher total and future-proof.
