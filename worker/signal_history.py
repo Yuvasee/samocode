@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
+from .phases import Phase
 from .signals import Signal
 from .workflow_state import ProcessedOutcome
 
@@ -234,10 +235,9 @@ def _now() -> str:
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
-def _phase_value(phase: object) -> str | None:
-    """Return `.value` of a Phase-like enum, or None."""
-    value = getattr(phase, "value", None)
-    return value if isinstance(value, str) else None
+def _phase_value(phase: Phase | None) -> str | None:
+    """Return the enum value of a phase, or None."""
+    return phase.value if phase is not None else None
 
 
 def _append(session_path: Path, payload: Mapping[str, object]) -> None:
