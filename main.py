@@ -9,6 +9,7 @@ import argparse
 import logging
 import os
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
 from worker import (
@@ -32,6 +33,7 @@ from worker import (
     exit_code_for,
     extract_phase,
     extract_total_iterations,
+    get_phase_config,
     global_config_path,
     increment_total_iterations,
     install,
@@ -65,17 +67,18 @@ def process_signal(
     become an explicit BLOCKED with a truthful reason and needs.
     """
     if source_phase is None:
-        source_phase = _resolve_bootstrap_phase(session_path, logger)
-        if source_phase is None:
-            # Overview exists but is unparseable: block rather than guess a phase.
-            reason = "Overview exists but is unparseable; cannot validate signal"
-            logger.error(reason)
+        bootstrap = _resolve_bootstrap_phase(session_path, logger)
+        if bootstrap.phase is None:
+            # Overview unreadable/unparseable, or child smuggled a non-init phase:
+            # block rather than trust it. The reason carries the truthful cause.
+            assert bootstrap.block_reason is not None
             return Signal(
                 status=SignalStatus.BLOCKED,
                 phase=None,
-                reason=reason,
+                reason=bootstrap.block_reason,
                 needs="investigation",
             )
+        source_phase = bootstrap.phase
 
     # source_iterations must count this run: history is written AFTER processing, so
     # the current iteration is not yet recorded. validate_workflow_event trips on
@@ -92,22 +95,47 @@ def process_signal(
     return _signal_for_outcome(signal, outcome, source_phase, logger)
 
 
+@dataclass(frozen=True)
+class BootstrapPhase:
+    """Resolved bootstrap source phase, or a block reason when it cannot be trusted."""
+
+    phase: str | None
+    block_reason: str | None = None
+
+
 def _resolve_bootstrap_phase(
     session_path: Path, logger: logging.Logger
-) -> str | None:
+) -> BootstrapPhase:
     """Resolve the source phase for an iteration whose pre-run phase was unknown.
 
     No overview yet -> the session is bootstrapping at init (validated/counted/recorded
     against init). A now-parseable overview (the child just created it) -> its recorded
-    phase. An overview that exists but cannot be parsed -> None so the caller blocks.
+    phase, but only if init may legally reach it: the bootstrap authority is init, so a
+    child-written phase that is neither init nor an init successor is phase smuggling and
+    is blocked. Unreadable vs unparseable overviews are reported distinctly.
     """
     parsed = read_overview_state(session_path)
     if parsed.error is OverviewParseError.FILE_NOT_FOUND:
-        return Phase.INIT.value
+        return BootstrapPhase(phase=Phase.INIT.value)
     if parsed.state is None:
-        logger.error(f"Bootstrap overview parse failed: {parsed.message}")
-        return None
-    return parsed.state.phase.value
+        if parsed.error is OverviewParseError.READ_FAILED:
+            reason = f"Overview exists but cannot be read: {parsed.message}"
+        else:
+            reason = f"Overview exists but is unparseable: {parsed.message}"
+        logger.error(reason)
+        return BootstrapPhase(phase=None, block_reason=reason)
+
+    written = parsed.state.phase
+    init_config = get_phase_config(Phase.INIT.value)
+    assert init_config is not None
+    if written is not Phase.INIT and not init_config.can_transition_to(written):
+        reason = (
+            f"Bootstrap overview declares phase '{written.value}', which init cannot "
+            f"reach; refusing to trust a smuggled phase"
+        )
+        logger.error(reason)
+        return BootstrapPhase(phase=None, block_reason=reason)
+    return BootstrapPhase(phase=written.value)
 
 
 # Rejections a human (not the agent) must resolve; all others need more investigation.
