@@ -70,7 +70,7 @@ class ApprovalOutcome(Enum):
 
     APPROVED = "approved"  # overview advanced + signal consumed
     APPROVED_SIGNAL_RETAINED = "approved_signal_retained"  # advanced; consume failed
-    ALREADY_ADVANCED = "already_advanced"  # idempotent no-op: gate already crossed
+    ALREADY_ADVANCED = "already_advanced"  # concurrent winner crossed gate; fail-fast
     REJECTED = "rejected"  # precondition failed; no mutation
 
 
@@ -309,7 +309,7 @@ def approve_session(
                     advanced=False,
                     source_phase=pre.plan.source_phase,
                     target_phase=pre.plan.target_phase,
-                    message="Gate already crossed by a concurrent approval; no-op",
+                    message="Gate already crossed by a concurrent approval; not advanced",
                 )
             assert check.rejection is not None
             return _rejected(
@@ -348,6 +348,19 @@ def _apply_approval(
         session_path, transition, expected_source=plan.source_phase
     )
     if not write.ok:
+        # A CAS miss (PHASE_MOVED) is a concurrent winner crossing the gate between
+        # the under-lock re-check and this write, not an IO/state fault. Classify it
+        # identically to the under-lock ALREADY_ADVANCED path (exit 6), not as
+        # OVERVIEW_WRITE_FAILED (exit 4).
+        if write.error is OverviewWriteError.PHASE_MOVED:
+            return ApprovalResult(
+                outcome=ApprovalOutcome.ALREADY_ADVANCED,
+                advanced=False,
+                source_phase=plan.source_phase,
+                target_phase=plan.target_phase,
+                write_error=write.error,
+                message="Gate already crossed by a concurrent approval; not advanced",
+            )
         return ApprovalResult(
             outcome=ApprovalOutcome.REJECTED,
             advanced=False,
