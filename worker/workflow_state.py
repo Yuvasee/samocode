@@ -11,8 +11,8 @@ This is the side-effecting layer around the pure `validate_workflow_event`:
    only on an accepted phase change, and converts mutation failure into an explicit
    rejection.
 
-Phase 4's approval service reuses the atomic primitive and `apply_overview_transition`;
-Phase 3's history reuses `ProcessedOutcome` source/target/accepted/error fields.
+The approval service reuses the atomic primitive and `apply_overview_transition`; the
+history writer reuses `ProcessedOutcome` source/target/accepted/error fields.
 """
 
 import contextlib
@@ -198,7 +198,7 @@ def read_overview_state(session_path: Path) -> OverviewParseResult:
 
 
 # =============================================================================
-# Atomic same-file replacement (reused by Phase 4 approval)
+# Atomic same-file replacement (reused by the approval service)
 # =============================================================================
 
 
@@ -234,8 +234,8 @@ def atomic_write_text(target: Path, content: str, *, encoding: str = "utf-8") ->
 class OverviewTransition:
     """A requested authoritative overview change. None fields are preserved.
 
-    Phase 2 orchestrator/processor transitions set target_phase (+ optional Flow Log
-    audit line). Phase 4 approval additionally sets blocked/last_action/next_action.
+    Processor transitions set target_phase (+ optional Flow Log audit line). The
+    approval service additionally sets blocked/last_action/next_action.
     """
 
     target_phase: Phase
@@ -336,8 +336,8 @@ def apply_overview_transition(
     Re-parses immediately before writing (never trusts a stale state). When
     `expected_source` is given, it is a compare-and-swap guard: if the freshly parsed
     Phase differs, no write happens and PHASE_MOVED is returned (another actor advanced
-    the phase between the caller's read and this write). Parse failure or an atomic-write
-    OSError yields ok=False with no partial mutation.
+    the phase between the caller's read and this write). Parse failure or an
+    atomic-write OSError yields ok=False with no partial mutation.
     """
     parsed = read_overview_state(session_path)
     if parsed.state is None:
@@ -388,7 +388,7 @@ class OutcomeKind(Enum):
 class ProcessedOutcome:
     """Truthful outcome of processing one workflow event.
 
-    Phase 3 history consumes source_phase/target_phase/accepted/validation_error to
+    The history writer consumes source_phase/target_phase/accepted/validation_error to
     write source-counted, accept-flagged audit rows. `mutated` reports whether
     `_overview.md` changed on disk.
     """

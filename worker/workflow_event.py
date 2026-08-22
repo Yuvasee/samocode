@@ -2,8 +2,8 @@
 
 `validate_workflow_event` is the single authority on whether a
 (source_phase, status, target, wait-reason, iterations) tuple is a legal workflow
-event. It performs no I/O and no mutation. Phase 2's processor and Phase 4's approval
-service consume this same contract and add side effects around it.
+event. It performs no I/O and no mutation. The event processor and the approval service
+consume this same contract and add side effects around it.
 """
 
 from dataclasses import dataclass
