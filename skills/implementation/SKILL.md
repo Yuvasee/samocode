@@ -12,6 +12,23 @@ Executes implementation tasks using different approaches: direct execution, dual
 - Active session must exist (session path in working memory)
 - If no active session: **STOP and ask user** for session path
 
+## Execution Routing Contract
+
+When Samocode invokes this skill, the injected Session Context already contains the
+authoritative workflow phase and execution routing. For implementation iterations it
+also contains the authoritative plan file and active plan phase.
+
+- Execute exactly the injected plan phase; do not independently select another phase.
+- Do not read the global model config, choose a provider/model/effort, or add provider
+  CLI flags. The runner resolved one immutable target before this iteration started.
+- Claude Task sub-agents used for `do2`/`dop2` must use `model: inherit` and must not
+  override effort, so they follow the routed parent model and effort.
+- Codex and providers without a native Task tool keep using the documented independent
+  local proposal passes; they do not launch a different orchestration provider.
+
+Explicit second-opinion skills remain separate and may cross providers when the task
+calls for them.
+
 ## Common Steps (Mandatory)
 
 These steps apply to ALL actions after implementation is complete.
@@ -50,7 +67,7 @@ code-unchanged safety check.
 **IMPORTANT:** For implementation phases, use dop2 (dual-agent comparison).
 
 - **dop2** (Dual-Agent): Use 2 independent solution passes, then compare
-  - Claude Code: spawn 2 Task sub-agents in parallel when the Task tool is available
+  - Claude Code: spawn 2 Task sub-agents in parallel with `model: inherit` and no effort override when the Task tool is available
   - Codex or no Task tool: create both proposal documents yourself in separate passes before editing code
 - **dop** (Direct): Only for trivially simple 1-2 line changes
 
@@ -107,7 +124,7 @@ Spawn two agents with different philosophies to solve the same task independentl
 
 #### Dual Agent Execution
 
-Create 2 independent solution proposals. If the Task tool is available, spawn 2 sub-agents **in parallel** (model: sonnet). If the Task tool is not available, run the two proposal passes yourself sequentially and keep them independent.
+Create 2 independent solution proposals. If the Task tool is available, spawn 2 sub-agents **in parallel** with `model: inherit` and no effort override. If the Task tool is not available, run the two proposal passes yourself sequentially and keep them independent.
 
 Both agents solve the **entire task independently** with different philosophies.
 
@@ -303,7 +320,7 @@ IMPORTANT: Only work on this specific task. Don't do other parts of the plan.
 
 #### Dual Agent Execution
 
-Create 2 independent proposals with the context below. If the Task tool is available, spawn 2 sub-agents **in parallel** (model: sonnet). If the Task tool is not available, do the minimal proposal first, then the clean proposal, without letting the second proposal optimize around the first.
+Create 2 independent proposals with the context below. If the Task tool is available, spawn 2 sub-agents **in parallel** with `model: inherit` and no effort override. If the Task tool is not available, do the minimal proposal first, then the clean proposal, without letting the second proposal optimize around the first.
 
 **CRITICAL:** Both agents solve the **entire task independently**. This is NOT task splitting - each agent produces a FULL solution with their own philosophy.
 

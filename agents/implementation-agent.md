@@ -36,7 +36,7 @@ Session context is provided via --append-system-prompt by the orchestrator:
    **If phase involves code changes (new features, refactoring, bug fixes):**
    - **CRITICAL: You MUST use "implementation" skill and follow the "dop2" action section.**
    - Use two independent proposal passes before editing code.
-   - Claude Code: spawn 2 Task sub-agents in parallel when the Task tool is available.
+   - Claude Code: spawn 2 Task sub-agents in parallel with `model: inherit` and no effort override when the Task tool is available.
    - Codex or no Task tool: create the minimal and clean proposal documents yourself in separate passes.
    - Only exception: trivially simple 1-2 line changes (use dop action instead)
    - Use "implementation" skill now!

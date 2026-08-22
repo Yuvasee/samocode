@@ -20,7 +20,12 @@ from .routing import (
     ExecutionTarget,
     resolve_execution_target,
 )
-from .timestamps import file_timestamp, iteration_timestamp, jsonl_timestamp, log_timestamp
+from .timestamps import (
+    file_timestamp,
+    iteration_timestamp,
+    jsonl_timestamp,
+    log_timestamp,
+)
 
 logger = logging.getLogger("samocode")
 
@@ -311,9 +316,7 @@ def _execute_plan(
     )
 
 
-def _retry_exhausted(
-    last: ExecutionResult | None, max_retries: int
-) -> ExecutionResult:
+def _retry_exhausted(last: ExecutionResult | None, max_retries: int) -> ExecutionResult:
     """Build the RETRY_EXHAUSTED result from the last attempt (or none)."""
     if last is None:
         return ExecutionResult(
@@ -479,7 +482,9 @@ def increment_total_iterations(session_path: Path) -> int:
     if match:
         current = int(match.group(2))
         new_value = current + 1
-        new_content = content[: match.start(2)] + str(new_value) + content[match.end(2) :]
+        new_content = (
+            content[: match.start(2)] + str(new_value) + content[match.end(2) :]
+        )
         overview_path.write_text(new_content)
         return new_value
 
@@ -487,7 +492,9 @@ def increment_total_iterations(session_path: Path) -> int:
     iteration_match = re.search(r"^(Iteration:\s*\d+)$", content, re.MULTILINE)
     if iteration_match:
         insert_pos = iteration_match.end()
-        new_content = content[:insert_pos] + "\nTotal Iterations: 1" + content[insert_pos:]
+        new_content = (
+            content[:insert_pos] + "\nTotal Iterations: 1" + content[insert_pos:]
+        )
         overview_path.write_text(new_content)
         return 1
 
@@ -511,10 +518,9 @@ def build_session_context(
 ) -> str:
     """Build session context for --append-system-prompt injection.
 
-    Includes workflow.md (common context for all phases) plus session-specific
-    details. When `target` carries a plan phase (implementation only), the active
-    plan file/phase/profile/source are injected so the agent executes exactly the
-    runner-selected phase.
+    Includes workflow.md (common context for all phases), the immutable execution
+    target, and session-specific details. When `target` carries a plan phase, that
+    active plan selection is injected as an additional implementation contract.
     """
     # Start with workflow.md - common context for all phases
     lines = [workflow_prompt_path.read_text().strip()]
@@ -559,6 +565,10 @@ def build_session_context(
     lines.append("")
     lines.extend(_build_config_section(session_path, config))
 
+    if target is not None:
+        lines.append("")
+        lines.extend(_build_execution_routing_section(target))
+
     if target is not None and target.plan_phase is not None:
         lines.append("")
         lines.extend(_build_plan_phase_section(target))
@@ -570,11 +580,27 @@ def build_session_context(
     return "\n".join(lines)
 
 
+def _build_execution_routing_section(target: ExecutionTarget) -> list[str]:
+    return [
+        "## Execution Routing (authoritative)",
+        f"- **Provider:** `{target.provider}`",
+        f"- **Profile:** `{target.profile}`",
+        f"- **Model:** `{target.model or 'provider default'}`",
+        f"- **Effort:** `{target.effort or 'provider default'}`",
+        f"- **Workflow phase:** `{target.workflow_phase.value}`",
+        f"- **Profile source:** `{target.source.value}`",
+        "Do not re-resolve or override provider, profile, model, or effort in this iteration.",
+    ]
+
+
 def _build_plan_phase_section(target: ExecutionTarget) -> list[str]:
     """Active implementation-plan phase context (implementation iterations only)."""
     plan = target.plan_phase
     assert plan is not None
-    lines = ["## Active Implementation Plan Phase", f"- **Plan file:** `{plan.plan_path}`"]
+    lines = [
+        "## Active Implementation Plan Phase",
+        f"- **Plan file:** `{plan.plan_path}`",
+    ]
     if plan.all_complete:
         lines.append(
             "- **Status:** all plan tasks complete; perform the outer workflow "
@@ -582,11 +608,6 @@ def _build_plan_phase_section(target: ExecutionTarget) -> list[str]:
         )
     else:
         lines.append(f"- **Plan phase:** `{plan.phase_label}` — {plan.phase_title}")
-    lines.append(
-        f"- **Profile:** `{target.profile}` (model `{target.model}`, "
-        f"effort `{target.effort or 'default'}`)"
-    )
-    lines.append(f"- **Profile source:** {target.source.value}")
     lines.append("Execute exactly this phase; do not independently pick another.")
     return lines
 
@@ -687,7 +708,9 @@ def _build_config_section(session_path: Path, config: SamocodeConfig) -> list[st
 
     lines.append("## Worktree Configuration")
     lines.append(f"- Base repo (create worktrees FROM here): `{config.repo_path}`")
-    lines.append("- Base branch: `origin/main` or `origin/master` (detect with `git remote show origin`)")
+    lines.append(
+        "- Base branch: `origin/main` or `origin/master` (detect with `git remote show origin`)"
+    )
     lines.append(f"- Worktree path: `{worktree_path}`")
     if branch_prefix:
         lines.append(f"- Branch name: `{branch_prefix}/{branch_name}`")
@@ -701,7 +724,10 @@ def _build_initial_instructions(
     initial_dive: str | None, initial_task: str | None
 ) -> list[str]:
     """Build initial instructions section for prompts."""
-    lines = ["## Initial Session Data", "Store the following in _overview.md for later phases:"]
+    lines = [
+        "## Initial Session Data",
+        "Store the following in _overview.md for later phases:",
+    ]
 
     if initial_dive:
         lines.append(f"- **Dive topic:** {initial_dive}")

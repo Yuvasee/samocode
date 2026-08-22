@@ -24,7 +24,14 @@ start a new process with a different provider selection.
 
 **Second opinions still cross providers.** Explicit second-opinion tools (e.g. the
 `/multi-review` Gemini reviewer, or a cross-provider `do2`) may call another provider.
-That is orthogonal to orchestration routing.
+That is orthogonal to orchestration routing: the direct `claude`/`codex` skills use
+the consulted CLI's own configured/default model rather than silently borrowing the
+orchestration profile.
+
+**Agents inherit the routed target.** Every packaged phase agent and normal Claude
+workflow sub-agent uses `model: inherit` and leaves effort unset, so both values come
+from the routed parent session instead of a pinned Haiku/Sonnet/Opus choice. Codex
+performs equivalent independent passes inside the already selected Codex iteration.
 
 ## Config location
 
@@ -34,6 +41,10 @@ otherwise `~/.config/samocode/config.toml`. Loaded once per process.
 `samocode install` creates it from built-in defaults only when absent — it **never
 overwrites** an existing config. A present-but-invalid config is a fatal error on both
 `install` and `run` (fail-fast, never silent).
+
+The same install refreshes Samocode-owned symlinks. In copy mode, existing skills and
+commands remain protected; copied Claude phase-agent files are backed up as
+`<name>.bak` and refreshed because their inheritance metadata is routing-critical.
 
 ## Default profile table
 
@@ -153,3 +164,7 @@ implementation agent executes that selected phase; it does not pick a different 
 Every iteration logs the resolved provider, profile, model, effort, workflow phase,
 optional plan phase, and the profile-selection source (workflow override, phase
 default, global default, or plan-phase explicit).
+
+The same immutable routing details are injected into child Session Context. The child
+must execute the selected target and active implementation-plan phase without reading
+the config again or overriding provider/model/effort.

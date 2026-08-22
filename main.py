@@ -181,12 +181,14 @@ def build_parser() -> argparse.ArgumentParser:
 Examples:
   # Start or continue a session (subcommand optional, defaults to `run`)
   samocode run --config ~/project/.samocode --session my-task
-  python main.py --config ~/project/.samocode --session my-task
+
+  # Select one orchestration provider for the whole process
+  samocode run --config ~/project/.samocode --session my-task --provider codex
 
   # With an initial dive topic
   samocode run --config ~/project/.samocode --session explore-api --dive "auth endpoints"
 
-  # Install/uninstall samocode skills, agents, and commands
+  # Install assets and create/preserve the global model config
   samocode install
   samocode install --copy
   samocode uninstall

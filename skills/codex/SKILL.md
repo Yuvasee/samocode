@@ -5,7 +5,9 @@ description: Run OpenAI Codex CLI as a subagent for second opinions, code review
 
 # Codex Subagent
 
-Run OpenAI Codex CLI (GPT-5.2) for second opinions and external reviews.
+Run OpenAI Codex CLI with its own configured model for second opinions and external
+reviews. This is deliberately independent of the orchestration process's provider and
+semantic profile.
 
 ## Availability Check
 
@@ -56,7 +58,7 @@ timeout 900 codex exec --skip-git-repo-check --dangerously-bypass-approvals-and-
 ```bash
 OUTPUT_FILE=$(mktemp)
 codex exec --skip-git-repo-check --dangerously-bypass-approvals-and-sandbox -o "$OUTPUT_FILE" \
-  "What are the tradeoffs between Redis and Memcached for session storage?" 2>/dev/null
+  "What are the tradeoffs between Redis and Memcached for session storage?" </dev/null 2>/tmp/codex_stderr.log
 cat "$OUTPUT_FILE"
 rm "$OUTPUT_FILE"
 ```
@@ -71,7 +73,7 @@ codex exec --skip-git-repo-check --dangerously-bypass-approvals-and-sandbox -o "
 
 $DIFF
 
-List concerns with severity (blocking/important/nice-to-have)." 2>/dev/null
+List concerns with severity (blocking/important/nice-to-have)." </dev/null 2>/tmp/codex_stderr.log
 cat "$OUTPUT_FILE"
 rm "$OUTPUT_FILE"
 ```
@@ -81,7 +83,7 @@ rm "$OUTPUT_FILE"
 ```bash
 OUTPUT_FILE=$(mktemp)
 codex exec --dangerously-bypass-approvals-and-sandbox -C /path/to/repo -o "$OUTPUT_FILE" \
-  "Analyze the architecture of this codebase" 2>/dev/null
+  "Analyze the architecture of this codebase" </dev/null 2>/tmp/codex_stderr.log
 cat "$OUTPUT_FILE"
 rm "$OUTPUT_FILE"
 ```
@@ -95,15 +97,16 @@ OUTPUT_FILE=$(mktemp)
 timeout 900 codex exec --skip-git-repo-check --dangerously-bypass-approvals-and-sandbox -o "$OUTPUT_FILE" \
   "Review this PR: https://github.com/owner/repo/pull/123
 
-   Use gh CLI to get the diff and review for issues." 2>/dev/null
+   Use gh CLI to get the diff and review for issues." </dev/null 2>/tmp/codex_stderr.log
 cat "$OUTPUT_FILE"
 rm "$OUTPUT_FILE"
 ```
 
 ## Notes
 
-- Codex uses GPT-5.2, providing genuinely different perspective from Claude
+- The direct Codex call uses the Codex CLI's own configured/default model; Samocode's
+  orchestration profile does not silently retarget an explicit second opinion
 - Each call is stateless - no conversation continuity
 - API costs apply per call
 - Output may contain duplicates - parse accordingly
-- **Always redirect stdin from `/dev/null`.** Even with a prompt passed as an argument, `codex exec` reads stdin; in a non-interactive/background Bash call with no TTY it blocks ("Reading additional input from stdin...") and the `-o` output file ends up empty with exit code 0. The simpler usage examples above omit `</dev/null` — add it to every invocation.
+- **Always redirect stdin from `/dev/null`.** Even with a prompt passed as an argument, `codex exec` reads stdin; in a non-interactive/background Bash call with no TTY it blocks ("Reading additional input from stdin...") and the `-o` output file ends up empty with exit code 0.

@@ -577,8 +577,7 @@ class TestRunClaudeWithRetry:
         seen = []
         with patch("worker.runner._execute_plan") as mock_exec:
             mock_exec.side_effect = lambda plan, attempt, on_line: (
-                seen.append(plan)
-                or _result(ExecutionStatus.FAILURE, attempt)
+                seen.append(plan) or _result(ExecutionStatus.FAILURE, attempt)
             )
             run_claude_with_retry(workflow, session, config)
 
@@ -653,7 +652,7 @@ class TestRoutedIterationResolution:
         assert plan.target.plan_phase.phase_label == "1"
 
     def test_plan_phase_injected_into_context(self, tmp_path: Path) -> None:
-        """Implementation context carries plan file, phase, profile, source."""
+        """Implementation context carries routing plus the selected plan phase."""
         workflow = self._workflow(tmp_path)
         session = write_impl_session(
             tmp_path, "### Phase 2: Wire it\n**Profile:** `strong`\n\n- [ ] task\n"
@@ -663,6 +662,8 @@ class TestRoutedIterationResolution:
         plan = resolve_iteration_plan(workflow, session, config)
 
         ctx = plan.session_context
+        assert "Execution Routing (authoritative)" in ctx
+        assert "**Provider:** `claude`" in ctx
         assert "Active Implementation Plan Phase" in ctx
         assert "plan.md" in ctx
         assert "`2`" in ctx
@@ -700,6 +701,9 @@ class TestRoutedIterationResolution:
         assert plan.target.workflow_phase == Phase.INVESTIGATION
         assert plan.target.profile == "strong"  # investigation default
         assert "Active Implementation Plan Phase" not in plan.session_context
+        assert "Execution Routing (authoritative)" in plan.session_context
+        assert "**Workflow phase:** `investigation`" in plan.session_context
+        assert "**Profile:** `strong`" in plan.session_context
 
     def test_no_provider_switch_uses_selected_provider(self, tmp_path: Path) -> None:
         """The resolved provider is the process-selected one, never the phase's."""
@@ -736,7 +740,14 @@ class TestRoutedIterationResolution:
         routing = [r for r in caplog.records if r.getMessage().startswith("Routing |")]
         assert len(routing) == 1
         msg = routing[0].getMessage()
-        for token in ("provider=claude", "profile=strong", "model=", "effort=", "workflow=implementation", "source=plan_phase_explicit"):
+        for token in (
+            "provider=claude",
+            "profile=strong",
+            "model=",
+            "effort=",
+            "workflow=implementation",
+            "source=plan_phase_explicit",
+        ):
             assert token in msg
 
 
@@ -759,6 +770,8 @@ class TestLegacyIterationResolution:
         assert plan.target.model == "opus"
         assert plan.target.plan_phase is None
         assert "Active Implementation Plan Phase" not in plan.session_context
+        assert "Execution Routing (authoritative)" in plan.session_context
+        assert "**Profile:** `(legacy)`" in plan.session_context
         assert "opus" in plan.command
 
     def test_legacy_codex_empty_model_omits_flag(self, tmp_path: Path) -> None:

@@ -143,7 +143,7 @@ Before running reviewer passes, set up the review environment:
 3. **Prepare change context:**
    Read the commit messages yourself: `cd <REVIEW_DIRECTORY> && git log origin/main..HEAD --oneline`
 
-   **IMPORTANT: Summarize the diff before review.** If the Task tool is available, spawn a haiku sub-agent (model: haiku) to summarize the diff. If the Task tool is not available, run this as a separate, bounded pass yourself and avoid reviewing findings during the summary pass:
+   **IMPORTANT: Summarize the diff before review.** If the Task tool is available, spawn a sub-agent with `model: inherit` and no effort override to summarize the diff. If the Task tool is not available, run this as a separate, bounded pass yourself and avoid reviewing findings during the summary pass:
 
    ```
    Run `cd <REVIEW_DIRECTORY> && git diff origin/main...HEAD` and write a concise
@@ -152,7 +152,7 @@ Before running reviewer passes, set up the review environment:
    summary, nothing else.
    ```
 
-   Combine the commit messages with the haiku agent's diff summary into a change context block. Include it in every reviewer agent's instructions so each understands the purpose and substance of the change. Do not do a full subjective review pass yourself before agents; keep your own pre-synthesis inspection limited to the deterministic checks below.
+   Combine the commit messages with the summary sub-agent's diff summary into a change context block. Include it in every reviewer agent's instructions so each understands the purpose and substance of the change. Do not do a full subjective review pass yourself before agents; keep your own pre-synthesis inspection limited to the deterministic checks below.
 
 4. **Run deterministic architecture invariant checks:**
    Run these from the review directory yourself before synthesis. They are not a replacement for reviewer judgment; they catch repeatable structural risks that reviewers often miss.
@@ -216,7 +216,7 @@ Before listing findings, follow this reasoning process:
 
 #### Reviewer Execution Instructions
 
-Run three internal reviewer perspectives, plus one opposite-provider external review and one Gemini review. If the Task tool is available, spawn the three internal sub-agents **in parallel**. If the Task tool is not available, run the three internal perspectives yourself as separate passes before synthesis. Give each reviewer:
+Run three internal reviewer perspectives, plus one opposite-provider external review and one Gemini review. If the Task tool is available, spawn the three internal sub-agents **in parallel** with `model: inherit` and no effort override. If the Task tool is not available, run the three internal perspectives yourself as separate passes before synthesis. Give each reviewer:
 
 - The **change context summary** from Setup step 3
 - The **review directory path** (current directory or worktree path)

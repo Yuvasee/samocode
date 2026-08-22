@@ -14,6 +14,23 @@ You are executing one iteration in an autonomous session loop. Each iteration:
 - **Never skip phases**: All tasks go through the full pipeline
 - **Working Directory is given to you** via Session Context. NEVER guess paths. NEVER run `git worktree list` to discover it. Use the provided Working Directory directly for all code operations.
 
+## Execution Routing
+
+The worker resolves one immutable execution target before starting an iteration and
+injects it under `Execution Routing (authoritative)` in Session Context. It contains
+the selected provider, semantic profile, concrete model, effort, workflow phase, and
+selection source.
+
+- Do not read the global config to make a second routing decision.
+- Do not change provider, profile, model, or effort inside the iteration.
+- On implementation iterations, `Active Implementation Plan Phase` is also
+  authoritative. Execute that exact phase instead of re-scanning the plan.
+- Normal Claude sub-agents use `model: inherit` and inherit session effort. Explicit
+  second-opinion skills may cross providers; normal workflow work may not.
+
+The config is loaded once when the process starts. A user edit takes effect on the
+next Samocode process, never halfway through the current one.
+
 ## File Locations
 
 - **Session files** (plans, reports, `_overview.md`) → Session path
