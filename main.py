@@ -17,6 +17,7 @@ from worker import (
     ExecutionResolutionError,
     ExecutionStatus,
     GlobalConfigError,
+    OVERVIEW_FILENAME,
     OutcomeKind,
     OverviewParseError,
     Phase,
@@ -372,7 +373,7 @@ def run_orchestrator(args: argparse.Namespace) -> None:
         while True:
             iteration += 1
             # Track cumulative iterations in _overview.md (persists across restarts)
-            if session_path.exists() and (session_path / "_overview.md").exists():
+            if session_path.exists() and (session_path / OVERVIEW_FILENAME).exists():
                 cumulative_iterations = increment_total_iterations(session_path)
 
             # Add session handler once the provider creates the session directory

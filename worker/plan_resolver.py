@@ -16,6 +16,8 @@ from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 
+from .signals import OVERVIEW_FILENAME
+
 # === Errors ===
 
 
@@ -277,7 +279,7 @@ def resolve_plan_phase(session_dir: Path) -> PlanPhaseSelection:
     Raises PlanResolutionError for any missing/stale/malformed input, always
     before returning; callers must not catch it to substitute a default profile.
     """
-    overview_path = session_dir / "_overview.md"
+    overview_path = session_dir / OVERVIEW_FILENAME
     if not overview_path.is_file():
         raise PlanResolutionError(f"session overview not found: {overview_path}")
 
