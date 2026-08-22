@@ -60,9 +60,13 @@ from .runner import (
     validate_session_structure,
 )
 from .signal_history import (
+    HistoryRecord,
     SignalHistoryEntry,
+    count_source_phase_iterations,
     get_phase_iteration_count,
+    read_history,
     read_signal_history,
+    record_processed_outcome,
     record_signal,
 )
 from .signals import (
@@ -171,9 +175,13 @@ __all__ = [
     "update_phase",
     "validate_session_structure",
     # Signal history
+    "HistoryRecord",
     "SignalHistoryEntry",
+    "count_source_phase_iterations",
     "get_phase_iteration_count",
+    "read_history",
     "read_signal_history",
+    "record_processed_outcome",
     "record_signal",
     # Signals
     "Signal",
