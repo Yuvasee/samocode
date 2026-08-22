@@ -1,6 +1,9 @@
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+CANONICAL_PROFILES = {"light", "standard", "strong", "max"}
+PROFILE_LINE = re.compile(r"\*\*Profile:\*\* `([^`]+)`")
 
 
 def test_all_phase_agents_inherit_routed_model() -> None:
@@ -59,3 +62,58 @@ def test_second_opinion_skills_use_the_consulted_cli_configuration() -> None:
     assert "GPT-5.2" not in codex
     assert "own configured/default model" in claude
     assert "own configured/default model" in codex
+
+
+def test_planning_templates_assign_a_canonical_profile_to_every_phase() -> None:
+    for path in (
+        ROOT / "skills" / "planning" / "SKILL.md",
+        ROOT / "agents" / "planning-agent.md",
+    ):
+        lines = path.read_text().splitlines()
+        phase_indexes = [
+            index
+            for index, line in enumerate(lines)
+            if re.match(r"^\s*### Phase \d+:", line)
+        ]
+        assert phase_indexes, path
+
+        for offset, phase_index in enumerate(phase_indexes):
+            first_line = lines[phase_index + 1].strip()
+            match = PROFILE_LINE.fullmatch(first_line)
+            assert match, f"{path.name}:{phase_index + 2}: {first_line!r}"
+            assert match.group(1) in CANONICAL_PROFILES
+
+            next_index = (
+                phase_indexes[offset + 1]
+                if offset + 1 < len(phase_indexes)
+                else len(lines)
+            )
+            profile_lines = [
+                line.strip()
+                for line in lines[phase_index + 1 : next_index]
+                if line.strip().startswith("**Profile:**")
+            ]
+            assert profile_lines == [first_line], path
+
+
+def test_planning_contract_keeps_profile_selection_semantic() -> None:
+    skill = (ROOT / "skills" / "planning" / "SKILL.md").read_text()
+    agent = (ROOT / "agents" / "planning-agent.md").read_text()
+
+    for content in (skill, agent):
+        for profile in CANONICAL_PROFILES:
+            assert f"| `{profile}` |" in content
+        assert "model catalogs" in content
+        assert "effort levels" in content
+        assert "prices" in content
+        assert "runtime" in content.lower()
+        assert "legacy" in content.lower()
+
+    stale_guidance = (
+        "omit it so routine phases inherit",
+        "when unsure, omit it",
+        "model profile per phase (optional)",
+    )
+    normalized = " ".join(f"{skill}\n{agent}".lower().split())
+    for phrase in stale_guidance:
+        assert phrase not in normalized

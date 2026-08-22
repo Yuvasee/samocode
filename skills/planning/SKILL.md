@@ -34,7 +34,32 @@ Creates detailed implementation plans with phases, stored within the session fol
    - Prefer more small phases over fewer large ones
    - Include explicit edge-case acceptance checks when the feature touches validators, queues, DB writes, background fan-out, uploads, auth/API-key users, or shared package boundaries
    - **Do NOT label any phase "Manual browser verification" or similar.** Samocode's testing-agent runs browser E2E autonomously (container restart, data seeding, screenshots included). Carving it out as a "manual" phase gives the testing-agent permission to defer. Put browser verification criteria in the standard Testing phase or as acceptance checks on the UI-touching phases.
-   - **Model profile per phase (optional):** Immediately under a `### Phase N: [Name]` heading, add `**Profile:** \`name\`` (backtick-quoted) to route that phase through a non-default model profile — e.g. `strong` for architecture-heavy phases, `max` for the highest-stakes ones. Omit the line to inherit the workflow `implementation` default. The value must be a single non-empty backtick-quoted name and appear at most once per phase; an empty, unquoted, or duplicated line fails the session before any model call. Built-in names: `light`, `standard`, `strong`, `max` (plus any custom profiles in the user's global config). When unsure, omit it.
+
+   **Semantic profile assignment (required for every phase in a new plan):**
+
+   Choose the profile only from the phase's work, uncertainty, blast radius, and
+   recovery risk:
+
+   | Profile | Use when |
+   |---------|----------|
+   | `light` | Mechanical, local, deterministic work with no meaningful design choice or state risk: narrow renames, documentation, boilerplate, or similarly contained edits. |
+   | `standard` | Ordinary, well-defined implementation using established patterns, with contained impact and straightforward verification. This is the normal workhorse. |
+   | `strong` | Architecture, persistence/schema/data changes, concurrency, retries/idempotency, security/auth, public contracts, failure recovery, or other cross-cutting multi-component work. |
+   | `max` | Rare phases where high uncertainty, large blast radius, and difficult or costly recovery are all present. If only one or two apply, use `strong`; split an oversized phase before escalating it to `max`. |
+
+   Immediately under every `### Phase N: [Name]` heading, write exactly one
+   `**Profile:** \`light|standard|strong|max\`` line. It must be the first line after
+   the heading. This applies to implementation, testing, and readiness phases alike.
+
+   Profiles are semantic routing labels, not model specifications. Do **not** inspect
+   provider configuration, `config.toml`, model catalogs, effort levels, token usage,
+   or prices when assigning them. Do not name a concrete model/provider in the plan.
+   Runtime routing resolves the selected provider, model, and effort when Samocode
+   executes the phase.
+
+   The parser still accepts missing `Profile` in untouched legacy plans and falls back
+   to the implementation workflow default. That compatibility path is not an
+   authoring option: every newly created or newly added phase must declare a profile.
 
    Structure:
    ```markdown
@@ -60,16 +85,19 @@ Creates detailed implementation plans with phases, stored within the session fol
    - [ ] Run pyright/ruff or tsc - fix errors
 
    ### Phase 2: [Name]
+   **Profile:** `standard`
    - [ ] [Step]
    - [ ] [Step]
    - [ ] Run pyright/ruff or tsc - fix errors
 
    ### Phase 3: Testing
+   **Profile:** `standard`
    - [ ] [Test case]
    - [ ] Edge cases: all/partial/no validators, queue succeeds/DB fails, DB succeeds/queue fails, concurrent same-KI revalidation, large uploads, API-key user missing email/name where applicable
    - [ ] Final checks
 
    ### Phase 4: PR Readiness
+   **Profile:** `standard`
    - [ ] Enter the `pr-readiness` phase after all fixes/merges/manual debugging
    - [ ] Resolve `_review_debt.md` rows: fix, defer with ticket/reason, or reject with evidence
 

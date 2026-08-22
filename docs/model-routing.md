@@ -16,7 +16,7 @@ Requires **Python 3.11+** (uses the stdlib `tomllib` TOML parser).
 | **Concrete model** | The provider-specific model string a profile resolves to (e.g. `claude-opus-4-8`). | `[providers.<name>.profiles.<profile>]` in the global config |
 | **Effort** | Optional reasoning-effort string passed to the provider (e.g. `high`, `xhigh`). Authoritative over the provider's inherited default when set. | Same profile table |
 | **Workflow phase** | Outer pipeline stage: `init … done`. Each has a default profile. | `worker/phases.py` + `[workflow_overrides]` |
-| **Implementation-plan phase** | A `### Phase N` block inside a session plan. May declare its own profile. | Plan file `**Profile:** \`name\`` |
+| **Implementation-plan phase** | A `### Phase N` block inside a session plan. New phases declare a semantic profile; legacy phases may omit it. | Plan file `**Profile:** \`name\`` |
 
 **One provider per process.** A profile never names or switches a provider; it only
 selects that provider's model/effort. To run the same task under the other provider,
@@ -120,7 +120,7 @@ Each outer phase declares a default profile (`worker/phases.py`):
 | investigation | strong |
 | requirements | strong |
 | planning | max |
-| implementation | standard (fallback when a plan phase omits `Profile`) |
+| implementation | standard (legacy fallback when a plan phase omits `Profile`) |
 | testing | standard |
 | quality | strong |
 | pr-readiness | strong |
@@ -131,19 +131,36 @@ global `default_profile`.
 
 ## Plan-phase profiles
 
-Inside a session plan, add a backtick-quoted profile line as the **first line** under a
-phase heading to route that phase:
+Every phase in a newly authored plan must have a backtick-quoted profile line as the
+**first line** under its heading. This also applies to testing/readiness phases and to
+new phases added to an existing plan:
 
 ```markdown
 ### Phase 5: Provider-neutral execution resolution
-
 **Profile:** `max`
 ```
 
-- Omit the line to inherit the workflow `implementation` default (`standard`).
-- The value must be a single non-empty backtick-quoted name, at most once per phase.
-  Empty, unquoted, or duplicated lines fail the session before any model call.
-- Built-in names: `light`, `standard`, `strong`, `max`, plus any custom profiles.
+Planning assigns the canonical profiles only from the work and risk of the phase:
+
+| Profile | Planning meaning |
+|---------|------------------|
+| `light` | Mechanical, local, deterministic work without meaningful design choice or state risk. |
+| `standard` | Ordinary, well-defined implementation using established patterns, with contained impact and straightforward verification. |
+| `strong` | Architecture, persistence/schema/data changes, concurrency, retries/idempotency, security/auth, public contracts, recovery, or other cross-cutting work. |
+| `max` | Rare work where high uncertainty, large blast radius, and difficult or costly recovery all coincide. If only one or two apply, use `strong`; split an oversized phase first. |
+
+The planner must not inspect global/provider configuration, model catalogs, effort
+levels, token usage, or prices to make this choice, and must not put a concrete
+provider/model/effort into the plan. Runtime routing translates the semantic label for
+the provider selected at process startup.
+
+- The value must be one non-empty backtick-quoted name, at most once per phase. Empty,
+  unquoted, duplicated, or unknown selected-provider profiles fail before a model call.
+- Runtime also supports manually authored custom profile names defined in global
+  configuration. The planning agent uses the four canonical semantic profiles above.
+- Missing lines remain valid only as a compatibility fallback for untouched legacy
+  plans; they inherit the workflow `implementation` default (`standard`). They are not
+  valid output for a newly authored or newly extended plan.
 
 The runner resolves the active plan phase (first phase with an unchecked task) and the
 implementation agent executes that selected phase; it does not pick a different one.
@@ -157,7 +174,8 @@ implementation agent executes that selected phase; it does not pick a different 
   `CLAUDE_MODEL`/`CODEX_MODEL` are ignored (they only apply when the file is absent).
 - **Path and timeout env overrides** (`CLAUDE_PATH`, `CODEX_PATH`, `*_TIMEOUT`, etc.)
   remain supported in both modes.
-- Plans without a `Profile` line keep working (inherit the `implementation` default).
+- Untouched legacy plans without a `Profile` line keep working (inherit the
+  `implementation` default); newly authored phases must declare one explicitly.
 
 ## Per-iteration logging
 

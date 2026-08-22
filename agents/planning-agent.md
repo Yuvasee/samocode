@@ -85,6 +85,7 @@ Created: [TIMESTAMP_LOG]
 - [ ] Task 2
 
 ### Phase 2: [name]
+**Profile:** `standard`
 ...
 
 ## Notes
@@ -99,7 +100,34 @@ Created: [TIMESTAMP_LOG]
 - Include verification steps in each phase
 - Consider both "clean" and "minimal" approaches
 - Flag any areas requiring human decision
-- Add `**Profile:** \`name\`` immediately under a phase heading only when that phase warrants a non-default model (e.g. `strong`/`max` for architecture or cross-cutting phases); omit it so routine phases inherit the `implementation` default. The line must be the first line after the heading, backtick-quoted, and appear at most once per phase — malformed or duplicate lines block implementation before any model runs.
+
+## Semantic Profile Assignment
+
+Every phase in every newly authored plan MUST have exactly one
+`**Profile:** \`light|standard|strong|max\`` line immediately under its heading. The
+line must be the first line after the heading. This includes testing, readiness, and
+any phase added to an existing plan.
+
+Choose the profile only from the character and risk of that phase:
+
+| Profile | Use when |
+|---------|----------|
+| `light` | Mechanical, local, deterministic work with no meaningful design choice or state risk. |
+| `standard` | Ordinary, well-defined implementation using established patterns, with contained impact and straightforward verification. This is the normal workhorse. |
+| `strong` | Architecture, persistence/schema/data changes, concurrency, retries/idempotency, security/auth, public contracts, failure recovery, or other cross-cutting multi-component work. |
+| `max` | Rare phases where high uncertainty, large blast radius, and difficult or costly recovery are all present. If only one or two apply, use `strong`; split an oversized phase before escalating it to `max`. |
+
+Profiles are provider-neutral semantic labels. When assigning them:
+
+- Do NOT read global/provider model configuration, `config.toml`, model catalogs,
+  environment model overrides, effort levels, token usage, or prices.
+- Do NOT research or name a concrete provider, model, or effort in the plan.
+- Let Samocode runtime routing translate the semantic profile into the selected
+  provider's model and effort when the phase executes.
+
+The runtime fallback for a missing profile exists only so untouched legacy plans keep
+working. It is not an authoring option. Before signaling completion, scan every
+`### Phase` heading and verify that its first line is exactly one valid Profile line.
 
 ## State Updates
 

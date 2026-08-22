@@ -101,10 +101,12 @@ provider without changing the worker's selected provider.
 ## Agent and skill inheritance
 
 Every packaged phase agent uses `model: inherit`. The provider CLI therefore stays on
-the model selected by the worker. Planning is the only skill that authors optional
-`**Profile:**` metadata. Implementation consumes the injected active phase and must not
-re-resolve provider/model/effort. Claude implementation sub-agents also use
-`model: inherit` and inherit session effort.
+the model selected by the worker. Planning is the only skill that authors
+`**Profile:**` metadata, and it requires exactly one semantic profile on every new
+phase. The planner chooses from work character and risk alone; it does not inspect
+provider configuration, models, effort, or prices. Implementation consumes the
+injected active phase and must not re-resolve provider/model/effort. Claude
+implementation sub-agents also use `model: inherit` and inherit session effort.
 
 ## Installation
 
@@ -122,8 +124,8 @@ backed up to `<name>.bak` and refreshed because fixed agent models would bypass 
 
 When the global config is absent, startup warns and preserves the previous behavior:
 provider selection comes from CLI/environment/default, and `CLAUDE_MODEL` or
-`CODEX_MODEL` supplies the model. Plan files without `Profile` remain valid in both
-legacy and routed modes.
+`CODEX_MODEL` supplies the model. Untouched legacy plan files without `Profile` remain
+valid in both legacy and routed modes, while newly authored phases require it.
 
 ## Source map
 
