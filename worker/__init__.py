@@ -67,7 +67,6 @@ from .runner import (
     increment_total_iterations,
     run_ai_with_retry,
     run_claude_with_retry,
-    update_phase,
     validate_session_structure,
 )
 from .signal_history import (
@@ -195,7 +194,6 @@ __all__ = [
     "increment_total_iterations",
     "run_ai_with_retry",
     "run_claude_with_retry",
-    "update_phase",
     "validate_session_structure",
     # Signal history
     "HistoryRecord",
