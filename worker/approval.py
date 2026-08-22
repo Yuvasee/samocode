@@ -297,13 +297,22 @@ def approve_session(
             )
         check = check_approval(locked.state, read_signal_file(session_path))
         if check.plan is None:
-            # Pre-lock accepted but now rejected: another actor crossed the gate.
-            return ApprovalResult(
-                outcome=ApprovalOutcome.ALREADY_ADVANCED,
-                advanced=False,
-                source_phase=pre.plan.source_phase,
-                target_phase=pre.plan.target_phase,
-                message="Gate already crossed by a concurrent approval; no-op",
+            # Pre-lock accepted but now rejected. Only a real phase move (a concurrent
+            # winner crossing the gate) is ALREADY_ADVANCED; otherwise the phase is
+            # unchanged and the honest cause is check_approval's rejection.
+            if locked.state.phase != pre.plan.source_phase:
+                return ApprovalResult(
+                    outcome=ApprovalOutcome.ALREADY_ADVANCED,
+                    advanced=False,
+                    source_phase=pre.plan.source_phase,
+                    target_phase=pre.plan.target_phase,
+                    message="Gate already crossed by a concurrent approval; no-op",
+                )
+            assert check.rejection is not None
+            return _rejected(
+                check.rejection,
+                check.message or check.rejection.value,
+                source=locked.state.phase,
             )
 
         plan = check.plan
