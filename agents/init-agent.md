@@ -2,7 +2,7 @@
 name: init-agent
 description: Initialize new Samocode sessions. Creates working directory, session folder, and _overview.md.
 tools: Read, Write, Bash, Glob
-model: claude-opus-4-8
+model: inherit
 permissionMode: allowEdits
 ---
 

@@ -2,7 +2,7 @@
 name: implementation-agent
 description: Execute plan phases iteratively. Use during implementation phase to build features.
 tools: Read, Write, Edit, Bash, Glob, Grep, Task, LSP
-model: claude-opus-4-8
+model: inherit
 skills: implementation, comment-hygiene
 permissionMode: allowEdits
 ---
@@ -27,15 +27,16 @@ Session context is provided via --append-system-prompt by the orchestrator:
 
 2. **Find next incomplete phase:**
    - Read plan file from session folder
-   - Find first phase with unchecked `- [ ]` items
+   - Find first phase with unchecked `- [ ]` items — this matches the rule `worker.plan_resolver.resolve_plan_phase()` uses (first phase in document order with an unchecked task; a partially-checked phase stays active and keeps its `**Profile:**`)
    - If all complete -> transition to testing
+   - **When the runner passes a resolved plan phase in session context** (plan file, phase label/title, profile — wired in later routing phases), execute exactly that phase. Do not re-scan the plan to pick a different one; the runner's selection is authoritative for the model profile already in flight this iteration.
 
 3. **Execute phase — choose approach based on phase type:**
 
    **If phase involves code changes (new features, refactoring, bug fixes):**
    - **CRITICAL: You MUST use "implementation" skill and follow the "dop2" action section.**
    - Use two independent proposal passes before editing code.
-   - Claude Code: spawn 2 Task sub-agents in parallel when the Task tool is available.
+   - Claude Code: spawn 2 Task sub-agents in parallel with `model: inherit` and no effort override when the Task tool is available.
    - Codex or no Task tool: create the minimal and clean proposal documents yourself in separate passes.
    - Only exception: trivially simple 1-2 line changes (use dop action instead)
    - Use "implementation" skill now!

@@ -7,10 +7,16 @@ Autonomous session orchestrator for Claude Code or OpenAI Codex. Python spawns t
 ```
 main.py              # Orchestrator entry point - main loop
 workflow.md          # Master prompt template for provider iterations
-worker/              # Core package (~1,600 lines)
-  config.py          # Configuration from .samocode + .env
-  phases.py          # Phase enum, config registry, transition validation
-  runner.py          # Provider CLI execution with retry
+ARCHITECTURE.md      # Runtime/configuration/routing design
+worker/              # Core package
+  config.py          # Project paths + legacy/runtime env settings
+  global_config.py   # User-global TOML, defaults, validation, bootstrap
+  startup.py         # Load-once composition + process-wide provider selection
+  phases.py          # Phase enum, profile defaults, transition validation
+  plan_resolver.py   # Active implementation-plan phase parser
+  routing.py         # Semantic profile -> immutable execution target
+  adapters.py        # Claude/Codex command builders and provider registry
+  runner.py          # Iteration resolution, context injection, retry execution
   signal_history.py  # Signal history tracking for debugging
   signals.py         # Signal file I/O (continue/done/blocked/waiting)
   timestamps.py      # Centralized timestamp formatting
@@ -19,12 +25,13 @@ worker/              # Core package (~1,600 lines)
 agents/              # Phase-specific agent instructions (md files)
 skills/              # Claude/Codex skills
 commands/            # Standalone Claude slash commands
+docs/                # User-facing references (including model routing)
 tests/               # pytest suite - one file per worker module
 ```
 
 ## Tech Stack
 
-- Python 3.10+ (uses `|` union syntax)
+- Python 3.11+ (`tomllib` is required for the global model config)
 - Dependencies: python-dotenv, requests (for Telegram)
 - Testing: pytest
 - Linting: ruff, pyright
@@ -37,7 +44,7 @@ pytest tests/test_runner.py     # Run specific test file
 ruff check .                    # Lint
 ruff format .                   # Format
 pyright                         # Type check
-python main.py --help           # Run orchestrator
+uv run samocode --help         # Run orchestrator CLI
 ```
 
 ## Code Style
@@ -54,7 +61,7 @@ python main.py --help           # Run orchestrator
 
 **Three layers**: Parent CLI -> Worker (Python) -> Child provider instances
 
-**Phase flow**: init -> investigation -> requirements -> planning -> implementation -> testing -> quality -> done
+**Phase flow**: init -> investigation -> requirements -> planning -> implementation -> testing -> quality -> pr-readiness -> done
 
 **Signal protocol** - child provider writes `_signal.json` to control flow:
 - `continue` - Next iteration
@@ -63,6 +70,11 @@ python main.py --help           # Run orchestrator
 - `waiting` - Paused for human input (Q&A or plan approval)
 
 **Stateless iterations** - Each provider invocation reads `_overview.md` fresh, executes one action, signals, exits.
+
+**Immutable routing per iteration** - Startup selects one provider for the process.
+Before each iteration, the runner resolves the workflow/plan phase and semantic profile
+into a concrete model/effort target. Retries reuse that exact target. The child receives
+the target in Session Context and must not resolve or override it.
 
 ## Testing
 
@@ -75,10 +87,11 @@ python main.py --help           # Run orchestrator
 
 **CLI arguments:**
 ```bash
-python main.py --config ~/project/.samocode --session my-task
+samocode run --config ~/project/.samocode --session my-task
 ```
 - `--config` (required) - Full path to `.samocode` file
 - `--session` (required) - Session name (not path)
+- `--provider` (optional) - Process-wide `claude`/`codex` override
 
 **`.samocode` file** (per-project, all required):
 ```
@@ -87,17 +100,35 @@ WORKTREES=~/project/worktrees/
 SESSIONS=~/project/_sessions/
 ```
 
-**Environment variables** (in .env) - runtime settings only:
-- `SAMOCODE_PROVIDER` - `claude` or `codex` (default: claude)
-- `CLAUDE_PATH`, `CLAUDE_MODEL` - Claude CLI settings
-- `CODEX_PATH`, `CODEX_MODEL` - Codex CLI settings
+**User-global model config:**
+
+- `$XDG_CONFIG_HOME/samocode/config.toml` when XDG is absolute, otherwise
+  `~/.config/samocode/config.toml`
+- Created by `samocode install` only when absent; an existing file is preserved
+- Loaded and validated once at process startup
+- Contains provider executables, semantic profiles, concrete models/effort, and
+  optional workflow overrides
+- Provider precedence: CLI → `SAMOCODE_PROVIDER` → config default → legacy Claude
+
+See `docs/model-routing.md` for the schema and canonical profile table.
+
+**Environment variables** (in `.env`) - runtime/legacy settings:
+- `SAMOCODE_PROVIDER` - optional process-wide provider override
+- `CLAUDE_PATH`, `CODEX_PATH` - executable path overrides
+- `CLAUDE_TIMEOUT`, `CODEX_TIMEOUT` - timeout overrides
+- `CLAUDE_MODEL`, `CODEX_MODEL` - legacy only, used when global config is absent
 - `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` - Optional notifications
 
 ## Key Files
 
-- `worker/phases.py` - Phase enum, PhaseConfig registry, transition/signal validation (source of truth)
-- `worker/runner.py` - Core execution logic, provider CLI invocation
-- `worker/config.py` - ProjectConfig, RuntimeConfig, SamocodeConfig dataclasses
+- `worker/global_config.py` - TOML schema, canonical defaults, bootstrap/load
+- `worker/startup.py` - startup composition and provider precedence
+- `worker/phases.py` - Phase enum, PhaseConfig/profile registry, transition validation
+- `worker/plan_resolver.py` - deterministic active plan/phase selection
+- `worker/routing.py` - profile resolution and immutable ExecutionTarget
+- `worker/adapters.py` - provider registry and Claude/Codex argv construction
+- `worker/runner.py` - per-iteration plan/context resolution and retry execution
+- `worker/config.py` - project/runtime/SamocodeConfig dataclasses
 - `worker/signals.py` - Signal dataclass, JSON parsing
 - `worker/signal_history.py` - Records signals to `_signal_history.jsonl` for debugging
 - `workflow.md` - Master prompt injected into each provider run

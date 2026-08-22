@@ -33,11 +33,14 @@ Use this skill when user says:
 
 Samocode is an autonomous session orchestrator that runs the configured AI CLI provider in a loop to complete complex tasks. It:
 - Reads session state from `_overview.md`
+- Selects one provider for the process and resolves every iteration through a semantic model profile
 - Runs phase-specific agents automatically based on current phase
 - Sends Telegram notifications on state changes
 - Continues until task is complete or blocked
 
-For workflow details and phase definitions, see `~/samocode/CLAUDE.md`.
+For workflow details and phase definitions, see the installed `workflow.md`. For model
+routing, defaults, and migration behavior, see `docs/model-routing.md` in the Samocode
+source/package.
 
 ## Sessions: Manual vs Autonomous
 
@@ -94,17 +97,34 @@ Do NOT assume samocode should run just because a session exists.
      - Ask how to proceed
      - Update status based on user's direction
 
-4. **Start samocode:**
+4. **Understand routing before startup:**
+   - Global config path: `$XDG_CONFIG_HOME/samocode/config.toml` when
+     `XDG_CONFIG_HOME` is absolute; otherwise `~/.config/samocode/config.toml`.
+   - `samocode install` creates defaults only when the file is absent and never
+     overwrites an existing config.
+   - Provider precedence is `--provider` → `SAMOCODE_PROVIDER` → config
+     `default_provider` → legacy `claude`.
+   - The provider is fixed for the process. Workflow and implementation-plan phases
+     select semantic profiles only; they never switch providers.
+   - The worker loads and validates the global config once at startup. Do not edit it
+     expecting a running process to change; restart Samocode after an edit.
+   - Do not hand-resolve or pass per-phase model/effort arguments. The worker logs the
+     authoritative provider/profile/model/effort/source once per iteration.
+   - A missing global config enables legacy model env behavior with a warning. Prefer
+     running `samocode install` before autonomous work.
+
+5. **Start samocode:**
    ```bash
-   cd ~/samocode && python main.py \
+   samocode run \
      --config [PATH_TO_.SAMOCODE] \
      --session [SESSION_NAME] 2>&1
    ```
 
-   **Optional:** Add `--timeout SECONDS` for per-iteration time limit (default: 1800s = 30 min).
+   **Optional:** Add `--provider claude|codex` to override provider selection for this
+   process, or `--timeout SECONDS` for the per-iteration time limit (default: 1800s = 30 min).
    Each child agent iteration is killed if it exceeds this. Increase for complex phases:
    ```bash
-   python main.py --config ... --session ... --timeout 3600  # 1 hour per iteration
+   samocode run --config ... --session ... --provider codex --timeout 3600
    ```
 
    **Do NOT wrap with bash `timeout`** - The orchestrator manages its own timeouts via `--timeout`.
@@ -122,28 +142,28 @@ Do NOT assume samocode should run just because a session exists.
    - Use `Read` with `offset` and `limit` to read small portions
    - Never read the entire file
 
-5. **Monitor loop (prefer session files over task output):**
+6. **Monitor loop (prefer session files over task output):**
 
-   5.1. Start background check (sleep duration by phase: investigation/planning 60s, implementation 120-180s, quality 120s, testing 60s):
+   6.1. Start background check (sleep duration by phase: investigation/planning 60s, implementation 120-180s, quality 120s, testing 60s):
    ```bash
    Bash(command="sleep 60 && cat [SESSION]/_overview.md", run_in_background=true)
    ```
    Returns task_id (e.g., "b155903")
 
-   5.2. Wait for result - **DO NOT SKIP, do immediately after 5.1:**
+   6.2. Wait for result - **DO NOT SKIP, do immediately after 6.1:**
    ```bash
    TaskOutput(task_id="b155903", block=true, timeout=600000)
    ```
    Note: 600000ms (10 min) is the max allowed timeout.
 
-   5.3. Extract from result: Phase, Iteration, Total Iterations, Blocked, Last Action, Next, last 3 Flow Log entries
+   6.3. Extract from result: Phase, Iteration, Total Iterations, Blocked, Last Action, Next, last 3 Flow Log entries
 
-   5.4. Get recent commits:
+   6.4. Get recent commits:
    ```bash
    git -C [WORKING_DIR] log --oneline -3
    ```
 
-   5.5. Report to user:
+   6.5. Report to user:
    ```
    Samocode Progress [HH:MM elapsed]
    --------------------------------
@@ -158,10 +178,10 @@ Do NOT assume samocode should run just because a session exists.
    - [last 2-3 Flow Log entries]
    ```
 
-   5.6. Check stop condition:
+   6.6. Check stop condition:
    - `Phase: done` → report final summary, STOP
    - `Blocked:` contains `yes` or `waiting` → handle accordingly (see Handling Waiting States), STOP
-   - Otherwise → goto step 5.1
+   - Otherwise → goto step 6.1
 
    **IMPORTANT: On STOP, clean up monitoring.** When samocode finishes (done/blocked/waiting), do NOT leave pending background sleep tasks running. Stop any active monitoring task via `TaskStop` before reporting the final status. This prevents stale notification floods.
 
@@ -242,6 +262,9 @@ Next: [what to do next]
 1. **Missing .samocode file**: Create `.samocode` file in project root with SESSIONS, WORKTREES, MAIN_REPO
 2. **Telegram errors**: Check `~/samocode/.env` has TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID
 3. **Timeout**: Default is 30 min. Increase provider timeout env var (`CLAUDE_TIMEOUT` or `CODEX_TIMEOUT`) if iterations need more
+4. **Missing global config**: Run `samocode install`; legacy mode still runs but cannot use semantic profile routing
+5. **Invalid config/profile**: Fix the reported TOML path/profile. Validation fails before any provider call; do not bypass it with model env vars
+6. **Provider unavailable**: Install the selected CLI or choose a registered provider with `--provider`; a process never falls back to another provider mid-run
 
 ## Debugging Samocode Bugs
 
@@ -279,14 +302,14 @@ If samocode exhibits bugs or weird behavior (loops, wrong decisions, missing ste
 User: "Run samocode on the hvac project"
 → Find ~/code/hvac-voice-agent/.samocode file
 → Determine session name from context (e.g., "voice-agent")
-→ Run: python main.py --config ~/code/hvac-voice-agent/.samocode --session voice-agent
+→ Run: samocode run --config ~/code/hvac-voice-agent/.samocode --session voice-agent
 → Monitor iterations, report progress
 
 User: "Continue the samocode session"
 → Find session name from context or ask user
 → Find .samocode file path
-→ Run: python main.py --config [CONFIG_PATH] --session [SESSION_NAME]
+→ Run: samocode run --config [CONFIG_PATH] --session [SESSION_NAME]
 → Monitor iterations, report progress
 ```
 
-**Remember:** You run `python main.py`, the Python worker runs the configured provider (Claude or Codex). You do NOT run phase agents yourself.
+**Remember:** You run `samocode run`; the Python worker resolves the execution target and runs the selected provider (Claude or Codex). You do NOT run phase agents or select their concrete models yourself.

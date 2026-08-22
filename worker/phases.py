@@ -33,6 +33,7 @@ class PhaseConfig:
     allowed_next: frozenset[Phase]
     allowed_signals: frozenset[str]  # SignalStatus values
     max_iterations: int
+    default_profile: str  # Model-routing profile name; worker/routing.py resolves it
     requires_gate: bool = False  # True if phase requires explicit gate check
 
     def can_transition_to(self, target: Phase) -> bool:
@@ -52,6 +53,7 @@ PHASE_CONFIGS: dict[Phase, PhaseConfig] = {
         allowed_next=frozenset({Phase.INVESTIGATION}),
         allowed_signals=frozenset({"continue", "blocked"}),
         max_iterations=5,
+        default_profile="light",
     ),
     Phase.INVESTIGATION: PhaseConfig(
         phase=Phase.INVESTIGATION,
@@ -59,6 +61,7 @@ PHASE_CONFIGS: dict[Phase, PhaseConfig] = {
         allowed_next=frozenset({Phase.REQUIREMENTS}),
         allowed_signals=frozenset({"continue", "blocked"}),
         max_iterations=20,
+        default_profile="strong",
     ),
     Phase.REQUIREMENTS: PhaseConfig(
         phase=Phase.REQUIREMENTS,
@@ -66,6 +69,7 @@ PHASE_CONFIGS: dict[Phase, PhaseConfig] = {
         allowed_next=frozenset({Phase.PLANNING}),
         allowed_signals=frozenset({"continue", "waiting", "blocked"}),
         max_iterations=10,
+        default_profile="strong",
         requires_gate=True,  # Requires Q&A answers
     ),
     Phase.PLANNING: PhaseConfig(
@@ -74,6 +78,7 @@ PHASE_CONFIGS: dict[Phase, PhaseConfig] = {
         allowed_next=frozenset({Phase.IMPLEMENTATION}),
         allowed_signals=frozenset({"continue", "waiting", "blocked"}),
         max_iterations=10,
+        default_profile="max",
         requires_gate=True,  # Requires human approval
     ),
     Phase.IMPLEMENTATION: PhaseConfig(
@@ -83,6 +88,7 @@ PHASE_CONFIGS: dict[Phase, PhaseConfig] = {
         allowed_next=frozenset({Phase.TESTING, Phase.QUALITY}),
         allowed_signals=frozenset({"continue", "waiting", "blocked"}),
         max_iterations=100,
+        default_profile="standard",  # Fallback when a plan phase has no explicit profile
     ),
     Phase.TESTING: PhaseConfig(
         phase=Phase.TESTING,
@@ -90,6 +96,7 @@ PHASE_CONFIGS: dict[Phase, PhaseConfig] = {
         allowed_next=frozenset({Phase.QUALITY, Phase.PR_READINESS}),
         allowed_signals=frozenset({"continue", "blocked"}),
         max_iterations=20,
+        default_profile="standard",
     ),
     Phase.QUALITY: PhaseConfig(
         phase=Phase.QUALITY,
@@ -98,6 +105,7 @@ PHASE_CONFIGS: dict[Phase, PhaseConfig] = {
         allowed_next=frozenset({Phase.TESTING, Phase.PR_READINESS}),
         allowed_signals=frozenset({"continue", "blocked"}),
         max_iterations=10,
+        default_profile="strong",
     ),
     Phase.PR_READINESS: PhaseConfig(
         phase=Phase.PR_READINESS,
@@ -105,6 +113,7 @@ PHASE_CONFIGS: dict[Phase, PhaseConfig] = {
         allowed_next=frozenset({Phase.DONE}),
         allowed_signals=frozenset({"continue", "blocked"}),
         max_iterations=5,
+        default_profile="strong",
         requires_gate=True,
     ),
     Phase.DONE: PhaseConfig(
@@ -113,6 +122,7 @@ PHASE_CONFIGS: dict[Phase, PhaseConfig] = {
         allowed_next=frozenset(),  # Terminal phase
         allowed_signals=frozenset({"done", "blocked"}),
         max_iterations=3,
+        default_profile="light",
     ),
 }
 

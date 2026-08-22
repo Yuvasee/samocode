@@ -7,23 +7,25 @@ The child AI reads session state, decides actions, updates state, and signals ne
 
 import argparse
 import logging
+import os
 import sys
-from dataclasses import replace
 from pathlib import Path
 
 from worker import (
+    ExecutionResolutionError,
     ExecutionStatus,
-    ProjectConfig,
-    RuntimeConfig,
-    SamocodeConfig,
+    GlobalConfigError,
+    PlanResolutionError,
     Signal,
     SignalStatus,
     add_session_handler,
     clear_signal_file,
+    compose_startup,
     extract_phase,
     extract_total_iterations,
     get_phase_config,
     get_phase_iteration_count,
+    global_config_path,
     increment_total_iterations,
     install,
     is_iteration_limit_exceeded,
@@ -33,9 +35,9 @@ from worker import (
     notify_waiting,
     read_signal_file,
     record_signal,
-    resolve_session_path,
     run_ai_with_retry,
     setup_logging,
+    supported_providers,
     uninstall,
     update_phase,
     validate_signal_for_phase,
@@ -159,7 +161,7 @@ def add_run_arguments(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument(
         "--provider",
-        choices=["claude", "codex"],
+        choices=sorted(supported_providers()),
         help="AI CLI provider to run orchestrator iterations with",
     )
     parser.add_argument(
@@ -179,12 +181,14 @@ def build_parser() -> argparse.ArgumentParser:
 Examples:
   # Start or continue a session (subcommand optional, defaults to `run`)
   samocode run --config ~/project/.samocode --session my-task
-  python main.py --config ~/project/.samocode --session my-task
+
+  # Select one orchestration provider for the whole process
+  samocode run --config ~/project/.samocode --session my-task --provider codex
 
   # With an initial dive topic
   samocode run --config ~/project/.samocode --session explore-api --dive "auth endpoints"
 
-  # Install/uninstall samocode skills, agents, and commands
+  # Install assets and create/preserve the global model config
   samocode install
   samocode install --copy
   samocode uninstall
@@ -232,63 +236,26 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return build_parser().parse_args(argv)
 
 
-def load_config(args: argparse.Namespace) -> SamocodeConfig:
-    """Load and validate configuration. Exits on error."""
-    errors: list[str] = []
-
-    # Load project config from explicit path
-    config_path = Path(args.config).expanduser().resolve()
-    try:
-        project = ProjectConfig.from_file(config_path)
-    except ValueError as e:
-        print(f"Error: {e}")
-        sys.exit(1)
-
-    # Validate project paths exist
-    path_errors = project.validate()
-    errors.extend(path_errors)
-
-    # Load runtime config from environment
-    runtime = RuntimeConfig.from_env()
-
-    # Override provider if provided via CLI
-    if args.provider:
-        runtime = replace(runtime, ai_provider=args.provider)
-
-    # Override timeout if provided via CLI
-    if args.timeout:
-        runtime = replace(
-            runtime, claude_timeout=args.timeout, codex_timeout=args.timeout
-        )
-
-    runtime_errors = runtime.validate()
-    errors.extend(runtime_errors)
-
-    # Resolve session path
-    session_path = resolve_session_path(project.sessions, args.session)
-
-    # Validate session path is sensible (if it exists)
-    if session_path.exists() and not session_path.is_dir():
-        errors.append(f"Session path exists but is not a directory: {session_path}")
-
-    if errors:
-        print("Configuration errors:")
-        for error in errors:
-            print(f"  - {error}")
-        sys.exit(1)
-
-    return SamocodeConfig(
-        project=project,
-        runtime=runtime,
-        session_path=session_path,
-    )
-
-
 def run_orchestrator(args: argparse.Namespace) -> None:
     """Run the autonomous orchestrator loop (the `run` command)."""
     samocode_dir = Path(__file__).parent
 
-    config = load_config(args)
+    # Load global config once, select the provider, compose one runtime object.
+    composition = compose_startup(
+        config_path=Path(args.config).expanduser().resolve(),
+        session_name=args.session,
+        cli_provider=args.provider,
+        cli_timeout=args.timeout,
+        env_provider=os.environ.get("SAMOCODE_PROVIDER"),
+    )
+    if composition.errors:
+        print("Configuration errors:")
+        for error in composition.errors:
+            print(f"  - {error}")
+        sys.exit(1)
+    config = composition.config
+    assert config is not None  # guaranteed when errors is empty
+
     session_path = config.session_path
     session_display_name = session_path.name
 
@@ -296,6 +263,9 @@ def run_orchestrator(args: argparse.Namespace) -> None:
     workflow_prompt_path = samocode_dir / "workflow.md"
 
     logger = setup_logging(log_dir)
+
+    for warning in composition.warnings:
+        logger.warning(warning)
 
     if not workflow_prompt_path.exists():
         logger.error(f"Workflow prompt not found: {workflow_prompt_path}")
@@ -308,8 +278,14 @@ def run_orchestrator(args: argparse.Namespace) -> None:
     logger.info(f"Session: {session_path}")
     logger.info(f"Repo: {config.main_repo}")
     model = config.ai_model or "default"
+    config_mode = (
+        "legacy (no config)"
+        if config.global_config is None
+        else str(global_config_path())
+    )
     logger.info(f"Provider: {config.ai_provider}")
     logger.info(f"Model: {model}")
+    logger.info(f"Global config: {config_mode}")
     if config.ai_provider == "claude":
         logger.info(f"Max turns: {config.claude_max_turns}")
     logger.info(f"Timeout: {config.ai_timeout}s")
@@ -356,13 +332,31 @@ def run_orchestrator(args: argparse.Namespace) -> None:
                 logger.info(f"Previous signal: {previous_signal}")
             logger.info("Cleared signal file")
 
-            result = run_ai_with_retry(
-                workflow_prompt_path,
-                session_path,
-                config,
-                initial_dive if iteration == 1 else None,
-                initial_task if iteration == 1 else None,
-            )
+            try:
+                result = run_ai_with_retry(
+                    workflow_prompt_path,
+                    session_path,
+                    config,
+                    initial_dive if iteration == 1 else None,
+                    initial_task if iteration == 1 else None,
+                )
+            except (
+                PlanResolutionError,
+                GlobalConfigError,
+                ExecutionResolutionError,
+            ) as exc:
+                # Config/plan misconfiguration is recoverable by a human, not a
+                # crash: fail fast to a blocked state instead of the generic
+                # "Orchestrator crashed" handler.
+                logger.error(f"Resolution failed ({type(exc).__name__}): {exc}")
+                notify_blocked(
+                    str(exc),
+                    session_display_name,
+                    "human_decision",
+                    config.telegram_bot_token,
+                    config.telegram_chat_id,
+                )
+                break
 
             if result.status != ExecutionStatus.SUCCESS:
                 logger.error(f"{config.ai_provider} execution failed after retries")
@@ -473,7 +467,15 @@ def run_orchestrator(args: argparse.Namespace) -> None:
 def cmd_install(args: argparse.Namespace) -> None:
     """Install samocode assets into provider directories."""
     # args.copy is True only with --copy; pass None for AUTO otherwise.
-    install(copy=True if args.copy else None)
+    try:
+        install(copy=True if args.copy else None)
+    except GlobalConfigError as exc:
+        print(f"\nError: existing global config is invalid.\n{exc}", file=sys.stderr)
+        print(
+            "Fix the file above or delete it to regenerate defaults.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
 
 def cmd_uninstall(_args: argparse.Namespace) -> None:

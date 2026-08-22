@@ -2,7 +2,7 @@
 name: planning-agent
 description: Create phased implementation plans. Use after requirements are finalized.
 tools: Read, Write, Edit, Glob, Grep, Task, Bash
-model: claude-opus-4-8
+model: inherit
 skills: planning
 permissionMode: allowEdits
 ---
@@ -79,6 +79,7 @@ Created: [TIMESTAMP_LOG]
 ## Implementation Phases
 
 ### Phase 1: [name]
+**Profile:** `strong`
 [Description]
 - [ ] Task 1
 - [ ] Task 2
@@ -98,6 +99,7 @@ Created: [TIMESTAMP_LOG]
 - Include verification steps in each phase
 - Consider both "clean" and "minimal" approaches
 - Flag any areas requiring human decision
+- Add `**Profile:** \`name\`` immediately under a phase heading only when that phase warrants a non-default model (e.g. `strong`/`max` for architecture or cross-cutting phases); omit it so routine phases inherit the `implementation` default. The line must be the first line after the heading, backtick-quoted, and appear at most once per phase — malformed or duplicate lines block implementation before any model runs.
 
 ## State Updates
 
@@ -105,6 +107,7 @@ Edit `_overview.md`:
 - Status: `Blocked: waiting_human`, `Last Action: Plan created`, `Next: Await plan approval`
 - Flow Log: `- [TIMESTAMP_ITERATION] Plan created -> [filename].md`
 - Files: `- [filename].md - Implementation plan`
+- Plans (REQUIRED — append under a `## Plans` heading; create the heading if absent): `- [filename].md - [one-line description]`. Implementation-phase model routing reads the LAST entry here; omitting it makes `resolve_plan_phase` raise `PlanResolutionError` on the first implementation iteration.
 
 **Do NOT update Phase field** - orchestrator handles it based on signal.
 

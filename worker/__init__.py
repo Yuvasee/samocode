@@ -1,11 +1,20 @@
 """Samocode worker package - core orchestrator components."""
 
+from .adapters import supported_providers
 from .config import (
     ProjectConfig,
     RuntimeConfig,
     SamocodeConfig,
     parse_samocode_file,
     resolve_session_path,
+)
+from .global_config import (
+    ConfigBootstrapResult,
+    ConfigBootstrapStatus,
+    GlobalConfig,
+    GlobalConfigError,
+    ensure_global_config,
+    global_config_path,
 )
 from .installer import (
     InstallMode,
@@ -19,14 +28,22 @@ from .installer import (
 from .logging import add_session_handler, setup_logging
 from .notifications import notify_blocked, notify_complete, notify_error, notify_waiting
 from .phases import (
+    PHASE_CONFIGS,
     Phase,
     PhaseConfig,
-    PHASE_CONFIGS,
     get_agent_for_phase,
     get_phase_config,
     is_iteration_limit_exceeded,
     validate_signal_for_phase,
     validate_transition,
+)
+from .plan_resolver import PlanResolutionError
+from .routing import (
+    ExecutionResolutionError,
+    ProfileSource,
+    ResolvedProfile,
+    resolve_workflow_profile,
+    validate_workflow_overrides,
 )
 from .runner import (
     ExecutionResult,
@@ -51,6 +68,13 @@ from .signals import (
     clear_signal_file,
     read_signal_file,
 )
+from .startup import (
+    LEGACY_DEFAULT_PROVIDER,
+    StartupComposition,
+    compose_startup,
+    load_global_config,
+    select_provider,
+)
 from .timestamps import (
     FILE_TIMESTAMP_PATTERN,
     FOLDER_TIMESTAMP_PATTERN,
@@ -69,6 +93,13 @@ __all__ = [
     "SamocodeConfig",
     "parse_samocode_file",
     "resolve_session_path",
+    # Global config
+    "ConfigBootstrapResult",
+    "ConfigBootstrapStatus",
+    "GlobalConfig",
+    "GlobalConfigError",
+    "ensure_global_config",
+    "global_config_path",
     # Installer
     "InstallMode",
     "InstallOutcome",
@@ -94,6 +125,13 @@ __all__ = [
     "is_iteration_limit_exceeded",
     "validate_signal_for_phase",
     "validate_transition",
+    # Routing
+    "ExecutionResolutionError",
+    "PlanResolutionError",
+    "ProfileSource",
+    "ResolvedProfile",
+    "resolve_workflow_profile",
+    "validate_workflow_overrides",
     # Runner
     "ExecutionResult",
     "ExecutionStatus",
@@ -114,6 +152,13 @@ __all__ = [
     "SignalStatus",
     "clear_signal_file",
     "read_signal_file",
+    # Startup
+    "LEGACY_DEFAULT_PROVIDER",
+    "StartupComposition",
+    "compose_startup",
+    "load_global_config",
+    "select_provider",
+    "supported_providers",
     # Timestamps
     "FILE_TIMESTAMP_PATTERN",
     "FOLDER_TIMESTAMP_PATTERN",

@@ -2,7 +2,7 @@
 name: [phase]-agent
 description: [Brief description]. Use during [phase] phase of samocode workflow.
 tools: Read, Write, Edit, Bash, Glob, Grep, Task
-model: claude-opus-4-8
+model: inherit
 skills: [relevant-skill]
 permissionMode: allowEdits
 ---

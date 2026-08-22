@@ -8,7 +8,7 @@ so you can hand off multi-hour engineering work and walk away.
 
 [![PyPI](https://img.shields.io/pypi/v/samocode.svg)](https://pypi.org/project/samocode/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/)
 [![CI](https://github.com/Yuvasee/samocode/actions/workflows/ci.yml/badge.svg)](https://github.com/Yuvasee/samocode/actions/workflows/ci.yml)
 
 [Quick start](#quick-start) · [How it works](#how-it-works) · [vs alternatives](#vs-alternatives) · [Examples](examples/)
@@ -38,7 +38,11 @@ If your task is "I need to think about this with the AI for 10 minutes" — use 
 
 ```bash
 pip install samocode
+samocode install
 ```
+
+The install command makes the bundled skills/agents available and creates the default
+global model-profile config without overwriting an existing one.
 
 Create `.samocode` in your project root:
 ```ini
@@ -63,9 +67,19 @@ git clone https://github.com/Yuvasee/samocode ~/samocode
 cd ~/samocode && pip install -r requirements.txt && samocode install
 ```
 
-`samocode install` links samocode skills into both `~/.claude/skills` and `~/.codex/skills`. Claude-only slash commands and agent files are linked into `~/.claude`; Codex provider runs read the phase agent files directly from the installed samocode package. From a repo checkout it symlinks (so edits go live); from a `pip install` it auto-detects and copies — use `--copy` only to force copying from a checkout. samocode never clobbers real files or foreign symlinks you own.
+`samocode install` creates the user-global model config when absent, prints its path and
+profile table, and installs skills into both `~/.claude/skills` and
+`~/.codex/skills`. Claude-only slash commands and phase-agent files go into
+`~/.claude`; Codex runs those same packaged phase-agent instructions through prompt
+injection. From a repo checkout the installer uses symlinks (so edits go live); from a
+`pip install` it auto-detects and copies — use `--copy` only to force copying from a
+checkout.
 
-Re-run behavior depends on mode: **symlink** installs are idempotent (re-running refreshes samocode's own links), while **copy** installs are placed once and skipped on re-run — to update a copy install, run `samocode uninstall` (or delete the copied files) and install again.
+Re-running a **symlink** install refreshes Samocode-owned links and preserves foreign
+links/files. In **copy** mode, existing skills and commands are still treated as
+user-owned and skipped. Packaged Claude phase-agent files are the narrow exception:
+they are Samocode-managed, so a stale real file is moved to `<name>.bak` and refreshed.
+This is required to keep their `model: inherit` routing contract current.
 
 `samocode uninstall` removes only samocode-owned **symlinks**. Copy-mode installs are real files samocode cannot prove it created, so they are left in place and reported as skipped — delete them manually if needed.
 
@@ -99,11 +113,14 @@ Three layers, each with a single responsibility:
 Parent session       Worker (Python)         Child AI CLI
 ─────────────       ───────────────         ────────────
 You + your CLI  →   spawns provider CLI  →  reads _overview.md
-monitors progress   reads _signal.json      executes one action
-relays Q&A          decides loop/stop       writes _signal.json
+monitors progress   resolves phase/profile  executes one action
+relays Q&A          validates signal/retry  writes _signal.json
 ```
 
-Each iteration is **stateless**: the child CLI starts fresh, reads `_overview.md`, executes one action, writes a signal, exits. The Python worker is intentionally dumb — it just spawns the CLI and reads signals. All decisions happen in the child agent.
+Each iteration is **stateless**: the child CLI starts fresh, reads `_overview.md`,
+executes one action, writes a signal, and exits. The worker deterministically owns
+state, routing, retries, and lifecycle; the child owns the engineering decisions for
+that action.
 
 Phases:
 ```
@@ -146,13 +163,44 @@ init → investigation → requirements → planning → implementation → test
 |----------|---------|-------------|
 | `SAMOCODE_PROVIDER` | `claude` | Provider: `claude` or `codex` |
 | `CLAUDE_PATH` | `claude` | Path to Claude CLI |
-| `CLAUDE_MODEL` | `opus` | Claude model |
+| `CLAUDE_MODEL` | `opus` | Claude model (**legacy only** — ignored when a global config exists) |
 | `CLAUDE_TIMEOUT` | `1800` | Claude timeout per iteration (seconds) |
 | `CODEX_PATH` | `codex` | Path to Codex CLI |
-| `CODEX_MODEL` | empty | Codex model (empty = use `~/.codex/config.toml`) |
+| `CODEX_MODEL` | empty | Codex model, **legacy only** (empty = use `~/.codex/config.toml`) |
 | `CODEX_TIMEOUT` | `1800` | Codex timeout per iteration (seconds) |
 | `TELEGRAM_BOT_TOKEN` | - | Telegram notifications |
 | `TELEGRAM_CHAT_ID` | - | Telegram notifications |
+
+### Global model routing (`config.toml`)
+
+Samocode routes every iteration through a **semantic profile** (`light`, `standard`,
+`strong`, `max`, or custom) that resolves to a concrete model and optional reasoning
+effort for the one selected provider. The user-global config lives at
+`$XDG_CONFIG_HOME/samocode/config.toml` (fallback `~/.config/samocode/config.toml`)
+and is created from defaults by `samocode install` — it is never overwritten.
+
+Install reports whether the file was created or preserved and shows the active
+defaults, for example:
+
+```text
+Global config:
+  Path: /Users/you/.config/samocode/config.toml
+  Status: created
+  Default: provider=claude profile=standard
+  PROVIDER   PROFILE    MODEL                        EFFORT
+  claude     standard   claude-sonnet-4-6            high
+  claude     strong     claude-opus-4-8              high
+  codex      standard   gpt-5.6-terra                medium
+  codex      strong     gpt-5.6-sol                  medium
+```
+
+Without it, samocode runs in **legacy mode** using `CLAUDE_MODEL`/`CODEX_MODEL`. With a
+valid config, profile model/effort is authoritative and those env vars are ignored.
+The config is loaded once at process startup; restart Samocode after editing it.
+Provider precedence is `--provider` → `SAMOCODE_PROVIDER` → config default → legacy
+Claude. Requires **Python 3.11+**.
+
+→ Full concepts, default table, profile syntax, overrides, and migration: [docs/model-routing.md](docs/model-routing.md)
 
 ## Phase reference
 
@@ -240,7 +288,7 @@ On the roadmap: Gemini orchestration support and deeper provider-specific agent 
 
 ## Contributing
 
-Issues and PRs welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).
+Issues and PRs are welcome.
 
 ### Recommended Claude Code plugins
 

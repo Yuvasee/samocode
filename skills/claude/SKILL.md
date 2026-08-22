@@ -5,9 +5,9 @@ description: Run Anthropic Claude CLI as a subagent for second opinions, code re
 
 # Claude Subagent
 
-Run Anthropic Claude CLI (Claude Opus) for second opinions and external reviews —
-the symmetric counterpart to the `codex` skill, for use when the orchestration
-provider is Codex (or any non-Claude agent) and you want Claude's perspective.
+Run Anthropic Claude CLI with its own configured model for second opinions and
+external reviews. This is the symmetric counterpart to the `codex` skill and is
+deliberately independent of the orchestration process's provider/profile.
 
 ## Availability Check
 
@@ -24,7 +24,6 @@ If not installed, inform the user: "Claude CLI is not installed. Skipping Claude
 ```bash
 claude -p "$PROMPT" \
   --dangerously-skip-permissions \
-  --model opus \
   --output-format text 2>/dev/null
 ```
 
@@ -36,7 +35,6 @@ Output goes straight to stdout — no temp file needed.
 |------|---------|
 | `-p` / `--print` | Non-interactive print mode |
 | `--dangerously-skip-permissions` | No permission prompts |
-| `--model opus` | Pick the model (e.g. `opus`, `sonnet`) |
 | `--output-format text` | Clean text output |
 | `2>/dev/null` | Suppress session info and stderr noise |
 
@@ -45,7 +43,7 @@ Output goes straight to stdout — no temp file needed.
 Claude can take several minutes for complex prompts. Use a 15 minute timeout:
 
 ```bash
-timeout 900 claude -p "$PROMPT" --dangerously-skip-permissions --model opus --output-format text 2>/dev/null
+timeout 900 claude -p "$PROMPT" --dangerously-skip-permissions --output-format text 2>/dev/null
 ```
 
 ## Usage Examples
@@ -54,7 +52,7 @@ timeout 900 claude -p "$PROMPT" --dangerously-skip-permissions --model opus --ou
 
 ```bash
 claude -p "What are the tradeoffs between Redis and Memcached for session storage?" \
-  --dangerously-skip-permissions --model opus --output-format text 2>/dev/null
+  --dangerously-skip-permissions --output-format text 2>/dev/null
 ```
 
 ### Code Review
@@ -66,7 +64,7 @@ claude -p "Review this diff for issues:
 $DIFF
 
 List concerns with severity (blocking/important/nice-to-have)." \
-  --dangerously-skip-permissions --model opus --output-format text 2>/dev/null
+  --dangerously-skip-permissions --output-format text 2>/dev/null
 ```
 
 ### With Working Directory
@@ -75,7 +73,7 @@ Claude runs in the current directory; use `--add-dir` to grant access to others:
 
 ```bash
 ( cd /path/to/repo && claude -p "Analyze the architecture of this codebase" \
-  --dangerously-skip-permissions --model opus --output-format text 2>/dev/null )
+  --dangerously-skip-permissions --output-format text 2>/dev/null )
 ```
 
 ### GitHub PR Review
@@ -86,12 +84,14 @@ Claude has access to the `gh` CLI. Pass the PR URL and let it fetch the diff:
 timeout 900 claude -p "Review this PR: https://github.com/owner/repo/pull/123
 
    Use gh CLI to get the diff and review for issues." \
-  --dangerously-skip-permissions --model opus --output-format text 2>/dev/null
+  --dangerously-skip-permissions --output-format text 2>/dev/null
 ```
 
 ## Notes
 
 - Use this from a Codex-provider session to get a genuinely different perspective
+- The direct Claude call uses the Claude CLI's own configured/default model; Samocode's
+  orchestration profile does not silently retarget an explicit second opinion
 - Each call is stateless - no conversation continuity (no `--resume`)
 - API / subscription costs apply per call
 - Mirrors the `codex` skill so either provider can consult the other

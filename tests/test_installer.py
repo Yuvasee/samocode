@@ -289,6 +289,8 @@ def installed_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, fake_src_root
     monkeypatch.setattr(installer, "resolve_asset_source_dir", lambda: fake_src_root)
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
     monkeypatch.delenv("CODEX_HOME", raising=False)
+    # install() bootstraps the global config under HOME/.config; keep it isolated.
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
     return home
 
 
@@ -382,3 +384,104 @@ def test_reinstall_prunes_newly_shadowed_command(
     (fake_src_root / "skills" / "newskill" / "SKILL.md").write_text("skill")
     install(copy=False)
     assert not (claude_commands / "newskill.md").exists()
+
+
+# === Managed-agent copy refresh (Phase 2) ===
+
+
+def test_install_asset_replaces_managed_copy(tmp_path: Path, fake_src_root: Path):
+    """Direct primitive: managed COPY replaces a stale real file (REPLACED)."""
+    src = fake_src_root / "agents" / "quality-agent.md"
+    target = tmp_path / "out" / "quality-agent.md"
+    target.parent.mkdir(parents=True)
+    target.write_text("stale")
+    result = install_asset(
+        src, target, InstallMode.COPY, src_root=fake_src_root, managed=True
+    )
+    assert result.outcome is InstallOutcome.REPLACED
+    assert target.read_text() == "agent"
+
+
+def test_install_asset_managed_skips_symlink_mode(tmp_path: Path, fake_src_root: Path):
+    """managed must not weaken protection in SYMLINK mode: a real file is a user file."""
+    src = fake_src_root / "agents" / "quality-agent.md"
+    target = tmp_path / "out" / "quality-agent.md"
+    target.parent.mkdir(parents=True)
+    target.write_text("user file")
+    result = install_asset(
+        src, target, InstallMode.SYMLINK, src_root=fake_src_root, managed=True
+    )
+    assert result.outcome is InstallOutcome.SKIPPED
+    assert target.read_text() == "user file"
+
+
+def test_install_asset_unmanaged_skips_real_file(tmp_path: Path, fake_src_root: Path):
+    """Non-managed real target stays protected even in COPY mode."""
+    src = fake_src_root / "skills" / "investigation"
+    target = tmp_path / "out" / "investigation"
+    target.parent.mkdir(parents=True)
+    target.write_text("user")
+    result = install_asset(
+        src, target, InstallMode.COPY, src_root=fake_src_root, managed=False
+    )
+    assert result.outcome is InstallOutcome.SKIPPED
+    assert target.read_text() == "user"
+
+
+def test_copy_replaces_stale_managed_agent(installed_env: Path, fake_src_root: Path):
+    """Copy mode force-refreshes a stale real agent file on rerun."""
+    agents = installed_env / ".claude" / "agents"
+    agents.mkdir(parents=True)
+    (agents / "quality-agent.md").write_text("OLD copy")
+    results = install(copy=True)
+    assert (agents / "quality-agent.md").read_text() == "agent"
+    r = next(r for r in results if r.target.name == "quality-agent.md")
+    assert r.outcome is InstallOutcome.REPLACED
+
+
+def test_copy_does_not_replace_unmanaged_skill(installed_env: Path):
+    """Non-managed skills stay protected in copy mode (SKIPPED)."""
+    skills = installed_env / ".claude" / "skills"
+    skills.mkdir(parents=True)
+    (skills / "investigation").mkdir()
+    (skills / "investigation" / "SKILL.md").write_text("USER OWNED")
+    results = install(copy=True)
+    assert (skills / "investigation" / "SKILL.md").read_text() == "USER OWNED"
+    r = next(
+        r
+        for r in results
+        if r.target.name == "investigation" and r.target.parent.name == "skills"
+    )
+    assert r.outcome is InstallOutcome.SKIPPED
+
+
+def test_managed_symlink_mode_protects_foreign(
+    installed_env: Path, fake_src_root: Path
+):
+    """managed flag must not clobber a foreign symlink in symlink mode."""
+    agents = installed_env / ".claude" / "agents"
+    agents.mkdir(parents=True)
+    foreign = installed_env / "other.md"
+    foreign.write_text("mine")
+    (agents / "quality-agent.md").symlink_to(foreign)
+    install(copy=False)
+    assert (agents / "quality-agent.md").resolve() == foreign.resolve()
+
+
+# === install() global-config bootstrap output ===
+
+
+def test_install_prints_config_created(installed_env: Path, capsys):
+    install(copy=True)
+    out = capsys.readouterr().out
+    assert "Global config:" in out
+    assert "created" in out
+    assert "PROVIDER" in out and "PROFILE" in out and "MODEL" in out and "EFFORT" in out
+    assert "claude" in out and "standard" in out
+
+
+def test_install_prints_config_preserved_on_rerun(installed_env: Path, capsys):
+    install(copy=True)
+    capsys.readouterr()
+    install(copy=True)
+    assert "preserved" in capsys.readouterr().out

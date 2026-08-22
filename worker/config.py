@@ -7,6 +7,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from .global_config import GlobalConfig
 from .timestamps import folder_timestamp
 
 # Load .env from samocode root directory (parent of worker/)
@@ -104,13 +105,13 @@ class RuntimeConfig:
         )
 
     def validate(self) -> list[str]:
-        """Validate runtime configuration."""
-        errors: list[str] = []
+        """Validate runtime configuration.
 
-        if self.ai_provider not in {"claude", "codex"}:
-            errors.append(
-                f"Invalid provider '{self.ai_provider}'. Use 'claude' or 'codex'."
-            )
+        Provider membership is validated in worker.startup against the adapter
+        registry (config.py must not import adapters). Here we only probe the
+        selected provider's CLI availability and numeric bounds.
+        """
+        errors: list[str] = []
 
         if self.ai_provider == "claude":
             if not _command_exists(self.claude_path):
@@ -133,11 +134,13 @@ class RuntimeConfig:
 
 @dataclass(frozen=True)
 class SamocodeConfig:
-    """Complete configuration combining project and runtime settings."""
+    """Complete configuration combining project, runtime, and global settings."""
 
     project: ProjectConfig
     runtime: RuntimeConfig
     session_path: Path
+    provider: str = ""  # authoritative selected provider; "" -> use runtime tier
+    global_config: GlobalConfig | None = None  # None => legacy mode; carried for routing
 
     @property
     def main_repo(self) -> Path:
@@ -170,7 +173,8 @@ class SamocodeConfig:
 
     @property
     def ai_provider(self) -> str:
-        return self.runtime.ai_provider
+        # Composition sets `provider`; legacy constructions fall back to the env tier.
+        return self.provider or self.runtime.ai_provider
 
     @property
     def claude_path(self) -> Path:
@@ -206,6 +210,19 @@ class SamocodeConfig:
 
     @property
     def ai_model(self) -> str:
+        """Effective baseline model.
+
+        Global config present -> the selected provider's default-profile model
+        (env CLAUDE_MODEL/CODEX_MODEL never override a valid profile). Absent ->
+        legacy env model. Per-iteration routing refines this per workflow/plan
+        phase via ExecutionTarget; this is the startup/log baseline only.
+        """
+        if self.global_config is not None:
+            profile = self.global_config.profile(
+                self.ai_provider, self.global_config.default_profile
+            )
+            if profile is not None:
+                return profile.model
         return self.claude_model if self.ai_provider == "claude" else self.codex_model
 
     @property

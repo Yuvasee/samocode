@@ -24,10 +24,10 @@ understanding, then record the decisions.
 - Check project docs for related documentation
 - Understand scope and implications
 - **Facts are YOUR job, never the user's.** Anything you can look up (filesystem,
-  code, tools) you find yourself — dispatch a sub-agent for it. Never ask the user
-  for something you could look up. Don't block on a lookup: a running exploration
-  is an unsettled prerequisite, so only the questions downstream of it wait for the
-  sub-agent — ask the rest of the frontier now.
+  code, tools) you find yourself. Dispatch lookup sub-agents with `model: inherit` and
+  no effort override. Never ask the user for something you could look up. Don't block
+  on a lookup: a running exploration is an unsettled prerequisite, so only the questions
+  downstream of it wait for the sub-agent — ask the rest of the frontier now.
 
 ### 2. Grill the user (interactive Q&A)
 

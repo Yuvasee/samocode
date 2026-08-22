@@ -2,7 +2,7 @@
 name: pr-readiness-agent
 description: Final PR readiness gate. Use after testing and quality before done.
 tools: Read, Bash, Glob, Grep, Task, Write, Edit
-model: claude-opus-4-8
+model: inherit
 skills: pr-readiness
 permissionMode: allowEdits
 ---
