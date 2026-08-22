@@ -96,6 +96,50 @@ def test_planning_templates_assign_a_canonical_profile_to_every_phase() -> None:
             assert profile_lines == [first_line], path
 
 
+def test_run_skill_uses_approve_cli_for_plan_approval() -> None:
+    """samocode-run must not manually edit overview state on plan_approval.
+
+    The typed approval model requires `samocode approve` to be the sole
+    mutator of the planning gate; manual _overview.md edits break atomicity.
+    """
+    content = (ROOT / "skills" / "samocode-run" / "SKILL.md").read_text()
+    assert "samocode approve" in content
+    # Must document the --config and --session flags
+    assert "--config" in content
+    assert "--session" in content
+    # Must NOT describe direct Phase field mutation as the approval path
+    stale = "Phase: implementation\n   - `Blocked: no`\n   - `Last Action: Plan approved"
+    assert stale not in content
+
+
+def test_planning_agent_references_approve_cli() -> None:
+    """planning-agent must tell reviewers to use `samocode approve`, not manual edits."""
+    content = (ROOT / "agents" / "planning-agent.md").read_text()
+    assert "samocode approve" in content
+
+
+def test_architecture_source_map_covers_new_modules() -> None:
+    """ARCHITECTURE.md source map must list workflow_event, workflow_state, approval."""
+    content = (ROOT / "ARCHITECTURE.md").read_text()
+    assert "workflow_event.py" in content
+    assert "workflow_state.py" in content
+    assert "approval.py" in content
+
+
+def test_readme_documents_approve_cli() -> None:
+    """README must explain the `samocode approve` command for plan_approval gates."""
+    content = (ROOT / "README.md").read_text()
+    assert "samocode approve" in content
+    assert "plan_approval" in content
+
+
+def test_workflow_documents_plan_approval_gate() -> None:
+    """workflow.md must describe the plan_approval gate and samocode approve."""
+    content = (ROOT / "workflow.md").read_text()
+    assert "plan_approval" in content
+    assert "samocode approve" in content
+
+
 def test_planning_contract_keeps_profile_selection_semantic() -> None:
     skill = (ROOT / "skills" / "planning" / "SKILL.md").read_text()
     agent = (ROOT / "agents" / "planning-agent.md").read_text()

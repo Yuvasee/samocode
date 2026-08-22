@@ -77,12 +77,11 @@ Do NOT assume samocode should run just because a session exists.
    - Read `_overview.md` Status section
    - **If user asked to "implement the plan" or invoked the `/samocode-implement` equivalent:**
      - This is an implementation handoff, not a generic continue.
-     - If `Phase: planning` and the session is waiting for plan approval (`Blocked: waiting_human`, `Next: Await plan approval`, or `_signal.json` has `waiting_for: plan_approval` / `"for": "plan_approval"`), approve the gate before starting samocode:
-       - `Phase: implementation`
-       - `Blocked: no`
-       - `Last Action: Plan approved for implementation`
-       - `Next: Execute first implementation phase`
-       - Add to Flow Log: `- [MM-DD HH:MM] Plan approved for implementation via samocode-run`
+     - If `Phase: planning` and the session is waiting for plan approval (`Blocked: waiting_human`, `Next: Await plan approval`, or `_signal.json` has `"for": "plan_approval"`), approve the gate before starting samocode:
+       ```bash
+       samocode approve --config [PATH_TO_.SAMOCODE] --session [SESSION_NAME]
+       ```
+       The approval service atomically advances the overview state (Phase → implementation, Blocked → no) and consumes the pending signal. Do NOT manually edit `_overview.md` or `_signal.json`.
      - Do NOT start from task-definition, requirements, or planning steps unless no approved/waiting plan exists.
      - If no plan file exists or requirements are incomplete, report that implementation cannot start yet and ask the user how to proceed.
    - **If `Phase: done`:**
@@ -195,10 +194,11 @@ When samocode signals `waiting`:
 1. Report: "Plan ready for review: [full path to plan file]"
 2. If user requested auto-approve: proceed to approval
 3. Otherwise: Ask "Approve this plan?" and wait
-4. On approval, update `_overview.md` (NOT `_signal.json`):
-   - `Phase: implementation`
-   - `Blocked: no`
-   - `Last Action: Plan approved by human`
+4. On approval, run the approval CLI (do NOT manually edit `_overview.md` or `_signal.json`):
+   ```bash
+   samocode approve --config [PATH_TO_.SAMOCODE] --session [SESSION_NAME]
+   ```
+   The service validates the pending gate, atomically advances the overview (Phase → implementation, Blocked → no), and consumes the pending signal. Non-zero exit means approval was rejected — show the error and ask the user how to proceed.
 5. Then restart samocode
 
 **For `waiting_for: qa_answers`:**
@@ -207,9 +207,6 @@ When samocode signals `waiting`:
 3. Otherwise: Wait for user to provide/confirm answers
 4. Update `_qa.md` with answers
 5. Then restart samocode
-
-**CRITICAL: Update `_overview.md`, not `_signal.json`**
-The orchestrator reads phase from `_overview.md`. Writing to `_signal.json` alone will cause loops.
 
 ## Required `.samocode` File
 

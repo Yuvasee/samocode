@@ -227,6 +227,12 @@ The child agent writes `_signal.json` to control the loop:
 | `blocked` | Stop, notify human | `{"status": "blocked", "reason": "...", "needs": "human_decision"}` |
 | `waiting` | Pause for input | `{"status": "waiting", "for": "qa_answers"}` |
 
+**Plan approval gate:** when the planning phase signals `{"status": "waiting", "for": "plan_approval"}`, review the plan and then run:
+```bash
+samocode approve --config ~/project/.samocode --session my-task
+```
+This atomically advances the session to the implementation phase and consumes the pending signal. Do **not** manually edit `_overview.md`.
+
 ## Session Structure
 
 ```

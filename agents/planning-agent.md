@@ -139,7 +139,7 @@ Edit `_overview.md`:
 
 **Do NOT update Phase field** - orchestrator handles it based on signal.
 
-After human approves, parent agent updates `_overview.md` and restarts orchestrator.
+After human reviews, they run `samocode approve --config ... --session ...` which atomically advances the overview state and consumes the pending signal; the parent agent then restarts the orchestrator.
 
 ## Commits
 
