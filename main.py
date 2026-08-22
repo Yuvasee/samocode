@@ -13,11 +13,11 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from worker import (
+    OVERVIEW_FILENAME,
     ApprovalOutcome,
     ExecutionResolutionError,
     ExecutionStatus,
     GlobalConfigError,
-    OVERVIEW_FILENAME,
     OutcomeKind,
     OverviewParseError,
     Phase,

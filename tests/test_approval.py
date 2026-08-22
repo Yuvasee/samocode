@@ -349,6 +349,46 @@ class TestIdempotencyConcurrency:
         assert result.outcome is ApprovalOutcome.ALREADY_ADVANCED
         assert result.advanced is False
 
+    def test_write_phase_moved_maps_to_already_advanced(
+        self, sessions_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # CAS miss at the write stage (concurrent winner after the under-lock check)
+        # is classified as ALREADY_ADVANCED (exit 6), not OVERVIEW_WRITE_FAILED (exit 4).
+        _make_session(sessions_dir)
+        from worker.workflow_state import OverviewWriteError
+
+        def moved(*_a: object, **_k: object) -> OverviewWriteResult:
+            return OverviewWriteResult(
+                ok=False, error=OverviewWriteError.PHASE_MOVED, message="moved"
+            )
+
+        monkeypatch.setattr(approval, "apply_overview_transition", moved)
+        result = approve_session(_project(sessions_dir, tmp_path), "task")
+        assert result.outcome is ApprovalOutcome.ALREADY_ADVANCED
+        assert result.advanced is False
+        assert result.write_error is OverviewWriteError.PHASE_MOVED
+        assert exit_code_for(result) == 6
+
+    def test_under_lock_rejection_with_unchanged_phase_is_honest(
+        self, sessions_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Pre-lock accepted, under-lock rejected, but the phase did NOT move: the honest
+        # cause is check_approval's rejection, not ALREADY_ADVANCED.
+        _make_session(sessions_dir)
+        import contextlib
+
+        @contextlib.contextmanager
+        def clearing_lock(sp: Path):
+            # Signal is consumed under the lock; phase stays 'planning'.
+            (sp / "_signal.json").write_text("{}")
+            yield True
+
+        monkeypatch.setattr(approval, "_approval_lock", clearing_lock)
+        result = approve_session(_project(sessions_dir, tmp_path), "task")
+        assert result.outcome is ApprovalOutcome.REJECTED
+        assert result.rejection is ApprovalRejection.SIGNAL_NOT_WAITING
+        assert result.source_phase is Phase.PLANNING
+
     def test_concurrent_threads_single_advance(
         self, sessions_dir: Path, tmp_path: Path
     ) -> None:

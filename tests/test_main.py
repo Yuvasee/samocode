@@ -154,6 +154,33 @@ class TestProcessSignalBootstrap:
 
         assert result.status is SignalStatus.BLOCKED
         assert result.needs == "investigation"
+        assert "unparseable" in (result.reason or "")
+        assert not (session / "_signal_history.jsonl").exists()
+
+    def test_unreadable_overview_blocks_with_read_reason(self, tmp_path: Path) -> None:
+        # An overview that exists but cannot be read (here: a directory) is reported as
+        # a read failure, distinct from an unparseable file.
+        session = tmp_path / "_sessions" / "task"
+        session.mkdir(parents=True)
+        (session / "_overview.md").mkdir()  # read_text raises OSError -> READ_FAILED
+        sig = _sig(SignalStatus.CONTINUE)
+
+        result = main.process_signal(sig, None, session, 1, _logger())
+
+        assert result.status is SignalStatus.BLOCKED
+        assert "cannot be read" in (result.reason or "")
+        assert not (session / "_signal_history.jsonl").exists()
+
+    def test_smuggled_bootstrap_phase_blocks(self, tmp_path: Path) -> None:
+        # A child-written overview phase that init cannot reach (e.g. 'quality') is
+        # phase smuggling: block instead of trusting it. init->investigation stays valid.
+        session = _session(tmp_path, "quality")
+        sig = _sig(SignalStatus.CONTINUE)
+
+        result = main.process_signal(sig, None, session, 1, _logger())
+
+        assert result.status is SignalStatus.BLOCKED
+        assert "smuggled" in (result.reason or "")
         assert not (session / "_signal_history.jsonl").exists()
 
 
