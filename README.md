@@ -233,6 +233,19 @@ samocode approve --config ~/project/.samocode --session my-task
 ```
 This atomically advances the session to the implementation phase and consumes the pending signal. Do **not** manually edit `_overview.md`.
 
+`samocode approve` exits with a code describing the outcome (also in `--help`):
+
+| Code | Meaning |
+|------|---------|
+| 0 | Approved: this call advanced the phase and consumed the signal |
+| 1 | Rejected: precondition failed (no gate, wrong/absent signal, etc.) |
+| 3 | Lock contended: another approval is in progress; retry |
+| 4 | Overview write failed: state/IO fault, phase not advanced |
+| 5 | Advanced but signal retained: phase advanced; clear stale `_signal.json` |
+| 6 | Already advanced: a concurrent approval crossed the gate first |
+
+(argparse reserves exit code 2 for CLI usage errors.)
+
 ## Session Structure
 
 ```

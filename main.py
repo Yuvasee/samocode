@@ -273,6 +273,17 @@ Examples:
     approve_parser = subparsers.add_parser(
         "approve",
         help="Approve the current phase's pending approval gate and advance it",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "Exit codes:\n"
+            "  0  approved: this call advanced the phase and consumed the signal\n"
+            "  1  rejected: precondition failed (no gate, wrong/absent signal, etc.)\n"
+            "  3  lock contended: another approval is in progress; retry\n"
+            "  4  overview write failed: state/IO fault, phase not advanced\n"
+            "  5  advanced but signal retained: phase advanced; clear stale _signal.json\n"
+            "  6  already advanced: a concurrent approval crossed the gate first\n"
+            "  (2 is reserved by argparse for CLI usage errors)"
+        ),
     )
     approve_parser.add_argument(
         "--config",
