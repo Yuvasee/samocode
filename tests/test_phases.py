@@ -8,12 +8,18 @@ This module tests:
 - Iteration limit checking
 """
 
+import pytest
+
 from worker.phases import (
+    ApprovalGate,
     Phase,
     PHASE_CONFIGS,
+    PhaseConfig,
+    PhaseRegistryError,
     get_agent_for_phase,
     get_phase_config,
     is_iteration_limit_exceeded,
+    validate_phase_registry,
     validate_signal_for_phase,
     validate_transition,
 )
@@ -63,10 +69,10 @@ class TestPhaseConfigs:
         assert len(done_config.allowed_next) == 0
 
     def test_pr_readiness_transitions_only_to_done(self) -> None:
-        """PR readiness is the explicit gate before done."""
+        """PR readiness transitions only to done, and auto-continues (no gate)."""
         readiness_config = PHASE_CONFIGS[Phase.PR_READINESS]
         assert readiness_config.allowed_next == frozenset({Phase.DONE})
-        assert readiness_config.requires_gate
+        assert readiness_config.approval_gate is None
 
     def test_done_only_allows_done_signal(self) -> None:
         """Done phase only allows 'done' or 'blocked' signals."""
@@ -80,22 +86,88 @@ class TestPhaseConfigs:
         init_config = PHASE_CONFIGS[Phase.INIT]
         assert "done" not in init_config.allowed_signals
 
-    def test_requirements_and_planning_have_gates(self) -> None:
-        """Requirements and planning phases require gates."""
-        assert PHASE_CONFIGS[Phase.REQUIREMENTS].requires_gate
-        assert PHASE_CONFIGS[Phase.PLANNING].requires_gate
+    def test_planning_owns_approval_gate(self) -> None:
+        """Planning owns the only approval gate to implementation."""
+        gate = PHASE_CONFIGS[Phase.PLANNING].approval_gate
+        assert gate is not None
+        assert gate.waiting_for == "plan_approval"
+        assert gate.approved_next == Phase.IMPLEMENTATION
+        assert "plan_approval" in PHASE_CONFIGS[Phase.PLANNING].allowed_waits
 
-    def test_other_phases_no_gates(self) -> None:
-        """Other phases don't require gates."""
-        for phase in [
-            Phase.INIT,
-            Phase.INVESTIGATION,
-            Phase.IMPLEMENTATION,
-            Phase.TESTING,
-            Phase.QUALITY,
-            Phase.DONE,
-        ]:
-            assert not PHASE_CONFIGS[phase].requires_gate
+    def test_requirements_is_input_wait_not_gate(self) -> None:
+        """Requirements is an input wait for qa_answers with no approval gate."""
+        config = PHASE_CONFIGS[Phase.REQUIREMENTS]
+        assert config.approval_gate is None
+        assert config.allowed_waits == frozenset({"qa_answers"})
+
+    def test_implementation_operational_wait_no_gate(self) -> None:
+        """Implementation may wait on human_action with no approval gate."""
+        config = PHASE_CONFIGS[Phase.IMPLEMENTATION]
+        assert config.approval_gate is None
+        assert "human_action" in config.allowed_waits
+
+    def test_only_planning_owns_a_gate(self) -> None:
+        """Planning is the sole gated phase; all others are gateless."""
+        for phase, config in PHASE_CONFIGS.items():
+            if phase is Phase.PLANNING:
+                assert config.approval_gate is not None
+            else:
+                assert config.approval_gate is None
+
+
+class TestRegistryInvariants:
+    """Tests for validate_phase_registry."""
+
+    def _cfg(self, **kw: object) -> PhaseConfig:
+        base: dict[str, object] = {
+            "phase": Phase.PLANNING,
+            "agent_name": "planning-agent",
+            "allowed_next": frozenset({Phase.IMPLEMENTATION}),
+            "allowed_signals": frozenset({"continue", "waiting", "blocked"}),
+            "max_iterations": 10,
+            "default_profile": "max",
+        }
+        base.update(kw)
+        return PhaseConfig(**base)  # type: ignore[arg-type]
+
+    def test_live_registry_passes(self) -> None:
+        """The shipped registry satisfies all invariants."""
+        validate_phase_registry(PHASE_CONFIGS)
+
+    def test_gate_target_must_be_allowed_next(self) -> None:
+        bad = self._cfg(
+            allowed_waits=frozenset({"plan_approval"}),
+            approval_gate=ApprovalGate("plan_approval", Phase.TESTING),
+        )
+        with pytest.raises(PhaseRegistryError, match="not in allowed_next"):
+            validate_phase_registry({Phase.PLANNING: bad})
+
+    def test_gate_reason_must_be_allowed_wait(self) -> None:
+        bad = self._cfg(
+            allowed_waits=frozenset({"qa_answers"}),
+            approval_gate=ApprovalGate("plan_approval", Phase.IMPLEMENTATION),
+        )
+        with pytest.raises(PhaseRegistryError, match="allowed_wait"):
+            validate_phase_registry({Phase.PLANNING: bad})
+
+    def test_terminal_phase_cannot_own_gate(self) -> None:
+        bad = self._cfg(
+            phase=Phase.DONE,
+            agent_name="done-agent",
+            allowed_next=frozenset(),
+            allowed_waits=frozenset({"plan_approval"}),
+            approval_gate=ApprovalGate("plan_approval", Phase.IMPLEMENTATION),
+        )
+        with pytest.raises(PhaseRegistryError, match="Terminal phase"):
+            validate_phase_registry({Phase.DONE: bad})
+
+    def test_allowed_waits_requires_waiting_signal(self) -> None:
+        bad = self._cfg(
+            allowed_signals=frozenset({"continue", "blocked"}),
+            allowed_waits=frozenset({"human_action"}),
+        )
+        with pytest.raises(PhaseRegistryError, match="waiting"):
+            validate_phase_registry({Phase.PLANNING: bad})
 
 
 class TestGetPhaseConfig:

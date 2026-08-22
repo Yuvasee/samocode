@@ -100,7 +100,7 @@ def validate_and_process_signal(
         current_config = get_phase_config(current_phase)
         if (
             current_config
-            and current_config.requires_gate
+            and current_config.approval_gate is not None
             and signal.status != SignalStatus.WAITING
         ):
             logger.error(

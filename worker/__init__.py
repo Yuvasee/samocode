@@ -29,11 +29,14 @@ from .logging import add_session_handler, setup_logging
 from .notifications import notify_blocked, notify_complete, notify_error, notify_waiting
 from .phases import (
     PHASE_CONFIGS,
+    ApprovalGate,
     Phase,
     PhaseConfig,
+    PhaseRegistryError,
     get_agent_for_phase,
     get_phase_config,
     is_iteration_limit_exceeded,
+    validate_phase_registry,
     validate_signal_for_phase,
     validate_transition,
 )
@@ -67,6 +70,12 @@ from .signals import (
     SignalStatus,
     clear_signal_file,
     read_signal_file,
+)
+from .workflow_event import (
+    RejectionReason,
+    WorkflowEvent,
+    WorkflowEventResult,
+    validate_workflow_event,
 )
 from .startup import (
     LEGACY_DEFAULT_PROVIDER,
@@ -117,12 +126,15 @@ __all__ = [
     "notify_error",
     "notify_waiting",
     # Phases
+    "ApprovalGate",
     "Phase",
     "PhaseConfig",
+    "PhaseRegistryError",
     "PHASE_CONFIGS",
     "get_agent_for_phase",
     "get_phase_config",
     "is_iteration_limit_exceeded",
+    "validate_phase_registry",
     "validate_signal_for_phase",
     "validate_transition",
     # Routing
@@ -152,6 +164,11 @@ __all__ = [
     "SignalStatus",
     "clear_signal_file",
     "read_signal_file",
+    # Workflow events
+    "RejectionReason",
+    "WorkflowEvent",
+    "WorkflowEventResult",
+    "validate_workflow_event",
     # Startup
     "LEGACY_DEFAULT_PROVIDER",
     "StartupComposition",

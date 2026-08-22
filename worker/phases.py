@@ -24,6 +24,21 @@ class Phase(Enum):
     DONE = "done"
 
 
+class PhaseRegistryError(Exception):
+    """Raised at import time when PHASE_CONFIGS violates a registry invariant."""
+
+
+@dataclass(frozen=True)
+class ApprovalGate:
+    """A single outbound transition that requires out-of-band human approval.
+
+    approved_next is reachable only via the approval service, never plain `continue`.
+    """
+
+    waiting_for: str  # wait reason the phase pauses on before approval
+    approved_next: Phase  # phase entered once approval is granted
+
+
 @dataclass(frozen=True)
 class PhaseConfig:
     """Configuration for a single phase."""
@@ -34,7 +49,8 @@ class PhaseConfig:
     allowed_signals: frozenset[str]  # SignalStatus values
     max_iterations: int
     default_profile: str  # Model-routing profile name; worker/routing.py resolves it
-    requires_gate: bool = False  # True if phase requires explicit gate check
+    allowed_waits: frozenset[str] = frozenset()  # valid `waiting` reasons for this phase
+    approval_gate: ApprovalGate | None = None  # gate owning one approval transition
 
     def can_transition_to(self, target: Phase) -> bool:
         """Check if transition to target phase is valid."""
@@ -43,6 +59,19 @@ class PhaseConfig:
     def is_signal_allowed(self, signal_status: str) -> bool:
         """Check if signal status is valid for this phase."""
         return signal_status.lower() in self.allowed_signals
+
+    def is_wait_allowed(self, reason: str | None) -> bool:
+        """Check if `reason` is a non-empty configured wait for this phase."""
+        return bool(reason) and reason in self.allowed_waits
+
+    def gate_owns_transition(self, target: Phase) -> bool:
+        """Check if reaching `target` requires approval, not a plain `continue`."""
+        return self.approval_gate is not None and self.approval_gate.approved_next == target
+
+    @property
+    def is_terminal(self) -> bool:
+        """Check if this phase has no outgoing transitions."""
+        return len(self.allowed_next) == 0
 
 
 # Phase configuration registry - single source of truth
@@ -70,7 +99,7 @@ PHASE_CONFIGS: dict[Phase, PhaseConfig] = {
         allowed_signals=frozenset({"continue", "waiting", "blocked"}),
         max_iterations=10,
         default_profile="strong",
-        requires_gate=True,  # Requires Q&A answers
+        allowed_waits=frozenset({"qa_answers"}),  # input wait; no approval gate
     ),
     Phase.PLANNING: PhaseConfig(
         phase=Phase.PLANNING,
@@ -79,7 +108,8 @@ PHASE_CONFIGS: dict[Phase, PhaseConfig] = {
         allowed_signals=frozenset({"continue", "waiting", "blocked"}),
         max_iterations=10,
         default_profile="max",
-        requires_gate=True,  # Requires human approval
+        allowed_waits=frozenset({"plan_approval"}),
+        approval_gate=ApprovalGate("plan_approval", Phase.IMPLEMENTATION),
     ),
     Phase.IMPLEMENTATION: PhaseConfig(
         phase=Phase.IMPLEMENTATION,
@@ -89,6 +119,7 @@ PHASE_CONFIGS: dict[Phase, PhaseConfig] = {
         allowed_signals=frozenset({"continue", "waiting", "blocked"}),
         max_iterations=100,
         default_profile="standard",  # Fallback when a plan phase has no explicit profile
+        allowed_waits=frozenset({"human_action"}),  # operational wait; no gate
     ),
     Phase.TESTING: PhaseConfig(
         phase=Phase.TESTING,
@@ -114,7 +145,7 @@ PHASE_CONFIGS: dict[Phase, PhaseConfig] = {
         allowed_signals=frozenset({"continue", "blocked"}),
         max_iterations=5,
         default_profile="strong",
-        requires_gate=True,
+        # No approval_gate: successful readiness auto-continues to done (accepted policy)
     ),
     Phase.DONE: PhaseConfig(
         phase=Phase.DONE,
@@ -125,6 +156,44 @@ PHASE_CONFIGS: dict[Phase, PhaseConfig] = {
         default_profile="light",
     ),
 }
+
+
+def validate_phase_registry(configs: dict[Phase, PhaseConfig]) -> None:
+    """Assert registry invariants. Raise PhaseRegistryError on the first violation.
+
+    1. A phase declaring allowed_waits must permit the `waiting` signal.
+    2. A terminal phase may not own an approval_gate.
+    3. An approval_gate's approved_next must be in allowed_next.
+    4. An approval_gate's waiting_for must be a configured allowed_wait.
+    """
+    for phase, config in configs.items():
+        name = phase.value
+
+        if config.allowed_waits and "waiting" not in config.allowed_signals:
+            raise PhaseRegistryError(
+                f"Phase '{name}' declares allowed_waits {sorted(config.allowed_waits)} "
+                f"but does not permit the 'waiting' signal"
+            )
+
+        gate = config.approval_gate
+        if gate is None:
+            continue
+
+        if config.is_terminal:
+            raise PhaseRegistryError(f"Terminal phase '{name}' cannot own an approval_gate")
+        if gate.approved_next not in config.allowed_next:
+            raise PhaseRegistryError(
+                f"Phase '{name}' approval target '{gate.approved_next.value}' "
+                f"is not in allowed_next {[p.value for p in config.allowed_next]}"
+            )
+        if not config.is_wait_allowed(gate.waiting_for):
+            raise PhaseRegistryError(
+                f"Phase '{name}' approval reason '{gate.waiting_for}' "
+                f"is not a configured allowed_wait {sorted(config.allowed_waits)}"
+            )
+
+
+validate_phase_registry(PHASE_CONFIGS)  # module-load fail-fast
 
 
 def get_phase_config(phase_str: str | None) -> PhaseConfig | None:
