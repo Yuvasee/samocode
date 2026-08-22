@@ -109,11 +109,13 @@ def _resolve_bootstrap_phase(
 ) -> BootstrapPhase:
     """Resolve the source phase for an iteration whose pre-run phase was unknown.
 
-    No overview yet -> the session is bootstrapping at init (validated/counted/recorded
-    against init). A now-parseable overview (the child just created it) -> its recorded
-    phase, but only if init may legally reach it: the bootstrap authority is init, so a
-    child-written phase that is neither init nor an init successor is phase smuggling and
-    is blocked. Unreadable vs unparseable overviews are reported distinctly.
+    Init is the authoritative source for a bootstrap iteration: the child ran the init
+    step and cannot self-declare a later phase. No overview yet -> init. A now-parseable
+    overview the child just wrote is trusted only to guard against smuggling: its phase
+    must be init or a legal init successor, else it is blocked. The returned source is
+    always init, so this iteration's signal is validated as an init event and cannot
+    advance more than one phase (init -> its successor) in a single provider iteration.
+    Unreadable vs unparseable overviews are reported distinctly.
     """
     parsed = read_overview_state(session_path)
     if parsed.error is OverviewParseError.FILE_NOT_FOUND:
@@ -136,7 +138,7 @@ def _resolve_bootstrap_phase(
         )
         logger.error(reason)
         return BootstrapPhase(phase=None, block_reason=reason)
-    return BootstrapPhase(phase=written.value)
+    return BootstrapPhase(phase=Phase.INIT.value)
 
 
 # Rejections a human (not the agent) must resolve; all others need more investigation.
@@ -279,9 +281,12 @@ Examples:
             "  0  approved: this call advanced the phase and consumed the signal\n"
             "  1  rejected: precondition failed (no gate, wrong/absent signal, etc.)\n"
             "  3  lock contended: another approval is in progress; retry\n"
-            "  4  overview write failed: state/IO fault, phase not advanced\n"
-            "  5  advanced but signal retained: phase advanced; clear stale _signal.json\n"
-            "  6  already advanced: a concurrent approval crossed the gate first\n"
+            "  4  state/IO fault: overview write, lock I/O, or phase moved off the "
+            "gate target; phase not advanced\n"
+            "  5  advanced but signal retained: phase advanced; retained _signal.json "
+            "is inert, cleanup optional\n"
+            "  6  already advanced: another approval reached the gate target; this "
+            "call made no change\n"
             "  (2 is reserved by argparse for CLI usage errors)"
         ),
     )

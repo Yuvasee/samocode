@@ -134,15 +134,31 @@ class TestProcessSignalBootstrap:
         assert result.status is SignalStatus.BLOCKED
         assert "iteration limit" in (result.reason or "")
 
-    def test_parseable_overview_uses_recorded_phase(self, tmp_path: Path) -> None:
-        # Child created a valid overview during this run: its phase is authoritative.
+    def test_parseable_successor_overview_is_recorded_against_init(
+        self, tmp_path: Path
+    ) -> None:
+        # Init is the authoritative bootstrap source: even when the child wrote a legal
+        # init successor into the overview, this iteration is counted/recorded as init,
+        # never trusting the child's self-declared later phase.
         session = _session(tmp_path, "investigation")
         sig = _sig(SignalStatus.CONTINUE)
 
         result = main.process_signal(sig, None, session, 1, _logger())
 
         assert result.status is SignalStatus.CONTINUE
-        assert _history_rows(session)[0]["source_phase"] == "investigation"
+        assert _history_rows(session)[0]["source_phase"] == "init"
+
+    def test_bootstrap_signal_cannot_skip_past_successor(self, tmp_path: Path) -> None:
+        # A child that wrote 'investigation' and then signals a jump to 'requirements'
+        # must not advance two phases in one iteration: validated as an init event,
+        # init->requirements is rejected (init reaches only investigation).
+        session = _session(tmp_path, "investigation")
+        sig = _sig(SignalStatus.CONTINUE, phase="requirements")
+
+        result = main.process_signal(sig, None, session, 1, _logger())
+
+        assert result.status is SignalStatus.BLOCKED
+        assert _history_rows(session)[0]["source_phase"] == "init"
 
     def test_unparseable_overview_blocks(self, tmp_path: Path) -> None:
         session = tmp_path / "_sessions" / "task"
