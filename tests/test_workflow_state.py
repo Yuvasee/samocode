@@ -1,5 +1,7 @@
 """Tests for worker/workflow_state.py - strict parsing, atomic mutation, processing."""
 
+import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -335,8 +337,10 @@ class TestSessionLockSerialization:
         assert "Phase: requirements\n" in (temp_session / "_overview.md").read_text()
 
     def test_process_event_refused_while_session_lock_held(
-        self, temp_session: Path
+        self, temp_session: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        # Shorten the worker's bounded wait so the held-lock case returns promptly.
+        monkeypatch.setattr(ws, "WORKER_LOCK_WAIT_SECONDS", 0.05)
         before = _write_overview(temp_session, phase="investigation").read_text()
         with session_lock(temp_session) as held:
             assert held.state is LockState.ACQUIRED
@@ -350,6 +354,79 @@ class TestSessionLockSerialization:
         assert outcome.kind is OutcomeKind.REJECTED_MUTATION
         assert outcome.write_error is OverviewWriteError.LOCK_UNAVAILABLE
         assert not outcome.mutated
+        assert (temp_session / "_overview.md").read_text() == before
+
+
+class TestWorkerLockWait:
+    """RV3-001: the worker waits out transient contention; approval stays fail-fast.
+
+    flock treats two open descriptions independently even within one process, so a
+    background thread holding its own `session_lock` fd blocks the main thread's apply
+    fd deterministically - no reliance on wall-clock timing beyond the hold interval.
+    """
+
+    def test_apply_waits_for_lock_release(self, temp_session: Path) -> None:
+        _write_overview(temp_session, phase="investigation")
+        acquired = threading.Event()
+        release = threading.Event()
+
+        def holder() -> None:
+            with session_lock(temp_session) as held:
+                assert held.state is LockState.ACQUIRED
+                acquired.set()
+                release.wait(1.0)
+
+        thread = threading.Thread(target=holder)
+        thread.start()
+        try:
+            assert acquired.wait(1.0)
+            # Release the holder shortly; the waiting worker must then acquire and write.
+            timer = threading.Timer(0.15, release.set)
+            timer.start()
+            result = apply_overview_transition(
+                temp_session,
+                OverviewTransition(target_phase=Phase.REQUIREMENTS),
+                expected_source=Phase.INVESTIGATION,
+                wait_timeout=5.0,
+            )
+            timer.cancel()
+        finally:
+            release.set()
+            thread.join(1.0)
+
+        assert result.ok
+        assert "Phase: requirements\n" in (temp_session / "_overview.md").read_text()
+
+    def test_apply_gives_up_when_wait_timeout_elapses(self, temp_session: Path) -> None:
+        before = _write_overview(temp_session, phase="investigation").read_text()
+        acquired = threading.Event()
+        release = threading.Event()
+
+        def holder() -> None:
+            with session_lock(temp_session) as held:
+                assert held.state is LockState.ACQUIRED
+                acquired.set()
+                release.wait(1.0)
+
+        thread = threading.Thread(target=holder)
+        thread.start()
+        try:
+            assert acquired.wait(1.0)
+            start = time.monotonic()
+            result = apply_overview_transition(
+                temp_session,
+                OverviewTransition(target_phase=Phase.REQUIREMENTS),
+                expected_source=Phase.INVESTIGATION,
+                wait_timeout=0.05,
+            )
+            elapsed = time.monotonic() - start
+        finally:
+            release.set()
+            thread.join(1.0)
+
+        assert not result.ok
+        assert result.error is OverviewWriteError.LOCK_UNAVAILABLE
+        assert elapsed < 1.0  # gave up near the timeout, not at the holder's release
         assert (temp_session / "_overview.md").read_text() == before
 
 

@@ -20,6 +20,7 @@ import fcntl
 import os
 import re
 import tempfile
+import time
 from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import datetime
@@ -233,6 +234,12 @@ def atomic_write_text(target: Path, content: str, *, encoding: str = "utf-8") ->
 
 SESSION_LOCK_FILENAME = "_session.lock"
 
+# The worker absorbs transient contention from a concurrent approve CLI by waiting up to
+# this long for the lock; approval itself stays non-blocking fail-fast (wait_timeout=None).
+WORKER_LOCK_WAIT_SECONDS = 5.0
+
+_LOCK_RETRY_INTERVAL_SECONDS = 0.05
+
 
 class LockState(Enum):
     """Outcome of attempting the advisory session lock."""
@@ -251,7 +258,9 @@ class LockOutcome:
 
 
 @contextlib.contextmanager
-def session_lock(session_path: Path) -> Iterator[LockOutcome]:
+def session_lock(
+    session_path: Path, *, wait_timeout: float | None = None
+) -> Iterator[LockOutcome]:
     """Yield the lock outcome; ACQUIRED holds an exclusive advisory lock for the body.
 
     One lock file per session serializes every overview compare-and-replace, whether
@@ -263,6 +272,12 @@ def session_lock(session_path: Path) -> Iterator[LockOutcome]:
     (unlinking would let two processes lock different inodes); the lock is bound to the
     fd, released on exit, and by the kernel on process death, so no stale lock survives a
     crash.
+
+    `wait_timeout` distinguishes the two callers. None (approval): a single non-blocking
+    attempt; contention yields CONTENDED at once (fail-fast). A value (worker): retry the
+    non-blocking flock every `_LOCK_RETRY_INTERVAL_SECONDS`, measured against a
+    `time.monotonic()` deadline, and yield CONTENDED only if still held when it elapses,
+    so a concurrent approval's brief lock hold is absorbed instead of blocking the run.
     """
     try:
         fd = os.open(
@@ -272,14 +287,21 @@ def session_lock(session_path: Path) -> Iterator[LockOutcome]:
         yield LockOutcome(LockState.FAILED, f"Cannot open session lock file: {exc}")
         return
     try:
-        try:
-            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
-            yield LockOutcome(LockState.CONTENDED)
-            return
-        except OSError as exc:
-            yield LockOutcome(LockState.FAILED, f"Cannot acquire session lock: {exc}")
-            return
+        deadline = None if wait_timeout is None else time.monotonic() + wait_timeout
+        while True:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                if deadline is None or time.monotonic() >= deadline:
+                    yield LockOutcome(LockState.CONTENDED)
+                    return
+                time.sleep(_LOCK_RETRY_INTERVAL_SECONDS)
+            except OSError as exc:
+                yield LockOutcome(
+                    LockState.FAILED, f"Cannot acquire session lock: {exc}"
+                )
+                return
         try:
             yield LockOutcome(LockState.ACQUIRED)
         finally:
@@ -396,6 +418,8 @@ def apply_overview_transition(
     session_path: Path,
     transition: OverviewTransition,
     expected_source: Phase | None = None,
+    *,
+    wait_timeout: float | None = None,
 ) -> OverviewWriteResult:
     """Acquire the session lock, then re-read, render, and atomically write the transition.
 
@@ -404,9 +428,11 @@ def apply_overview_transition(
     contended or faulted; callers already holding the lock use
     `apply_overview_transition_locked` instead to avoid self-deadlock on a second fd.
     Serializing every compare-and-replace under one lock stops a concurrent approval and
-    the worker's event processor from losing an update.
+    the worker's event processor from losing an update. `wait_timeout` is forwarded to
+    `session_lock`: the worker passes a bounded value to wait out transient contention,
+    while approval-side callers leave it None (fail-fast).
     """
-    with session_lock(session_path) as lock:
+    with session_lock(session_path, wait_timeout=wait_timeout) as lock:
         if lock.state is not LockState.ACQUIRED:
             return OverviewWriteResult(
                 ok=False,
@@ -559,6 +585,7 @@ def process_workflow_event(
         session_path,
         OverviewTransition(target_phase=result.target_phase, flow_log_entry=entry),
         expected_source=result.source_phase,
+        wait_timeout=WORKER_LOCK_WAIT_SECONDS,
     )
     if not write.ok:
         return ProcessedOutcome(
