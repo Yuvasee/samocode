@@ -281,6 +281,51 @@ class TestProcessSignalBootstrap:
         assert "reset FAILED" in reason
         assert "quarantine rename also FAILED" in reason
 
+    def test_already_init_reset_is_achieved_no_quarantine(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # RV3-004: a PHASE_MOVED miss whose observed phase is init means a concurrent
+        # actor already reset it. That is achieved, not a failure: no quarantine rename.
+        session = _session(tmp_path, "quality")
+        replace_calls: list[tuple[object, object]] = []
+
+        def spy_replace(src: object, dst: object) -> None:
+            replace_calls.append((src, dst))
+
+        def moved(*_a: object, **_k: object) -> OverviewWriteResult:
+            return OverviewWriteResult(
+                ok=False,
+                error=OverviewWriteError.PHASE_MOVED,
+                observed_phase=Phase.INIT,
+                message="moved",
+            )
+
+        monkeypatch.setattr(main.os, "replace", spy_replace)
+        monkeypatch.setattr(main, "apply_overview_transition", moved)
+        bootstrap = main._resolve_bootstrap_phase(session, _logger())
+
+        assert bootstrap.phase is None
+        assert "already at init" in (bootstrap.block_reason or "")
+        assert replace_calls == []  # no quarantine rename attempted
+
+    def test_reset_normalizes_blocked_to_no(self, tmp_path: Path) -> None:
+        # RV3-004: the reset transition carries blocked="no", so a persisted
+        # Blocked: waiting_human from the smuggled overview is normalized on reset.
+        session = tmp_path / "_sessions" / "task"
+        session.mkdir(parents=True)
+        (session / "_overview.md").write_text(
+            _overview_text("quality", blocked="waiting_human")
+        )
+
+        bootstrap = main._resolve_bootstrap_phase(session, _logger())
+
+        assert bootstrap.phase is None
+        assert "reset to init" in (bootstrap.block_reason or "")
+        parsed = read_overview_state(session)
+        assert parsed.state is not None
+        assert parsed.state.phase is Phase.INIT
+        assert parsed.state.blocked == "no"
+
 
 # =============================================================================
 # Accepted outcomes

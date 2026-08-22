@@ -21,6 +21,7 @@ from worker import (
     OutcomeKind,
     OverviewParseError,
     OverviewTransition,
+    OverviewWriteError,
     Phase,
     PlanResolutionError,
     ProcessedOutcome,
@@ -144,6 +145,7 @@ def _resolve_bootstrap_phase(
             session_path,
             OverviewTransition(
                 target_phase=Phase.INIT,
+                blocked="no",
                 last_action=(
                     f"Bootstrap rejected smuggled phase '{written.value}'; reset to init"
                 ),
@@ -153,6 +155,13 @@ def _resolve_bootstrap_phase(
         )
         if reset.ok:
             reset_note = "; overview reset to init"
+        elif (
+            reset.error is OverviewWriteError.PHASE_MOVED
+            and reset.observed_phase is Phase.INIT
+        ):
+            # A concurrent actor already reset to init; the desired state is achieved, so
+            # this is not a failure and needs no quarantine.
+            reset_note = "; overview already at init"
         else:
             # Independent quarantine: the in-place reset failed, so rename the overview
             # aside with a distinct syscall. A restart then finds no overview and cleanly
