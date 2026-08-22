@@ -485,9 +485,10 @@ def cmd_install(args: argparse.Namespace) -> None:
 def cmd_approve(args: argparse.Namespace) -> None:
     """Approve a session's pending gate and map the typed result to an exit code."""
     result = approve(Path(args.config).expanduser().resolve(), args.session)
+    # ALREADY_ADVANCED is a fail-fast rejection (a concurrent winner advanced the
+    # phase), so it is not treated as success and prints to stderr.
     succeeded = result.outcome in (
         ApprovalOutcome.APPROVED,
-        ApprovalOutcome.ALREADY_ADVANCED,
         ApprovalOutcome.APPROVED_SIGNAL_RETAINED,
     )
     stream = sys.stdout if succeeded else sys.stderr

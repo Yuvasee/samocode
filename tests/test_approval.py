@@ -521,7 +521,7 @@ class TestApproveConfigAndCli:
         )
         assert exit_code_for(r) == 0
 
-    def test_exit_code_already_advanced_zero(self) -> None:
+    def test_exit_code_already_advanced_fails_fast(self) -> None:
         from worker.approval import ApprovalResult
 
         r = ApprovalResult(
@@ -530,7 +530,7 @@ class TestApproveConfigAndCli:
             Phase.PLANNING,
             Phase.IMPLEMENTATION,
         )
-        assert exit_code_for(r) == 0
+        assert exit_code_for(r) == 6
 
     def test_exit_code_signal_retained_five(self) -> None:
         from worker.approval import ApprovalResult

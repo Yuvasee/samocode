@@ -385,12 +385,15 @@ _REJECTION_EXIT_CODES: dict[ApprovalRejection, int] = {
 def exit_code_for(result: ApprovalResult) -> int:
     """Map an approval result to a process exit code.
 
-    0 success/no-op (APPROVED, ALREADY_ADVANCED); 5 advanced-but-signal-retained;
-    3 lock contention (retryable); 4 overview write fault; 1 all other rejections.
-    argparse independently reserves 2 for CLI usage errors.
+    0 only for APPROVED (this caller advanced the phase); 6 ALREADY_ADVANCED (a
+    concurrent winner advanced it, this attempt did not -> fail-fast, distinct code);
+    5 advanced-but-signal-retained; 3 lock contention (retryable); 4 overview write
+    fault; 1 all other rejections. argparse independently reserves 2 for usage errors.
     """
-    if result.outcome in (ApprovalOutcome.APPROVED, ApprovalOutcome.ALREADY_ADVANCED):
+    if result.outcome is ApprovalOutcome.APPROVED:
         return 0
+    if result.outcome is ApprovalOutcome.ALREADY_ADVANCED:
+        return 6
     if result.outcome is ApprovalOutcome.APPROVED_SIGNAL_RETAINED:
         return 5
     if result.rejection is not None:
