@@ -15,133 +15,110 @@ from worker import (
     ExecutionResolutionError,
     ExecutionStatus,
     GlobalConfigError,
-    OverviewTransition,
-    Phase,
+    OutcomeKind,
     PlanResolutionError,
+    ProcessedOutcome,
+    RejectionReason,
     Signal,
     SignalStatus,
     add_session_handler,
-    apply_overview_transition,
     clear_signal_file,
     compose_startup,
+    count_source_phase_iterations,
     extract_phase,
     extract_total_iterations,
-    get_phase_config,
-    get_phase_iteration_count,
     global_config_path,
     increment_total_iterations,
     install,
-    is_iteration_limit_exceeded,
     notify_blocked,
     notify_complete,
     notify_error,
     notify_waiting,
+    process_workflow_event,
     read_signal_file,
-    record_signal,
+    record_processed_outcome,
     run_ai_with_retry,
     setup_logging,
     supported_providers,
     uninstall,
-    validate_signal_for_phase,
-    validate_transition,
 )
 
 
-def validate_and_process_signal(
+def process_signal(
     signal: Signal,
-    current_phase: str | None,
+    source_phase: str | None,
     session_path: Path,
     iteration: int,
     logger: logging.Logger,
 ) -> Signal:
-    """Validate signal and enforce phase constraints.
+    """Validate one iteration's signal, record it, and return the effective signal.
 
-    Returns the signal (possibly modified if invalid).
-    Records signal to history.
+    Delegates every rule to `process_workflow_event` (the single validation +
+    atomic-mutation authority) and every audit row to `record_processed_outcome`.
+    Accepted events return the child's original signal unchanged; rejected events
+    become an explicit BLOCKED with a truthful reason and needs.
     """
-    # Record signal to history first (even if invalid)
-    record_signal(session_path, signal, iteration, current_phase)
+    # Bootstrap: a brand-new session has no authoritative prior phase yet (the child
+    # creates _overview.md during this run). Nothing to validate, count, or record.
+    if source_phase is None:
+        return signal
 
-    signal_phase = signal.phase or current_phase
+    # source_iterations must count this run: history is written AFTER processing, so
+    # the current iteration is not yet recorded. validate_workflow_event trips on
+    # count > max, so +1 makes the (max+1)-th run in a phase the boundary.
+    source_iterations = count_source_phase_iterations(session_path, source_phase) + 1
 
-    # Validate signal is allowed for phase
-    # Use current_phase for validation (where agent IS), not target phase (where it wants to GO)
-    # This allows "continue" signal when transitioning to done phase
-    validation_phase = current_phase or signal_phase
-    is_valid, error = validate_signal_for_phase(validation_phase, signal.status.value)
-    if not is_valid:
-        logger.error(f"Invalid signal: {error}")
-        return Signal(
-            status=SignalStatus.BLOCKED,
-            phase=signal_phase,
-            reason=f"Invalid signal: {error}",
-            needs="investigation",
-        )
+    outcome = process_workflow_event(
+        session_path, signal, source_phase, source_iterations, iteration
+    )
+    # Record every iteration where the source phase is known, including rejected ones,
+    # so per-phase counting stays truthful.
+    record_processed_outcome(session_path, signal, iteration, outcome)
 
-    # Check per-phase iteration limit
-    if signal_phase:
-        phase_iterations = get_phase_iteration_count(session_path, signal_phase)
-        exceeded, max_allowed = is_iteration_limit_exceeded(
-            signal_phase, phase_iterations
-        )
-        if exceeded:
-            logger.error(
-                f"Phase '{signal_phase}' exceeded iteration limit: "
-                f"{phase_iterations} > {max_allowed}"
-            )
-            return Signal(
-                status=SignalStatus.BLOCKED,
-                phase=signal_phase,
-                reason=f"Phase '{signal_phase}' exceeded {max_allowed} iteration limit",
-                needs="investigation",
-            )
+    return _signal_for_outcome(signal, outcome, source_phase, logger)
 
-    # Validate phase transition (if signal indicates phase change)
-    if signal.phase and current_phase and signal.phase.lower() != current_phase.lower():
-        # Enforce gate: gated phases must signal 'waiting' before transitioning
-        current_config = get_phase_config(current_phase)
-        if (
-            current_config
-            and current_config.approval_gate is not None
-            and signal.status != SignalStatus.WAITING
-        ):
-            logger.error(
-                f"Phase '{current_phase}' requires gate: must signal 'waiting' before transitioning"
-            )
-            return Signal(
-                status=SignalStatus.BLOCKED,
-                phase=current_phase,
-                reason=f"Phase '{current_phase}' requires human approval before transitioning",
-                needs="human_decision",
-            )
 
-        is_valid, error = validate_transition(current_phase, signal.phase)
-        if not is_valid:
-            logger.error(error)
-            return Signal(
-                status=SignalStatus.BLOCKED,
-                phase=current_phase,
-                reason=error,
-                needs="investigation",
-            )
-        # Atomically update _overview.md Phase (single source of truth). A write
-        # failure becomes an explicit rejection instead of a silent no-op.
-        write = apply_overview_transition(
-            session_path, OverviewTransition(target_phase=Phase(signal.phase.lower()))
-        )
-        if write.ok:
-            logger.info(f"Phase updated: {current_phase} -> {signal.phase}")
-        else:
-            detail = write.message or (write.error.value if write.error else "unknown")
-            logger.error(f"Overview mutation failed: {detail}")
-            return Signal(
-                status=SignalStatus.BLOCKED,
-                phase=current_phase,
-                reason=f"Overview mutation failed: {detail}",
-                needs="investigation",
-            )
+# Rejections a human (not the agent) must resolve; all others need more investigation.
+_HUMAN_DECISION_REJECTIONS: frozenset[RejectionReason] = frozenset(
+    {
+        RejectionReason.TRANSITION_REQUIRES_APPROVAL,
+        RejectionReason.ITERATION_LIMIT_EXCEEDED,
+    }
+)
 
-    return signal
+
+def _needs_for_rejection(reason: RejectionReason | None) -> str:
+    """Map a rejection cause to the `needs` a synthesized BLOCKED should carry."""
+    return "human_decision" if reason in _HUMAN_DECISION_REJECTIONS else "investigation"
+
+
+def _signal_for_outcome(
+    signal: Signal,
+    outcome: ProcessedOutcome,
+    source_phase: str,
+    logger: logging.Logger,
+) -> Signal:
+    """Turn a ProcessedOutcome into the loop's effective control signal.
+
+    Accepted -> proceed with the child's original signal (dispatch reads its status).
+    Rejected (validation or mutation) -> halt as BLOCKED with a truthful reason/needs.
+    """
+    if outcome.accepted:
+        if outcome.kind is OutcomeKind.ACCEPTED_TRANSITION and outcome.target_phase:
+            logger.info(
+                f"Phase updated: {source_phase} -> {outcome.target_phase.value}"
+            )
+        return signal
+
+    reason = outcome.validation_error or "Workflow event rejected"
+    needs = _needs_for_rejection(outcome.rejection_reason)
+    logger.error(f"Signal rejected in '{source_phase}': {reason}")
+    return Signal(
+        status=SignalStatus.BLOCKED,
+        phase=source_phase,
+        reason=reason,
+        needs=needs,
+    )
 
 
 # === CLI ===
@@ -408,14 +385,8 @@ def run_orchestrator(args: argparse.Namespace) -> None:
 
             signal = read_signal_file(session_path)
 
-            # Validate signal and record to history
-            signal = validate_and_process_signal(
-                signal,
-                phase,
-                session_path,
-                iteration,
-                logger,
-            )
+            # Validate signal, record the truthful outcome, resolve the effective signal
+            signal = process_signal(signal, phase, session_path, iteration, logger)
 
             # Use phase from signal if available, otherwise use previously extracted phase
             signal_phase = signal.phase or phase
