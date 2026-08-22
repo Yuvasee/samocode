@@ -123,9 +123,13 @@ class TestProcessSignalBootstrap:
         session = tmp_path / "_sessions" / "task"
         session.mkdir(parents=True)
         for i in range(1, 6):
-            main.process_signal(_sig(SignalStatus.CONTINUE), None, session, i, _logger())
+            main.process_signal(
+                _sig(SignalStatus.CONTINUE), None, session, i, _logger()
+            )
 
-        result = main.process_signal(_sig(SignalStatus.CONTINUE), None, session, 6, _logger())
+        result = main.process_signal(
+            _sig(SignalStatus.CONTINUE), None, session, 6, _logger()
+        )
 
         assert result.status is SignalStatus.BLOCKED
         assert "iteration limit" in (result.reason or "")
