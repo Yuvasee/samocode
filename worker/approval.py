@@ -145,9 +145,12 @@ def check_approval(state: OverviewState, signal: Signal) -> ApprovalCheck:
         )
 
     if signal.status is not SignalStatus.WAITING:
+        # read_signal_file synthesizes BLOCKED with a reason on a missing/corrupt file;
+        # surface it so the user sees the real cause, not a misleading "status blocked".
+        detail = f" ({signal.reason})" if signal.reason else ""
         return _reject(
             ApprovalRejection.SIGNAL_NOT_WAITING,
-            f"No pending approval: signal status is '{signal.status.value}', "
+            f"No pending approval: signal status is '{signal.status.value}'{detail}, "
             f"expected 'waiting' for reason '{gate.waiting_for}'",
         )
 
