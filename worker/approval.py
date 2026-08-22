@@ -289,7 +289,10 @@ def approve_session(
     Order: resolve -> read overview -> read signal -> pre-check (cheap feedback) ->
     lock -> re-read + re-check under lock -> atomic overview mutation -> consume signal.
     Only an accepted under-lock check mutates state. A pre-lock accept that turns into
-    an under-lock reject means another actor advanced first -> ALREADY_ADVANCED.
+    an under-lock reject is classified three ways by the observed phase: phase unchanged
+    -> the honest check_approval rejection; phase == gate target -> ALREADY_ADVANCED
+    (a concurrent approval won); phase moved elsewhere -> OVERVIEW_STATE_CONFLICT (an
+    out-of-contract external writer).
     """
     session_path = resolve_session_path(project.sessions, session_name)
     if not (session_path.exists() and session_path.is_dir()):
@@ -374,23 +377,34 @@ def _already_advanced(
     )
 
 
-def _classify_phase_moved(observed: Phase, plan: ApprovalPlan) -> ApprovalResult:
-    """Classify an unexpected observed phase after a CAS/re-check miss.
+def _classify_phase_moved(
+    observed: Phase | None,
+    plan: ApprovalPlan,
+    *,
+    write_error: OverviewWriteError | None = None,
+) -> ApprovalResult:
+    """Classify an unexpected observed phase after a CAS/re-check miss. Single source.
 
-    Reaching the configured gate target proves a benign concurrent approval; any other
-    phase proves an out-of-contract writer moved the overview and is reported as a
-    state conflict, never as a successful gate crossing.
+    Reaching the configured gate target proves a benign concurrent approval
+    (ALREADY_ADVANCED, exit 6). Any other phase - including an unknown phase
+    (observed=None) - proves an out-of-contract writer moved the overview and is
+    reported as a state conflict (exit 4), never as a successful gate crossing.
+    `write_error` is carried through when the miss came from the write-stage CAS.
+    Both the under-lock re-check and the write-stage CAS route through this rule so the
+    classification and message cannot diverge.
     """
-    if observed == plan.target_phase:
-        return _already_advanced(plan)
+    if observed is not None and observed == plan.target_phase:
+        return _already_advanced(plan, write_error=write_error)
+    observed_label = observed.value if observed is not None else "?"
     return ApprovalResult(
         outcome=ApprovalOutcome.REJECTED,
         advanced=False,
         source_phase=plan.source_phase,
         target_phase=plan.target_phase,
         rejection=ApprovalRejection.OVERVIEW_STATE_CONFLICT,
+        write_error=write_error,
         message=(
-            f"Overview phase moved to '{observed.value}', not the gate target "
+            f"Overview phase moved to '{observed_label}', not the gate target "
             f"'{plan.target_phase.value}'; refusing to treat as an approval"
         ),
     )
@@ -423,25 +437,12 @@ def _apply_approval(
     )
     if not write.ok:
         # A CAS miss (PHASE_MOVED) means the overview phase changed between the
-        # under-lock re-check and this write. Only reaching the configured gate target
-        # is a benign concurrent approval (ALREADY_ADVANCED, exit 6); any other observed
-        # phase is an out-of-contract external writer, reported as a state conflict
-        # (exit 4), never as a successful gate crossing.
+        # under-lock re-check and this write. Route through the single classifier so the
+        # rule (target -> ALREADY_ADVANCED exit 6; else OVERVIEW_STATE_CONFLICT exit 4)
+        # and its message stay identical to the under-lock re-check site.
         if write.error is OverviewWriteError.PHASE_MOVED:
-            if write.observed_phase == plan.target_phase:
-                return _already_advanced(plan, write_error=write.error)
-            return ApprovalResult(
-                outcome=ApprovalOutcome.REJECTED,
-                advanced=False,
-                source_phase=plan.source_phase,
-                target_phase=plan.target_phase,
-                rejection=ApprovalRejection.OVERVIEW_STATE_CONFLICT,
-                write_error=write.error,
-                message=(
-                    f"Overview phase moved to "
-                    f"'{write.observed_phase.value if write.observed_phase else '?'}', "
-                    f"not the gate target '{tgt}'; refusing to treat as an approval"
-                ),
+            return _classify_phase_moved(
+                write.observed_phase, plan, write_error=write.error
             )
         return ApprovalResult(
             outcome=ApprovalOutcome.REJECTED,
@@ -486,10 +487,10 @@ def _apply_approval(
 # =============================================================================
 
 _REJECTION_EXIT_CODES: dict[ApprovalRejection, int] = {
-    ApprovalRejection.LOCK_CONTENDED: 3,  # transient; retry
+    ApprovalRejection.LOCK_CONTENDED: 3,  # transient contention; retry
     ApprovalRejection.LOCK_IO_FAILED: 4,  # non-contention lock fault; not retryable
-    ApprovalRejection.OVERVIEW_WRITE_FAILED: 4,  # state/IO fault
-    ApprovalRejection.OVERVIEW_STATE_CONFLICT: 4,  # phase moved to a non-target phase
+    ApprovalRejection.OVERVIEW_WRITE_FAILED: 4,  # write fault; may be transient
+    ApprovalRejection.OVERVIEW_STATE_CONFLICT: 4,  # external writer moved the phase
     ApprovalRejection.SIGNAL_CONSUME_FAILED: 5,  # advanced; retained signal inert
 }
 
@@ -500,9 +501,10 @@ def exit_code_for(result: ApprovalResult) -> int:
     0 only for APPROVED (this caller advanced the phase); 6 ALREADY_ADVANCED (a
     concurrent winner reached the gate target, this attempt did not -> fail-fast,
     distinct code); 5 advanced-but-signal-retained; 3 lock contention (retryable only);
-    4 non-retryable state/IO fault (overview write, lock I/O, or a phase moved off the
-    gate target); 1 all other rejections. argparse independently reserves 2 for usage
-    errors.
+    4 a state/IO fault - one of overview-write fault (possibly transient, may retry),
+    lock-I/O fault (not retryable), or the phase moved off the gate target (external
+    writer; investigate) - so the caller must read stderr to disambiguate recovery; 1
+    all other rejections. argparse independently reserves 2 for usage errors.
     """
     if result.outcome is ApprovalOutcome.APPROVED:
         return 0

@@ -240,7 +240,7 @@ This atomically advances the session to the implementation phase and consumes th
 | 0 | Approved: this call advanced the phase and consumed the signal |
 | 1 | Rejected: precondition failed (no gate, wrong/absent signal, etc.) |
 | 3 | Lock contended: another approval is in progress; retry |
-| 4 | State/IO fault: overview write, lock I/O, or phase moved off the gate target; phase not advanced |
+| 4 | State/IO fault: overview-write fault (may be transient), lock I/O (not retryable), or the phase moved off the gate target (an external writer may have moved it); not advanced by this call — read stderr to disambiguate |
 | 5 | Advanced but signal retained: phase advanced; retained `_signal.json` is inert, cleanup optional |
 | 6 | Already advanced: another approval reached the gate target; this call made no change |
 
