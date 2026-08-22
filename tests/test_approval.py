@@ -11,6 +11,8 @@ from worker import approval
 from worker.approval import (
     ApprovalOutcome,
     ApprovalRejection,
+    LockOutcome,
+    LockState,
     approve,
     approve_session,
     check_approval,
@@ -326,11 +328,30 @@ class TestIdempotencyConcurrency:
 
         @contextlib.contextmanager
         def busy(_session: Path):
-            yield False
+            yield LockOutcome(LockState.CONTENDED)
 
         monkeypatch.setattr(approval, "_approval_lock", busy)
         result = approve_session(_project(sessions_dir, tmp_path), "task")
         assert result.rejection is ApprovalRejection.LOCK_CONTENDED
+        assert exit_code_for(result) == 3
+
+    def test_lock_io_failure_returns_rejection(
+        self, sessions_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # A non-contention lock fault (ENOLCK, unsupported FS) is distinct from
+        # contention: LOCK_IO_FAILED -> exit 4 (not retryable), not exit 3.
+        _make_session(sessions_dir)
+        import contextlib
+
+        @contextlib.contextmanager
+        def failed(_session: Path):
+            yield LockOutcome(LockState.FAILED, "Cannot acquire approval lock: ENOLCK")
+
+        monkeypatch.setattr(approval, "_approval_lock", failed)
+        result = approve_session(_project(sessions_dir, tmp_path), "task")
+        assert result.rejection is ApprovalRejection.LOCK_IO_FAILED
+        assert result.advanced is False
+        assert exit_code_for(result) == 4
 
     def test_already_advanced_when_phase_changes_between_precheck_and_lock(
         self, sessions_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -340,26 +361,51 @@ class TestIdempotencyConcurrency:
 
         @contextlib.contextmanager
         def advancing_lock(sp: Path):
-            # Simulate a concurrent winner advancing the phase before we re-check.
+            # Simulate a concurrent winner reaching the gate target before we re-check.
             (sp / "_overview.md").write_text(_overview_text(phase="implementation"))
-            yield True
+            yield LockOutcome(LockState.ACQUIRED)
 
         monkeypatch.setattr(approval, "_approval_lock", advancing_lock)
         result = approve_session(_project(sessions_dir, tmp_path), "task")
         assert result.outcome is ApprovalOutcome.ALREADY_ADVANCED
         assert result.advanced is False
+        assert exit_code_for(result) == 6
 
-    def test_write_phase_moved_maps_to_already_advanced(
+    def test_under_lock_phase_off_target_is_state_conflict(
         self, sessions_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        # CAS miss at the write stage (concurrent winner after the under-lock check)
-        # is classified as ALREADY_ADVANCED (exit 6), not OVERVIEW_WRITE_FAILED (exit 4).
+        # Under the lock the phase moved to a NON-target phase (an out-of-contract
+        # external writer), not the gate target: a state conflict (exit 4), never a
+        # benign concurrent approval (exit 6).
+        _make_session(sessions_dir)
+        import contextlib
+
+        @contextlib.contextmanager
+        def off_target_lock(sp: Path):
+            (sp / "_overview.md").write_text(_overview_text(phase="pr-readiness"))
+            yield LockOutcome(LockState.ACQUIRED)
+
+        monkeypatch.setattr(approval, "_approval_lock", off_target_lock)
+        result = approve_session(_project(sessions_dir, tmp_path), "task")
+        assert result.outcome is ApprovalOutcome.REJECTED
+        assert result.rejection is ApprovalRejection.OVERVIEW_STATE_CONFLICT
+        assert result.advanced is False
+        assert exit_code_for(result) == 4
+
+    def test_write_phase_moved_to_target_maps_to_already_advanced(
+        self, sessions_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Write-stage CAS miss where the observed phase equals the gate target (a
+        # concurrent winner) is ALREADY_ADVANCED (exit 6), not OVERVIEW_WRITE_FAILED.
         _make_session(sessions_dir)
         from worker.workflow_state import OverviewWriteError
 
         def moved(*_a: object, **_k: object) -> OverviewWriteResult:
             return OverviewWriteResult(
-                ok=False, error=OverviewWriteError.PHASE_MOVED, message="moved"
+                ok=False,
+                error=OverviewWriteError.PHASE_MOVED,
+                observed_phase=Phase.IMPLEMENTATION,  # == planning gate target
+                message="moved",
             )
 
         monkeypatch.setattr(approval, "apply_overview_transition", moved)
@@ -368,6 +414,29 @@ class TestIdempotencyConcurrency:
         assert result.advanced is False
         assert result.write_error is OverviewWriteError.PHASE_MOVED
         assert exit_code_for(result) == 6
+
+    def test_write_phase_moved_off_target_is_state_conflict(
+        self, sessions_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Write-stage CAS miss where the observed phase is NOT the gate target is an
+        # out-of-contract external writer: state conflict (exit 4), not exit 6.
+        _make_session(sessions_dir)
+        from worker.workflow_state import OverviewWriteError
+
+        def moved(*_a: object, **_k: object) -> OverviewWriteResult:
+            return OverviewWriteResult(
+                ok=False,
+                error=OverviewWriteError.PHASE_MOVED,
+                observed_phase=Phase.PR_READINESS,  # != planning gate target
+                message="moved",
+            )
+
+        monkeypatch.setattr(approval, "apply_overview_transition", moved)
+        result = approve_session(_project(sessions_dir, tmp_path), "task")
+        assert result.outcome is ApprovalOutcome.REJECTED
+        assert result.rejection is ApprovalRejection.OVERVIEW_STATE_CONFLICT
+        assert result.advanced is False
+        assert exit_code_for(result) == 4
 
     def test_under_lock_rejection_with_unchanged_phase_is_honest(
         self, sessions_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -381,7 +450,7 @@ class TestIdempotencyConcurrency:
         def clearing_lock(sp: Path):
             # Signal is consumed under the lock; phase stays 'planning'.
             (sp / "_signal.json").write_text("{}")
-            yield True
+            yield LockOutcome(LockState.ACQUIRED)
 
         monkeypatch.setattr(approval, "_approval_lock", clearing_lock)
         result = approve_session(_project(sessions_dir, tmp_path), "task")

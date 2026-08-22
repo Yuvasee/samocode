@@ -259,6 +259,7 @@ class OverviewWriteResult:
 
     ok: bool
     new_phase: Phase | None = None
+    observed_phase: Phase | None = None  # freshly-parsed phase on a PHASE_MOVED miss
     error: OverviewWriteError | None = None
     parse_error: OverviewParseError | None = None
     message: str | None = None
@@ -351,6 +352,7 @@ def apply_overview_transition(
         return OverviewWriteResult(
             ok=False,
             error=OverviewWriteError.PHASE_MOVED,
+            observed_phase=parsed.state.phase,
             message=(
                 f"Phase moved to '{parsed.state.phase.value}', "
                 f"expected '{expected_source.value}'; not writing"

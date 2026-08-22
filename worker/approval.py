@@ -61,7 +61,9 @@ class ApprovalRejection(Enum):
     SIGNAL_PHASE_MISMATCH = "signal_phase_mismatch"  # signal phase != current phase
     SIGNAL_REASON_MISMATCH = "signal_reason_mismatch"  # for != gate.waiting_for
     LOCK_CONTENDED = "lock_contended"  # a concurrent approval holds the lock
+    LOCK_IO_FAILED = "lock_io_failed"  # lock open/flock raised a non-contention OSError
     OVERVIEW_WRITE_FAILED = "overview_write_failed"  # atomic overview write failed
+    OVERVIEW_STATE_CONFLICT = "overview_state_conflict"  # phase moved off gate target
     SIGNAL_CONSUME_FAILED = "signal_consume_failed"  # advance ok, signal clear raised
 
 
@@ -181,25 +183,54 @@ def check_approval(state: OverviewState, signal: Signal) -> ApprovalCheck:
 # =============================================================================
 
 
-@contextlib.contextmanager
-def _approval_lock(session_path: Path) -> Iterator[bool]:
-    """Yield True while holding an exclusive advisory lock, False if contended.
+class LockState(Enum):
+    """Outcome of attempting the advisory approval lock."""
 
-    The lock file is created once and never unlinked (unlinking would let two
-    processes lock different inodes). The lock is bound to the fd, released on exit,
-    and by the kernel on process death, so no stale lock survives a crash.
+    ACQUIRED = "acquired"  # exclusive lock held for the with-body
+    CONTENDED = "contended"  # another approval holds it (retryable) -> exit 3
+    FAILED = "failed"  # open/flock raised a non-contention OSError -> exit 4
+
+
+@dataclass(frozen=True)
+class LockOutcome:
+    """Tagged lock result. `message` is populated only for FAILED."""
+
+    state: LockState
+    message: str | None = None
+
+
+@contextlib.contextmanager
+def _approval_lock(session_path: Path) -> Iterator[LockOutcome]:
+    """Yield the lock outcome; ACQUIRED holds an exclusive advisory lock for the body.
+
+    Contention (`BlockingIOError` from a non-blocking `flock`) is retryable and distinct
+    from a genuine lock fault: a non-contention `OSError` on `os.open` or `flock`
+    (ENOLCK, unsupported filesystem) yields FAILED so the CLI reports the documented
+    lock-I/O exit code instead of misclassifying it as contention.
+
+    The lock file is created once and never unlinked (unlinking would let two processes
+    lock different inodes). The lock is bound to the fd, released on exit, and by the
+    kernel on process death, so no stale lock survives a crash.
     """
-    fd = os.open(str(session_path / LOCK_FILENAME), os.O_CREAT | os.O_RDWR, 0o644)
+    try:
+        fd = os.open(str(session_path / LOCK_FILENAME), os.O_CREAT | os.O_RDWR, 0o644)
+    except OSError as exc:
+        yield LockOutcome(LockState.FAILED, f"Cannot open approval lock file: {exc}")
+        return
     try:
         try:
             fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except (BlockingIOError, OSError):
-            yield False
+        except BlockingIOError:
+            yield LockOutcome(LockState.CONTENDED)
+            return
+        except OSError as exc:
+            yield LockOutcome(LockState.FAILED, f"Cannot acquire approval lock: {exc}")
             return
         try:
-            yield True
+            yield LockOutcome(LockState.ACQUIRED)
         finally:
-            fcntl.flock(fd, fcntl.LOCK_UN)
+            with contextlib.suppress(OSError):
+                fcntl.flock(fd, fcntl.LOCK_UN)
     finally:
         os.close(fd)
 
@@ -282,11 +313,17 @@ def approve_session(
             pre.rejection, pre.message or pre.rejection.value, source=parsed.state.phase
         )
 
-    with _approval_lock(session_path) as acquired:
-        if not acquired:
+    with _approval_lock(session_path) as lock:
+        if lock.state is LockState.CONTENDED:
             return _rejected(
                 ApprovalRejection.LOCK_CONTENDED,
                 "Another approval is in progress for this session; retry",
+                source=parsed.state.phase,
+            )
+        if lock.state is LockState.FAILED:
+            return _rejected(
+                ApprovalRejection.LOCK_IO_FAILED,
+                lock.message or "Approval lock could not be acquired",
                 source=parsed.state.phase,
             )
 
@@ -300,26 +337,63 @@ def approve_session(
             )
         check = check_approval(locked.state, read_signal_file(session_path))
         if check.plan is None:
-            # Pre-lock accepted but now rejected. Only a real phase move (a concurrent
-            # winner crossing the gate) is ALREADY_ADVANCED; otherwise the phase is
-            # unchanged and the honest cause is check_approval's rejection.
-            if locked.state.phase != pre.plan.source_phase:
-                return ApprovalResult(
-                    outcome=ApprovalOutcome.ALREADY_ADVANCED,
-                    advanced=False,
-                    source_phase=pre.plan.source_phase,
-                    target_phase=pre.plan.target_phase,
-                    message="Gate already crossed by a concurrent approval; not advanced",
+            observed = locked.state.phase
+            if observed == pre.plan.source_phase:
+                # Phase unchanged: the honest cause is check_approval's rejection.
+                assert check.rejection is not None
+                return _rejected(
+                    check.rejection,
+                    check.message or check.rejection.value,
+                    source=observed,
                 )
-            assert check.rejection is not None
-            return _rejected(
-                check.rejection,
-                check.message or check.rejection.value,
-                source=locked.state.phase,
-            )
+            # Phase moved. Only reaching the configured gate target is a benign
+            # concurrent approval (ALREADY_ADVANCED, exit 6). Any other phase is an
+            # out-of-contract external writer -> honest state conflict (exit 4).
+            return _classify_phase_moved(observed, pre.plan)
 
         plan = check.plan
         return _apply_approval(session_path, plan, now)
+
+
+def _already_advanced(
+    plan: ApprovalPlan, *, write_error: OverviewWriteError | None = None
+) -> ApprovalResult:
+    """A concurrent approver reached the gate target; this call made no change."""
+    src = plan.source_phase.value
+    tgt = plan.target_phase.value
+    return ApprovalResult(
+        outcome=ApprovalOutcome.ALREADY_ADVANCED,
+        advanced=False,
+        source_phase=plan.source_phase,
+        target_phase=plan.target_phase,
+        write_error=write_error,
+        message=(
+            f"Gate already crossed: another approval advanced '{src}' -> '{tgt}'; "
+            f"this call made no change"
+        ),
+    )
+
+
+def _classify_phase_moved(observed: Phase, plan: ApprovalPlan) -> ApprovalResult:
+    """Classify an unexpected observed phase after a CAS/re-check miss.
+
+    Reaching the configured gate target proves a benign concurrent approval; any other
+    phase proves an out-of-contract writer moved the overview and is reported as a
+    state conflict, never as a successful gate crossing.
+    """
+    if observed == plan.target_phase:
+        return _already_advanced(plan)
+    return ApprovalResult(
+        outcome=ApprovalOutcome.REJECTED,
+        advanced=False,
+        source_phase=plan.source_phase,
+        target_phase=plan.target_phase,
+        rejection=ApprovalRejection.OVERVIEW_STATE_CONFLICT,
+        message=(
+            f"Overview phase moved to '{observed.value}', not the gate target "
+            f"'{plan.target_phase.value}'; refusing to treat as an approval"
+        ),
+    )
 
 
 def _apply_approval(
@@ -348,18 +422,26 @@ def _apply_approval(
         session_path, transition, expected_source=plan.source_phase
     )
     if not write.ok:
-        # A CAS miss (PHASE_MOVED) is a concurrent winner crossing the gate between
-        # the under-lock re-check and this write, not an IO/state fault. Classify it
-        # identically to the under-lock ALREADY_ADVANCED path (exit 6), not as
-        # OVERVIEW_WRITE_FAILED (exit 4).
+        # A CAS miss (PHASE_MOVED) means the overview phase changed between the
+        # under-lock re-check and this write. Only reaching the configured gate target
+        # is a benign concurrent approval (ALREADY_ADVANCED, exit 6); any other observed
+        # phase is an out-of-contract external writer, reported as a state conflict
+        # (exit 4), never as a successful gate crossing.
         if write.error is OverviewWriteError.PHASE_MOVED:
+            if write.observed_phase == plan.target_phase:
+                return _already_advanced(plan, write_error=write.error)
             return ApprovalResult(
-                outcome=ApprovalOutcome.ALREADY_ADVANCED,
+                outcome=ApprovalOutcome.REJECTED,
                 advanced=False,
                 source_phase=plan.source_phase,
                 target_phase=plan.target_phase,
+                rejection=ApprovalRejection.OVERVIEW_STATE_CONFLICT,
                 write_error=write.error,
-                message="Gate already crossed by a concurrent approval; not advanced",
+                message=(
+                    f"Overview phase moved to "
+                    f"'{write.observed_phase.value if write.observed_phase else '?'}', "
+                    f"not the gate target '{tgt}'; refusing to treat as an approval"
+                ),
             )
         return ApprovalResult(
             outcome=ApprovalOutcome.REJECTED,
@@ -384,7 +466,8 @@ def _apply_approval(
             signal_consumed=False,
             message=(
                 f"Phase advanced to '{tgt}' but the pending signal could not be "
-                f"cleared: {exc}. Safe to ignore; the stale signal cannot re-advance."
+                f"cleared: {exc}. The retained _signal.json is inert (it cannot "
+                f"re-advance the session); clearing it is optional."
             ),
         )
 
@@ -404,8 +487,10 @@ def _apply_approval(
 
 _REJECTION_EXIT_CODES: dict[ApprovalRejection, int] = {
     ApprovalRejection.LOCK_CONTENDED: 3,  # transient; retry
+    ApprovalRejection.LOCK_IO_FAILED: 4,  # non-contention lock fault; not retryable
     ApprovalRejection.OVERVIEW_WRITE_FAILED: 4,  # state/IO fault
-    ApprovalRejection.SIGNAL_CONSUME_FAILED: 5,  # advanced; clear stale _signal.json
+    ApprovalRejection.OVERVIEW_STATE_CONFLICT: 4,  # phase moved to a non-target phase
+    ApprovalRejection.SIGNAL_CONSUME_FAILED: 5,  # advanced; retained signal inert
 }
 
 
@@ -413,9 +498,11 @@ def exit_code_for(result: ApprovalResult) -> int:
     """Map an approval result to a process exit code.
 
     0 only for APPROVED (this caller advanced the phase); 6 ALREADY_ADVANCED (a
-    concurrent winner advanced it, this attempt did not -> fail-fast, distinct code);
-    5 advanced-but-signal-retained; 3 lock contention (retryable); 4 overview write
-    fault; 1 all other rejections. argparse independently reserves 2 for usage errors.
+    concurrent winner reached the gate target, this attempt did not -> fail-fast,
+    distinct code); 5 advanced-but-signal-retained; 3 lock contention (retryable only);
+    4 non-retryable state/IO fault (overview write, lock I/O, or a phase moved off the
+    gate target); 1 all other rejections. argparse independently reserves 2 for usage
+    errors.
     """
     if result.outcome is ApprovalOutcome.APPROVED:
         return 0
