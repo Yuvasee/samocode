@@ -243,6 +243,7 @@ class OverviewWriteError(Enum):
 
     PARSE_FAILED = "parse_failed"  # re-read/parse failed before writing
     WRITE_FAILED = "write_failed"  # atomic_write_text raised OSError
+    PHASE_MOVED = "phase_moved"  # expected_source != freshly parsed phase (CAS miss)
 
 
 @dataclass(frozen=True)
@@ -319,12 +320,17 @@ def render_overview(state: OverviewState, transition: OverviewTransition) -> str
 
 
 def apply_overview_transition(
-    session_path: Path, transition: OverviewTransition
+    session_path: Path,
+    transition: OverviewTransition,
+    expected_source: Phase | None = None,
 ) -> OverviewWriteResult:
     """Re-read, render, and atomically write the overview transition.
 
-    Re-parses immediately before writing (never trusts a stale state). Parse failure
-    or an atomic-write OSError yields ok=False with no partial mutation.
+    Re-parses immediately before writing (never trusts a stale state). When
+    `expected_source` is given, it is a compare-and-swap guard: if the freshly parsed
+    Phase differs, no write happens and PHASE_MOVED is returned (another actor advanced
+    the phase between the caller's read and this write). Parse failure or an atomic-write
+    OSError yields ok=False with no partial mutation.
     """
     parsed = read_overview_state(session_path)
     if parsed.state is None:
@@ -333,6 +339,15 @@ def apply_overview_transition(
             error=OverviewWriteError.PARSE_FAILED,
             parse_error=parsed.error,
             message=parsed.message,
+        )
+    if expected_source is not None and parsed.state.phase != expected_source:
+        return OverviewWriteResult(
+            ok=False,
+            error=OverviewWriteError.PHASE_MOVED,
+            message=(
+                f"Phase moved to '{parsed.state.phase.value}', "
+                f"expected '{expected_source.value}'; not writing"
+            ),
         )
     new_content = render_overview(parsed.state, transition)
     try:
@@ -440,6 +455,7 @@ def process_workflow_event(
     write = apply_overview_transition(
         session_path,
         OverviewTransition(target_phase=result.target_phase, flow_log_entry=entry),
+        expected_source=result.source_phase,
     )
     if not write.ok:
         return ProcessedOutcome(

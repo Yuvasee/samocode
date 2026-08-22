@@ -341,7 +341,9 @@ def _apply_approval(
             f"Approved {src} -> {tgt} (reason '{plan.gate.waiting_for}')"
         ),
     )
-    write = apply_overview_transition(session_path, transition)
+    write = apply_overview_transition(
+        session_path, transition, expected_source=plan.source_phase
+    )
     if not write.ok:
         return ApprovalResult(
             outcome=ApprovalOutcome.REJECTED,
