@@ -16,9 +16,11 @@ history writer reuses `ProcessedOutcome` source/target/accepted/error fields.
 """
 
 import contextlib
+import fcntl
 import os
 import re
 import tempfile
+from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
@@ -226,6 +228,68 @@ def atomic_write_text(target: Path, content: str, *, encoding: str = "utf-8") ->
 
 
 # =============================================================================
+# Advisory session lock (shared by the event processor and the approval service)
+# =============================================================================
+
+SESSION_LOCK_FILENAME = "_session.lock"
+
+
+class LockState(Enum):
+    """Outcome of attempting the advisory session lock."""
+
+    ACQUIRED = "acquired"  # exclusive lock held for the with-body
+    CONTENDED = "contended"  # another holder has it (retryable)
+    FAILED = "failed"  # open/flock raised a non-contention OSError
+
+
+@dataclass(frozen=True)
+class LockOutcome:
+    """Tagged lock result. `message` is populated only for FAILED."""
+
+    state: LockState
+    message: str | None = None
+
+
+@contextlib.contextmanager
+def session_lock(session_path: Path) -> Iterator[LockOutcome]:
+    """Yield the lock outcome; ACQUIRED holds an exclusive advisory lock for the body.
+
+    One lock file per session serializes every overview compare-and-replace, whether
+    issued by the orchestrator's event processor or the out-of-band approval CLI, so the
+    two cannot interleave their read-compare-write and lose an update. Contention
+    (`BlockingIOError` from a non-blocking `flock`) is retryable and distinct from a
+    genuine fault: a non-contention `OSError` on `os.open`/`flock` (ENOLCK, unsupported
+    filesystem) yields FAILED. The lock file is created once and never unlinked
+    (unlinking would let two processes lock different inodes); the lock is bound to the
+    fd, released on exit, and by the kernel on process death, so no stale lock survives a
+    crash.
+    """
+    try:
+        fd = os.open(
+            str(session_path / SESSION_LOCK_FILENAME), os.O_CREAT | os.O_RDWR, 0o644
+        )
+    except OSError as exc:
+        yield LockOutcome(LockState.FAILED, f"Cannot open session lock file: {exc}")
+        return
+    try:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            yield LockOutcome(LockState.CONTENDED)
+            return
+        except OSError as exc:
+            yield LockOutcome(LockState.FAILED, f"Cannot acquire session lock: {exc}")
+            return
+        try:
+            yield LockOutcome(LockState.ACQUIRED)
+        finally:
+            with contextlib.suppress(OSError):
+                fcntl.flock(fd, fcntl.LOCK_UN)
+    finally:
+        os.close(fd)
+
+
+# =============================================================================
 # Pure render + atomic apply
 # =============================================================================
 
@@ -251,6 +315,7 @@ class OverviewWriteError(Enum):
     PARSE_FAILED = "parse_failed"  # re-read/parse failed before writing
     WRITE_FAILED = "write_failed"  # atomic_write_text raised OSError
     PHASE_MOVED = "phase_moved"  # expected_source != freshly parsed phase (CAS miss)
+    LOCK_UNAVAILABLE = "lock_unavailable"  # session lock contended/faulted; no write
 
 
 @dataclass(frozen=True)
@@ -331,15 +396,44 @@ def apply_overview_transition(
     session_path: Path,
     transition: OverviewTransition,
     expected_source: Phase | None = None,
+    *,
+    lock_held: bool = False,
 ) -> OverviewWriteResult:
-    """Re-read, render, and atomically write the overview transition.
+    """Re-read, render, and atomically write the overview transition under the session lock.
 
     Re-parses immediately before writing (never trusts a stale state). When
     `expected_source` is given, it is a compare-and-swap guard: if the freshly parsed
     Phase differs, no write happens and PHASE_MOVED is returned (another actor advanced
     the phase between the caller's read and this write). Parse failure or an
     atomic-write OSError yields ok=False with no partial mutation.
+
+    The re-read + CAS + replace runs under `session_lock`, so a concurrent approval and
+    the worker's event processor serialize their compare-and-replace and cannot lose an
+    update. Callers already holding the lock (the approval service) pass lock_held=True
+    to avoid self-deadlock on a second fd; every other caller acquires it here and gets
+    LOCK_UNAVAILABLE when it is contended or faulted (no write attempted).
     """
+    if lock_held:
+        return _apply_transition_locked(session_path, transition, expected_source)
+    with session_lock(session_path) as lock:
+        if lock.state is not LockState.ACQUIRED:
+            return OverviewWriteResult(
+                ok=False,
+                error=OverviewWriteError.LOCK_UNAVAILABLE,
+                message=(
+                    lock.message
+                    or "Session lock is held by a concurrent writer; not writing"
+                ),
+            )
+        return _apply_transition_locked(session_path, transition, expected_source)
+
+
+def _apply_transition_locked(
+    session_path: Path,
+    transition: OverviewTransition,
+    expected_source: Phase | None,
+) -> OverviewWriteResult:
+    """Re-read, CAS on `expected_source`, render, and atomically write. Lock held by caller."""
     parsed = read_overview_state(session_path)
     if parsed.state is None:
         return OverviewWriteResult(

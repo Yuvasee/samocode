@@ -18,10 +18,6 @@ registry), never from mutable signal contents, so a stale signal can never re-ad
 session and two racing approvals produce exactly one transition.
 """
 
-import contextlib
-import fcntl
-import os
-from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
@@ -32,6 +28,7 @@ from .phases import ApprovalGate, Phase, get_phase_config
 from .signals import SIGNAL_FILENAME, Signal, SignalStatus, read_signal_file
 from .timestamps import log_timestamp
 from .workflow_state import (
+    LockState,
     OverviewParseError,
     OverviewState,
     OverviewTransition,
@@ -39,10 +36,8 @@ from .workflow_state import (
     apply_overview_transition,
     atomic_write_text,
     read_overview_state,
+    session_lock,
 )
-
-LOCK_FILENAME = "_approval.lock"
-
 
 # =============================================================================
 # Typed outcome / rejection enums
@@ -179,63 +174,6 @@ def check_approval(state: OverviewState, signal: Signal) -> ApprovalCheck:
 
 
 # =============================================================================
-# Concurrency: advisory session lock
-# =============================================================================
-
-
-class LockState(Enum):
-    """Outcome of attempting the advisory approval lock."""
-
-    ACQUIRED = "acquired"  # exclusive lock held for the with-body
-    CONTENDED = "contended"  # another approval holds it (retryable) -> exit 3
-    FAILED = "failed"  # open/flock raised a non-contention OSError -> exit 4
-
-
-@dataclass(frozen=True)
-class LockOutcome:
-    """Tagged lock result. `message` is populated only for FAILED."""
-
-    state: LockState
-    message: str | None = None
-
-
-@contextlib.contextmanager
-def _approval_lock(session_path: Path) -> Iterator[LockOutcome]:
-    """Yield the lock outcome; ACQUIRED holds an exclusive advisory lock for the body.
-
-    Contention (`BlockingIOError` from a non-blocking `flock`) is retryable and distinct
-    from a genuine lock fault: a non-contention `OSError` on `os.open` or `flock`
-    (ENOLCK, unsupported filesystem) yields FAILED so the CLI reports the documented
-    lock-I/O exit code instead of misclassifying it as contention.
-
-    The lock file is created once and never unlinked (unlinking would let two processes
-    lock different inodes). The lock is bound to the fd, released on exit, and by the
-    kernel on process death, so no stale lock survives a crash.
-    """
-    try:
-        fd = os.open(str(session_path / LOCK_FILENAME), os.O_CREAT | os.O_RDWR, 0o644)
-    except OSError as exc:
-        yield LockOutcome(LockState.FAILED, f"Cannot open approval lock file: {exc}")
-        return
-    try:
-        try:
-            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
-            yield LockOutcome(LockState.CONTENDED)
-            return
-        except OSError as exc:
-            yield LockOutcome(LockState.FAILED, f"Cannot acquire approval lock: {exc}")
-            return
-        try:
-            yield LockOutcome(LockState.ACQUIRED)
-        finally:
-            with contextlib.suppress(OSError):
-                fcntl.flock(fd, fcntl.LOCK_UN)
-    finally:
-        os.close(fd)
-
-
-# =============================================================================
 # Side-effecting orchestration
 # =============================================================================
 
@@ -316,7 +254,7 @@ def approve_session(
             pre.rejection, pre.message or pre.rejection.value, source=parsed.state.phase
         )
 
-    with _approval_lock(session_path) as lock:
+    with session_lock(session_path) as lock:
         if lock.state is LockState.CONTENDED:
             return _rejected(
                 ApprovalRejection.LOCK_CONTENDED,
@@ -432,8 +370,11 @@ def _apply_approval(
             f"Approved {src} -> {tgt} (reason '{plan.gate.waiting_for}')"
         ),
     )
+    # The caller (approve_session) already holds the session lock across this whole
+    # critical section; pass lock_held=True so the transition reuses it instead of
+    # deadlocking on a second fd.
     write = apply_overview_transition(
-        session_path, transition, expected_source=plan.source_phase
+        session_path, transition, expected_source=plan.source_phase, lock_held=True
     )
     if not write.ok:
         # A CAS miss (PHASE_MOVED) means the overview phase changed between the

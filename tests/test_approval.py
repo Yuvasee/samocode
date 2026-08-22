@@ -11,8 +11,6 @@ from worker import approval
 from worker.approval import (
     ApprovalOutcome,
     ApprovalRejection,
-    LockOutcome,
-    LockState,
     approve,
     approve_session,
     check_approval,
@@ -22,6 +20,8 @@ from worker.config import ProjectConfig
 from worker.phases import Phase
 from worker.signals import Signal, SignalStatus
 from worker.workflow_state import (
+    LockOutcome,
+    LockState,
     OverviewTransition,
     OverviewWriteResult,
     parse_overview_state,
@@ -330,7 +330,7 @@ class TestIdempotencyConcurrency:
         def busy(_session: Path):
             yield LockOutcome(LockState.CONTENDED)
 
-        monkeypatch.setattr(approval, "_approval_lock", busy)
+        monkeypatch.setattr(approval, "session_lock", busy)
         result = approve_session(_project(sessions_dir, tmp_path), "task")
         assert result.rejection is ApprovalRejection.LOCK_CONTENDED
         assert exit_code_for(result) == 3
@@ -347,7 +347,7 @@ class TestIdempotencyConcurrency:
         def failed(_session: Path):
             yield LockOutcome(LockState.FAILED, "Cannot acquire approval lock: ENOLCK")
 
-        monkeypatch.setattr(approval, "_approval_lock", failed)
+        monkeypatch.setattr(approval, "session_lock", failed)
         result = approve_session(_project(sessions_dir, tmp_path), "task")
         assert result.rejection is ApprovalRejection.LOCK_IO_FAILED
         assert result.advanced is False
@@ -365,7 +365,7 @@ class TestIdempotencyConcurrency:
             (sp / "_overview.md").write_text(_overview_text(phase="implementation"))
             yield LockOutcome(LockState.ACQUIRED)
 
-        monkeypatch.setattr(approval, "_approval_lock", advancing_lock)
+        monkeypatch.setattr(approval, "session_lock", advancing_lock)
         result = approve_session(_project(sessions_dir, tmp_path), "task")
         assert result.outcome is ApprovalOutcome.ALREADY_ADVANCED
         assert result.advanced is False
@@ -385,7 +385,7 @@ class TestIdempotencyConcurrency:
             (sp / "_overview.md").write_text(_overview_text(phase="pr-readiness"))
             yield LockOutcome(LockState.ACQUIRED)
 
-        monkeypatch.setattr(approval, "_approval_lock", off_target_lock)
+        monkeypatch.setattr(approval, "session_lock", off_target_lock)
         result = approve_session(_project(sessions_dir, tmp_path), "task")
         assert result.outcome is ApprovalOutcome.REJECTED
         assert result.rejection is ApprovalRejection.OVERVIEW_STATE_CONFLICT
@@ -452,7 +452,7 @@ class TestIdempotencyConcurrency:
             (sp / "_signal.json").write_text("{}")
             yield LockOutcome(LockState.ACQUIRED)
 
-        monkeypatch.setattr(approval, "_approval_lock", clearing_lock)
+        monkeypatch.setattr(approval, "session_lock", clearing_lock)
         result = approve_session(_project(sessions_dir, tmp_path), "task")
         assert result.outcome is ApprovalOutcome.REJECTED
         assert result.rejection is ApprovalRejection.SIGNAL_NOT_WAITING

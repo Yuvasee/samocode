@@ -9,6 +9,7 @@ from worker.phases import Phase
 from worker.signals import Signal, SignalStatus
 from worker.workflow_event import RejectionReason
 from worker.workflow_state import (
+    LockState,
     OutcomeKind,
     OverviewParseError,
     OverviewTransition,
@@ -19,6 +20,7 @@ from worker.workflow_state import (
     process_workflow_event,
     read_overview_state,
     render_overview,
+    session_lock,
 )
 
 
@@ -273,6 +275,82 @@ class TestApplyOverviewTransition:
         assert not result.ok
         assert result.error is OverviewWriteError.WRITE_FAILED
         assert overview.read_text() == before
+
+
+# =============================================================================
+# Session lock serialization (race regression)
+# =============================================================================
+
+
+class TestSessionLockSerialization:
+    """Deterministic proof that overview compare-and-replace is serialized.
+
+    flock treats two open descriptions of the same file independently even within one
+    process, so holding `session_lock` here makes a second lock acquisition fail
+    without threads or timing. That is the exact race RV2-003 flagged: a worker event
+    apply must not slip a compare-and-replace between an approval's read and write.
+    """
+
+    def test_apply_refused_while_session_lock_held(self, temp_session: Path) -> None:
+        overview = _write_overview(temp_session, phase="investigation")
+        before = overview.read_text()
+        with session_lock(temp_session) as held:
+            assert held.state is LockState.ACQUIRED
+            result = apply_overview_transition(
+                temp_session,
+                OverviewTransition(target_phase=Phase.REQUIREMENTS),
+                expected_source=Phase.INVESTIGATION,
+            )
+        assert not result.ok
+        assert result.error is OverviewWriteError.LOCK_UNAVAILABLE
+        assert overview.read_text() == before  # lost update prevented
+
+    def test_apply_succeeds_after_lock_released(self, temp_session: Path) -> None:
+        _write_overview(temp_session, phase="investigation")
+        with session_lock(temp_session) as held:
+            assert held.state is LockState.ACQUIRED
+        result = apply_overview_transition(
+            temp_session,
+            OverviewTransition(target_phase=Phase.REQUIREMENTS),
+            expected_source=Phase.INVESTIGATION,
+        )
+        assert result.ok
+        assert "Phase: requirements\n" in (temp_session / "_overview.md").read_text()
+
+    def test_lock_held_bypass_writes_when_caller_owns_lock(
+        self, temp_session: Path
+    ) -> None:
+        # The approval service holds the lock across its whole critical section and
+        # passes lock_held=True; the apply must reuse it, not deadlock on a second fd.
+        _write_overview(temp_session, phase="investigation")
+        with session_lock(temp_session) as held:
+            assert held.state is LockState.ACQUIRED
+            result = apply_overview_transition(
+                temp_session,
+                OverviewTransition(target_phase=Phase.REQUIREMENTS),
+                expected_source=Phase.INVESTIGATION,
+                lock_held=True,
+            )
+        assert result.ok
+        assert "Phase: requirements\n" in (temp_session / "_overview.md").read_text()
+
+    def test_process_event_refused_while_session_lock_held(
+        self, temp_session: Path
+    ) -> None:
+        before = _write_overview(temp_session, phase="investigation").read_text()
+        with session_lock(temp_session) as held:
+            assert held.state is LockState.ACQUIRED
+            outcome = process_workflow_event(
+                temp_session,
+                Signal(status=SignalStatus.CONTINUE, phase="requirements"),
+                "investigation",
+                1,
+                2,
+            )
+        assert outcome.kind is OutcomeKind.REJECTED_MUTATION
+        assert outcome.write_error is OverviewWriteError.LOCK_UNAVAILABLE
+        assert not outcome.mutated
+        assert (temp_session / "_overview.md").read_text() == before
 
 
 # =============================================================================
