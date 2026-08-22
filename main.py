@@ -12,6 +12,7 @@ import sys
 from pathlib import Path
 
 from worker import (
+    ApprovalOutcome,
     ExecutionResolutionError,
     ExecutionStatus,
     GlobalConfigError,
@@ -22,9 +23,11 @@ from worker import (
     Signal,
     SignalStatus,
     add_session_handler,
+    approve,
     clear_signal_file,
     compose_startup,
     count_source_phase_iterations,
+    exit_code_for,
     extract_phase,
     extract_total_iterations,
     global_config_path,
@@ -480,13 +483,7 @@ def cmd_install(args: argparse.Namespace) -> None:
 
 
 def cmd_approve(args: argparse.Namespace) -> None:
-    """Approve a session's pending gate without loading model routing.
-
-    Imported locally so the approval path pulls no provider/routing modules; loads
-    only ProjectConfig. Maps the typed result to an actionable exit code.
-    """
-    from worker.approval import ApprovalOutcome, approve, exit_code_for
-
+    """Approve a session's pending gate and map the typed result to an exit code."""
     result = approve(Path(args.config).expanduser().resolve(), args.session)
     succeeded = result.outcome in (
         ApprovalOutcome.APPROVED,
