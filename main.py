@@ -175,7 +175,8 @@ def _resolve_bootstrap_phase(
             except OSError as exc:
                 reset_note = (
                     f"; overview reset FAILED ({reset.message}); quarantine rename also "
-                    f"FAILED ({exc})"
+                    f"FAILED ({exc}); manual recovery required before restart: remove "
+                    f"{OVERVIEW_FILENAME} or restore its Phase to init"
                 )
         reason = (
             f"Bootstrap overview declares phase '{written.value}', which init cannot "

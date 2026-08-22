@@ -280,6 +280,7 @@ class TestProcessSignalBootstrap:
         reason = bootstrap.block_reason or ""
         assert "reset FAILED" in reason
         assert "quarantine rename also FAILED" in reason
+        assert "manual recovery required before restart" in reason
 
     def test_already_init_reset_is_achieved_no_quarantine(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
