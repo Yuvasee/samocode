@@ -199,6 +199,37 @@ class TestProcessSignalBootstrap:
         assert "smuggled" in (result.reason or "")
         assert not (session / "_signal_history.jsonl").exists()
 
+    def test_real_init_signal_advances_to_investigation(self, tmp_path: Path) -> None:
+        # RV2-001 regression guard: the real init-agent leaves the overview at
+        # Phase: init and signals phase=investigation. Bootstrap pins the source to
+        # init, so the init->investigation transition's CAS sees overview=init and
+        # advances (must NOT block on a phantom PHASE_MOVED).
+        session = _session(tmp_path, "init")
+        sig = _sig(SignalStatus.CONTINUE, phase="investigation")
+
+        result = main.process_signal(sig, None, session, 1, _logger())
+
+        assert result.status is SignalStatus.CONTINUE
+        assert _overview_phase(session) is Phase.INVESTIGATION
+        rows = _history_rows(session)
+        assert rows[0]["source_phase"] == "init"
+        assert rows[0]["mutated"] is True
+
+    def test_smuggled_bootstrap_phase_resets_overview_to_init(
+        self, tmp_path: Path
+    ) -> None:
+        # RV2-002: a rejected smuggled phase must not survive on disk. Routing on the
+        # next process reads the overview phase directly, so leaving 'quality' would let
+        # a restart trust it. Bootstrap resets the overview to init before blocking.
+        session = _session(tmp_path, "quality")
+        sig = _sig(SignalStatus.CONTINUE)
+
+        result = main.process_signal(sig, None, session, 1, _logger())
+
+        assert result.status is SignalStatus.BLOCKED
+        assert "reset to init" in (result.reason or "")
+        assert _overview_phase(session) is Phase.INIT
+
 
 # =============================================================================
 # Accepted outcomes

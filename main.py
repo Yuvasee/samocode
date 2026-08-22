@@ -20,6 +20,7 @@ from worker import (
     GlobalConfigError,
     OutcomeKind,
     OverviewParseError,
+    OverviewTransition,
     Phase,
     PlanResolutionError,
     ProcessedOutcome,
@@ -27,6 +28,7 @@ from worker import (
     Signal,
     SignalStatus,
     add_session_handler,
+    apply_overview_transition,
     approve,
     clear_signal_file,
     compose_startup,
@@ -132,9 +134,30 @@ def _resolve_bootstrap_phase(
     init_config = get_phase_config(Phase.INIT.value)
     assert init_config is not None
     if written is not Phase.INIT and not init_config.can_transition_to(written):
+        # Quarantine the smuggled phase: reset the overview to init before blocking.
+        # Routing on the next process reads the overview phase directly (extract_phase),
+        # so a retained smuggled phase would make source_phase non-None and bypass this
+        # guard entirely, letting the child reach an arbitrary phase after restart.
+        # A CAS on the smuggled phase makes the reset idempotent and race-safe.
+        reset = apply_overview_transition(
+            session_path,
+            OverviewTransition(
+                target_phase=Phase.INIT,
+                last_action=(
+                    f"Bootstrap rejected smuggled phase '{written.value}'; reset to init"
+                ),
+                next_action="Re-run init",
+            ),
+            expected_source=written,
+        )
+        reset_note = (
+            "; overview reset to init"
+            if reset.ok
+            else f"; overview reset FAILED ({reset.message})"
+        )
         reason = (
             f"Bootstrap overview declares phase '{written.value}', which init cannot "
-            f"reach; refusing to trust a smuggled phase"
+            f"reach; refusing to trust a smuggled phase{reset_note}"
         )
         logger.error(reason)
         return BootstrapPhase(phase=None, block_reason=reason)
@@ -281,8 +304,9 @@ Examples:
             "  0  approved: this call advanced the phase and consumed the signal\n"
             "  1  rejected: precondition failed (no gate, wrong/absent signal, etc.)\n"
             "  3  lock contended: another approval is in progress; retry\n"
-            "  4  state/IO fault: overview write, lock I/O, or phase moved off the "
-            "gate target; phase not advanced\n"
+            "  4  state/IO fault: overview-write fault (may be transient), lock I/O "
+            "(not retryable), or the phase moved off the gate target (an external "
+            "writer may have moved it); not advanced by this call - read stderr\n"
             "  5  advanced but signal retained: phase advanced; retained _signal.json "
             "is inert, cleanup optional\n"
             "  6  already advanced: another approval reached the gate target; this "
