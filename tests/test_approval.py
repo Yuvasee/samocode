@@ -390,7 +390,9 @@ class TestFailureInjection:
     ) -> None:
         session = _make_session(sessions_dir)
 
-        def fail(_sp: Path, _t: OverviewTransition) -> OverviewWriteResult:
+        def fail(
+            _sp: Path, _t: OverviewTransition, **_kw: object
+        ) -> OverviewWriteResult:
             from worker.workflow_state import OverviewWriteError
 
             return OverviewWriteResult(
