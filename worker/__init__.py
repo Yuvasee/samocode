@@ -81,6 +81,8 @@ from .signal_history import (
     record_signal,
 )
 from .signals import (
+    OVERVIEW_FILENAME,
+    SIGNAL_FILENAME,
     Signal,
     SignalStatus,
     clear_signal_file,
@@ -205,6 +207,8 @@ __all__ = [
     "record_processed_outcome",
     "record_signal",
     # Signals
+    "OVERVIEW_FILENAME",
+    "SIGNAL_FILENAME",
     "Signal",
     "SignalStatus",
     "clear_signal_file",

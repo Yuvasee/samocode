@@ -29,7 +29,7 @@ from pathlib import Path
 
 from .config import ProjectConfig, resolve_session_path
 from .phases import ApprovalGate, Phase, get_phase_config
-from .signals import Signal, SignalStatus, read_signal_file
+from .signals import SIGNAL_FILENAME, Signal, SignalStatus, read_signal_file
 from .timestamps import log_timestamp
 from .workflow_state import (
     OverviewParseError,
@@ -42,7 +42,6 @@ from .workflow_state import (
 )
 
 LOCK_FILENAME = "_approval.lock"
-SIGNAL_FILENAME = "_signal.json"
 
 
 # =============================================================================

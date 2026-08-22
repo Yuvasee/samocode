@@ -25,7 +25,7 @@ from enum import Enum
 from pathlib import Path
 
 from .phases import Phase
-from .signals import Signal, SignalStatus
+from .signals import OVERVIEW_FILENAME, Signal, SignalStatus
 from .timestamps import iteration_timestamp
 from .workflow_event import (
     RejectionReason,
@@ -182,7 +182,7 @@ def parse_overview_state(content: str) -> OverviewParseResult:
 
 def read_overview_state(session_path: Path) -> OverviewParseResult:
     """Read and strictly parse `_overview.md`; FILE_NOT_FOUND when absent."""
-    overview_path = session_path / "_overview.md"
+    overview_path = session_path / OVERVIEW_FILENAME
     if not overview_path.exists():
         return _parse_failure(
             OverviewParseError.FILE_NOT_FOUND, f"No _overview.md at {overview_path}"
@@ -336,7 +336,7 @@ def apply_overview_transition(
         )
     new_content = render_overview(parsed.state, transition)
     try:
-        atomic_write_text(session_path / "_overview.md", new_content)
+        atomic_write_text(session_path / OVERVIEW_FILENAME, new_content)
     except OSError as exc:
         return OverviewWriteResult(
             ok=False, error=OverviewWriteError.WRITE_FAILED, message=str(exc)
