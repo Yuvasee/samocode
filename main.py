@@ -15,10 +15,13 @@ from worker import (
     ExecutionResolutionError,
     ExecutionStatus,
     GlobalConfigError,
+    OverviewTransition,
+    Phase,
     PlanResolutionError,
     Signal,
     SignalStatus,
     add_session_handler,
+    apply_overview_transition,
     clear_signal_file,
     compose_startup,
     extract_phase,
@@ -39,7 +42,6 @@ from worker import (
     setup_logging,
     supported_providers,
     uninstall,
-    update_phase,
     validate_signal_for_phase,
     validate_transition,
 )
@@ -122,9 +124,22 @@ def validate_and_process_signal(
                 reason=error,
                 needs="investigation",
             )
-        # Update _overview.md Phase field to match signal (single source of truth)
-        if update_phase(session_path, signal.phase):
+        # Atomically update _overview.md Phase (single source of truth). A write
+        # failure becomes an explicit rejection instead of a silent no-op.
+        write = apply_overview_transition(
+            session_path, OverviewTransition(target_phase=Phase(signal.phase.lower()))
+        )
+        if write.ok:
             logger.info(f"Phase updated: {current_phase} -> {signal.phase}")
+        else:
+            detail = write.message or (write.error.value if write.error else "unknown")
+            logger.error(f"Overview mutation failed: {detail}")
+            return Signal(
+                status=SignalStatus.BLOCKED,
+                phase=current_phase,
+                reason=f"Overview mutation failed: {detail}",
+                needs="investigation",
+            )
 
     return signal
 
