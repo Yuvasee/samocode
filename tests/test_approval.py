@@ -408,7 +408,7 @@ class TestIdempotencyConcurrency:
                 message="moved",
             )
 
-        monkeypatch.setattr(approval, "apply_overview_transition", moved)
+        monkeypatch.setattr(approval, "apply_overview_transition_locked", moved)
         result = approve_session(_project(sessions_dir, tmp_path), "task")
         assert result.outcome is ApprovalOutcome.ALREADY_ADVANCED
         assert result.advanced is False
@@ -431,7 +431,7 @@ class TestIdempotencyConcurrency:
                 message="moved",
             )
 
-        monkeypatch.setattr(approval, "apply_overview_transition", moved)
+        monkeypatch.setattr(approval, "apply_overview_transition_locked", moved)
         result = approve_session(_project(sessions_dir, tmp_path), "task")
         assert result.outcome is ApprovalOutcome.REJECTED
         assert result.rejection is ApprovalRejection.OVERVIEW_STATE_CONFLICT
@@ -508,7 +508,7 @@ class TestFailureInjection:
                 ok=False, error=OverviewWriteError.WRITE_FAILED, message="boom"
             )
 
-        monkeypatch.setattr(approval, "apply_overview_transition", fail)
+        monkeypatch.setattr(approval, "apply_overview_transition_locked", fail)
         result = approve_session(_project(sessions_dir, tmp_path), "task")
         assert result.rejection is ApprovalRejection.OVERVIEW_WRITE_FAILED
         assert result.advanced is False

@@ -15,6 +15,7 @@ from worker.workflow_state import (
     OverviewTransition,
     OverviewWriteError,
     apply_overview_transition,
+    apply_overview_transition_locked,
     atomic_write_text,
     parse_overview_state,
     process_workflow_event,
@@ -317,19 +318,18 @@ class TestSessionLockSerialization:
         assert result.ok
         assert "Phase: requirements\n" in (temp_session / "_overview.md").read_text()
 
-    def test_lock_held_bypass_writes_when_caller_owns_lock(
+    def test_locked_entry_point_writes_when_caller_owns_lock(
         self, temp_session: Path
     ) -> None:
-        # The approval service holds the lock across its whole critical section and
-        # passes lock_held=True; the apply must reuse it, not deadlock on a second fd.
+        # The approval service holds the lock across its whole critical section and calls
+        # the locked entry point; the apply must reuse it, not deadlock on a second fd.
         _write_overview(temp_session, phase="investigation")
         with session_lock(temp_session) as held:
             assert held.state is LockState.ACQUIRED
-            result = apply_overview_transition(
+            result = apply_overview_transition_locked(
                 temp_session,
                 OverviewTransition(target_phase=Phase.REQUIREMENTS),
                 expected_source=Phase.INVESTIGATION,
-                lock_held=True,
             )
         assert result.ok
         assert "Phase: requirements\n" in (temp_session / "_overview.md").read_text()

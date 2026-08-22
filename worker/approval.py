@@ -33,7 +33,7 @@ from .workflow_state import (
     OverviewState,
     OverviewTransition,
     OverviewWriteError,
-    apply_overview_transition,
+    apply_overview_transition_locked,
     atomic_write_text,
     read_overview_state,
     session_lock,
@@ -370,11 +370,11 @@ def _apply_approval(
             f"Approved {src} -> {tgt} (reason '{plan.gate.waiting_for}')"
         ),
     )
-    # The caller (approve_session) already holds the session lock across this whole
-    # critical section; pass lock_held=True so the transition reuses it instead of
-    # deadlocking on a second fd.
-    write = apply_overview_transition(
-        session_path, transition, expected_source=plan.source_phase, lock_held=True
+    # approve_session already holds the session lock across this whole critical section;
+    # use the locked entry point so the transition reuses it instead of deadlocking on a
+    # second fd.
+    write = apply_overview_transition_locked(
+        session_path, transition, expected_source=plan.source_phase
     )
     if not write.ok:
         # A CAS miss (PHASE_MOVED) means the overview phase changed between the

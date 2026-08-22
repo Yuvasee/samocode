@@ -396,25 +396,16 @@ def apply_overview_transition(
     session_path: Path,
     transition: OverviewTransition,
     expected_source: Phase | None = None,
-    *,
-    lock_held: bool = False,
 ) -> OverviewWriteResult:
-    """Re-read, render, and atomically write the overview transition under the session lock.
+    """Acquire the session lock, then re-read, render, and atomically write the transition.
 
-    Re-parses immediately before writing (never trusts a stale state). When
-    `expected_source` is given, it is a compare-and-swap guard: if the freshly parsed
-    Phase differs, no write happens and PHASE_MOVED is returned (another actor advanced
-    the phase between the caller's read and this write). Parse failure or an
-    atomic-write OSError yields ok=False with no partial mutation.
-
-    The re-read + CAS + replace runs under `session_lock`, so a concurrent approval and
-    the worker's event processor serialize their compare-and-replace and cannot lose an
-    update. Callers already holding the lock (the approval service) pass lock_held=True
-    to avoid self-deadlock on a second fd; every other caller acquires it here and gets
-    LOCK_UNAVAILABLE when it is contended or faulted (no write attempted).
+    This is the entry point for callers that do NOT already hold `session_lock`. It
+    acquires the lock itself and returns LOCK_UNAVAILABLE (no write) when the lock is
+    contended or faulted; callers already holding the lock use
+    `apply_overview_transition_locked` instead to avoid self-deadlock on a second fd.
+    Serializing every compare-and-replace under one lock stops a concurrent approval and
+    the worker's event processor from losing an update.
     """
-    if lock_held:
-        return _apply_transition_locked(session_path, transition, expected_source)
     with session_lock(session_path) as lock:
         if lock.state is not LockState.ACQUIRED:
             return OverviewWriteResult(
@@ -425,15 +416,24 @@ def apply_overview_transition(
                     or "Session lock is held by a concurrent writer; not writing"
                 ),
             )
-        return _apply_transition_locked(session_path, transition, expected_source)
+        return apply_overview_transition_locked(
+            session_path, transition, expected_source
+        )
 
 
-def _apply_transition_locked(
+def apply_overview_transition_locked(
     session_path: Path,
     transition: OverviewTransition,
-    expected_source: Phase | None,
+    expected_source: Phase | None = None,
 ) -> OverviewWriteResult:
-    """Re-read, CAS on `expected_source`, render, and atomically write. Lock held by caller."""
+    """Re-read, CAS on `expected_source`, render, and atomically write. Caller holds the lock.
+
+    THE entry point for callers already holding `session_lock` (the approval service).
+    Re-parses immediately before writing (never trusts a stale state). When
+    `expected_source` is given it is a compare-and-swap guard: a differing freshly-parsed
+    Phase yields PHASE_MOVED with no write. Parse failure or an atomic-write OSError
+    yields ok=False with no partial mutation.
+    """
     parsed = read_overview_state(session_path)
     if parsed.state is None:
         return OverviewWriteResult(
