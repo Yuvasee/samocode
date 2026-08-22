@@ -1,4 +1,3 @@
-"""Tests for worker/workflow_event.py - pure workflow-event validation."""
 
 import pytest
 
@@ -186,7 +185,6 @@ class TestDone:
         assert result.target_phase is Phase.DONE
 
     def test_done_in_non_done_rejected_by_status(self) -> None:
-        # done is not an allowed signal outside the done phase; status guard fires first.
         result = validate_workflow_event(_event("quality", SignalStatus.DONE))
         assert not result.accepted
         assert result.rejection_reason is RejectionReason.STATUS_NOT_ALLOWED

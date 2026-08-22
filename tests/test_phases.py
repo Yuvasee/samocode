@@ -69,7 +69,6 @@ class TestPhaseConfigs:
         assert len(done_config.allowed_next) == 0
 
     def test_pr_readiness_transitions_only_to_done(self) -> None:
-        """PR readiness transitions only to done, and auto-continues (no gate)."""
         readiness_config = PHASE_CONFIGS[Phase.PR_READINESS]
         assert readiness_config.allowed_next == frozenset({Phase.DONE})
         assert readiness_config.approval_gate is None
@@ -87,7 +86,6 @@ class TestPhaseConfigs:
         assert "done" not in init_config.allowed_signals
 
     def test_planning_owns_approval_gate(self) -> None:
-        """Planning owns the only approval gate to implementation."""
         gate = PHASE_CONFIGS[Phase.PLANNING].approval_gate
         assert gate is not None
         assert gate.waiting_for == "plan_approval"
@@ -95,19 +93,16 @@ class TestPhaseConfigs:
         assert "plan_approval" in PHASE_CONFIGS[Phase.PLANNING].allowed_waits
 
     def test_requirements_is_input_wait_not_gate(self) -> None:
-        """Requirements is an input wait for qa_answers with no approval gate."""
         config = PHASE_CONFIGS[Phase.REQUIREMENTS]
         assert config.approval_gate is None
         assert config.allowed_waits == frozenset({"qa_answers"})
 
     def test_implementation_operational_wait_no_gate(self) -> None:
-        """Implementation may wait on human_action with no approval gate."""
         config = PHASE_CONFIGS[Phase.IMPLEMENTATION]
         assert config.approval_gate is None
         assert "human_action" in config.allowed_waits
 
     def test_only_planning_owns_a_gate(self) -> None:
-        """Planning is the sole gated phase; all others are gateless."""
         for phase, config in PHASE_CONFIGS.items():
             if phase is Phase.PLANNING:
                 assert config.approval_gate is not None
@@ -116,8 +111,6 @@ class TestPhaseConfigs:
 
 
 class TestRegistryInvariants:
-    """Tests for validate_phase_registry."""
-
     def _cfg(self, **kw: object) -> PhaseConfig:
         base: dict[str, object] = {
             "phase": Phase.PLANNING,
@@ -131,7 +124,6 @@ class TestRegistryInvariants:
         return PhaseConfig(**base)  # type: ignore[arg-type]
 
     def test_live_registry_passes(self) -> None:
-        """The shipped registry satisfies all invariants."""
         validate_phase_registry(PHASE_CONFIGS)
 
     def test_gate_target_must_be_allowed_next(self) -> None:

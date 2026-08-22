@@ -1,19 +1,4 @@
-"""Authoritative overview workflow-state parsing, atomic mutation, and processing.
-
-This is the side-effecting layer around the pure `validate_workflow_event`:
-
-1. Strict parse: `_overview.md` text -> typed `OverviewState` or typed parse error.
-2. Atomic write: `atomic_write_text` (tempfile + `os.replace`, same directory).
-3. Pure render + apply: `render_overview` / `apply_overview_transition` rewrite the
-   Phase (and optionally Blocked/Last Action/Next/Flow Log) in place without
-   clobbering agent-owned content.
-4. Processor: `process_workflow_event` validates completely before mutating, mutates
-   only on an accepted phase change, and converts mutation failure into an explicit
-   rejection.
-
-The approval service reuses the atomic primitive and `apply_overview_transition`; the
-history writer reuses `ProcessedOutcome` source/target/accepted/error fields.
-"""
+"""Strict parsing and atomic mutation of authoritative workflow state."""
 
 import contextlib
 import fcntl
@@ -36,38 +21,26 @@ from .workflow_event import (
     validate_workflow_event,
 )
 
-# =============================================================================
-# Strict overview parsing
-# =============================================================================
-
-
 class OverviewParseError(Enum):
-    """Typed cause of a strict overview-state parse failure."""
-
     FILE_NOT_FOUND = "file_not_found"
-    READ_FAILED = "read_failed"  # OSError/UnicodeDecodeError reading the file
+    READ_FAILED = "read_failed"
     MISSING_PHASE = "missing_phase"
     DUPLICATE_PHASE = "duplicate_phase"
-    MALFORMED_PHASE = "malformed_phase"  # value not a Phase enum member
+    MALFORMED_PHASE = "malformed_phase"
     MISSING_BLOCKED = "missing_blocked"
     DUPLICATE_BLOCKED = "duplicate_blocked"
-    MALFORMED_BLOCKED = "malformed_blocked"  # empty value
+    MALFORMED_BLOCKED = "malformed_blocked"
     MISSING_LAST_ACTION = "missing_last_action"
     DUPLICATE_LAST_ACTION = "duplicate_last_action"
     MISSING_NEXT = "missing_next"
     DUPLICATE_NEXT = "duplicate_next"
-    MISSING_FLOW_LOG = "missing_flow_log"  # no "## Flow Log" heading
+    MISSING_FLOW_LOG = "missing_flow_log"
     DUPLICATE_FLOW_LOG = "duplicate_flow_log"
 
 
 @dataclass(frozen=True)
 class OverviewState:
-    """Strictly-parsed authoritative workflow state of one `_overview.md`.
-
-    raw_text is retained so transitions rewrite in place (single-match subn) rather
-    than reconstructing the file and clobbering agent-owned content. blocked is kept
-    as its raw value (e.g. "no", "waiting_human") - structure-strict, value-lenient.
-    """
+    """Retain raw text so transitions preserve agent-owned content byte-for-byte."""
 
     phase: Phase
     blocked: str
@@ -94,7 +67,6 @@ def _extract_single(
     missing: OverviewParseError,
     duplicate: OverviewParseError,
 ) -> tuple[str | None, OverviewParseError | None]:
-    """Return the single stripped value of `field:` or a missing/duplicate error."""
     matches = re.findall(rf"^{re.escape(field)}:[ \t]*(.*)$", content, re.MULTILINE)
     if len(matches) == 0:
         return None, missing
@@ -108,11 +80,7 @@ def _parse_failure(error: OverviewParseError, message: str) -> OverviewParseResu
 
 
 def parse_overview_state(content: str) -> OverviewParseResult:
-    """Strictly parse the Status block. First violation wins; no mutation.
-
-    Requires exactly one each of Phase, Blocked, Last Action, Next, and a single
-    `## Flow Log` heading. Unrelated lines are ignored and preserved by callers.
-    """
+    """Require one authoritative copy of each field while preserving unrelated text."""
     phase_val, err = _extract_single(
         content,
         "Phase",
@@ -185,7 +153,6 @@ def parse_overview_state(content: str) -> OverviewParseResult:
 
 
 def read_overview_state(session_path: Path) -> OverviewParseResult:
-    """Read and strictly parse `_overview.md`; FILE_NOT_FOUND when absent."""
     overview_path = session_path / OVERVIEW_FILENAME
     if not overview_path.exists():
         return _parse_failure(
@@ -200,18 +167,8 @@ def read_overview_state(session_path: Path) -> OverviewParseResult:
     return parse_overview_state(content)
 
 
-# =============================================================================
-# Atomic same-file replacement (reused by the approval service)
-# =============================================================================
-
-
 def atomic_write_text(target: Path, content: str, *, encoding: str = "utf-8") -> None:
-    """Atomically replace `target` with `content`.
-
-    Writes to a temp file in `target.parent` (same filesystem, so `os.replace` is
-    atomic), fsyncs, then replaces. On any failure the temp file is removed and the
-    original target is left byte-for-byte intact. Raises OSError on write failure.
-    """
+    """Use same-directory replace so failures leave the original byte-identical."""
     fd, tmp_name = tempfile.mkstemp(
         dir=str(target.parent), prefix=target.name + ".", suffix=".tmp"
     )
@@ -228,25 +185,18 @@ def atomic_write_text(target: Path, content: str, *, encoding: str = "utf-8") ->
         raise
 
 
-# =============================================================================
-# Advisory session lock (shared by the event processor and the approval service)
-# =============================================================================
-
 SESSION_LOCK_FILENAME = "_session.lock"
 
-# The worker absorbs transient contention from a concurrent approve CLI by waiting up to
-# this long for the lock; approval itself stays non-blocking fail-fast (wait_timeout=None).
+# Workers absorb brief approval contention; approval itself remains fail-fast.
 WORKER_LOCK_WAIT_SECONDS = 5.0
 
 _LOCK_RETRY_INTERVAL_SECONDS = 0.05
 
 
 class LockState(Enum):
-    """Outcome of attempting the advisory session lock."""
-
-    ACQUIRED = "acquired"  # exclusive lock held for the with-body
-    CONTENDED = "contended"  # another holder has it (retryable)
-    FAILED = "failed"  # open/flock raised a non-contention OSError
+    ACQUIRED = "acquired"
+    CONTENDED = "contended"
+    FAILED = "failed"
 
 
 @dataclass(frozen=True)
@@ -261,24 +211,7 @@ class LockOutcome:
 def session_lock(
     session_path: Path, *, wait_timeout: float | None = None
 ) -> Iterator[LockOutcome]:
-    """Yield the lock outcome; ACQUIRED holds an exclusive advisory lock for the body.
-
-    One lock file per session serializes every overview compare-and-replace, whether
-    issued by the orchestrator's event processor or the out-of-band approval CLI, so the
-    two cannot interleave their read-compare-write and lose an update. Contention
-    (`BlockingIOError` from a non-blocking `flock`) is retryable and distinct from a
-    genuine fault: a non-contention `OSError` on `os.open`/`flock` (ENOLCK, unsupported
-    filesystem) yields FAILED. The lock file is created once and never unlinked
-    (unlinking would let two processes lock different inodes); the lock is bound to the
-    fd, released on exit, and by the kernel on process death, so no stale lock survives a
-    crash.
-
-    `wait_timeout` distinguishes the two callers. None (approval): a single non-blocking
-    attempt; contention yields CONTENDED at once (fail-fast). A value (worker): retry the
-    non-blocking flock every `_LOCK_RETRY_INTERVAL_SECONDS`, measured against a
-    `time.monotonic()` deadline, and yield CONTENDED only if still held when it elapses,
-    so a concurrent approval's brief lock hold is absorbed instead of blocking the run.
-    """
+    """Keep one lock inode; None fails fast, while a timeout retries monotonically."""
     try:
         fd = os.open(
             str(session_path / SESSION_LOCK_FILENAME), os.O_CREAT | os.O_RDWR, 0o644
@@ -311,18 +244,9 @@ def session_lock(
         os.close(fd)
 
 
-# =============================================================================
-# Pure render + atomic apply
-# =============================================================================
-
-
 @dataclass(frozen=True)
 class OverviewTransition:
-    """A requested authoritative overview change. None fields are preserved.
-
-    Processor transitions set target_phase (+ optional Flow Log audit line). The
-    approval service additionally sets blocked/last_action/next_action.
-    """
+    """A `None` field preserves its existing authoritative value."""
 
     target_phase: Phase
     flow_log_entry: str | None = None  # full preformatted "- [NNN @ ...] ..." line
@@ -332,8 +256,6 @@ class OverviewTransition:
 
 
 class OverviewWriteError(Enum):
-    """Typed cause of a failed overview transition apply."""
-
     PARSE_FAILED = "parse_failed"  # re-read/parse failed before writing
     WRITE_FAILED = "write_failed"  # atomic_write_text raised OSError
     PHASE_MOVED = "phase_moved"  # expected_source != freshly parsed phase (CAS miss)
@@ -342,8 +264,6 @@ class OverviewWriteError(Enum):
 
 @dataclass(frozen=True)
 class OverviewWriteResult:
-    """Outcome of `apply_overview_transition`. ok=True means an atomic write landed."""
-
     ok: bool
     new_phase: Phase | None = None
     observed_phase: Phase | None = None  # freshly-parsed phase on a PHASE_MOVED miss
@@ -353,7 +273,6 @@ class OverviewWriteResult:
 
 
 def _replace_field(content: str, field: str, value: str) -> str:
-    """Single-match replace of a `field:` line. Raises if not exactly one match."""
     new_content, count = re.subn(
         rf"^{re.escape(field)}:.*$",
         f"{field}: {value}",
@@ -367,7 +286,6 @@ def _replace_field(content: str, field: str, value: str) -> str:
 
 
 def _append_flow_log(content: str, entry: str) -> str:
-    """Insert `entry` as the last line of the '## Flow Log' section."""
     trailing_newline = content.endswith("\n")
     lines = content.splitlines()
 
@@ -397,11 +315,7 @@ def _append_flow_log(content: str, entry: str) -> str:
 
 
 def render_overview(state: OverviewState, transition: OverviewTransition) -> str:
-    """Pure: render new overview text applying a transition in place.
-
-    Parse guarantees each targeted field occurs exactly once, so single-match
-    replacement is safe. Unrelated lines are preserved verbatim.
-    """
+    """Rewrite only strictly parsed fields, preserving every unrelated line."""
     content = _replace_field(state.raw_text, "Phase", transition.target_phase.value)
     if transition.blocked is not None:
         content = _replace_field(content, "Blocked", transition.blocked)
@@ -421,17 +335,7 @@ def apply_overview_transition(
     *,
     wait_timeout: float | None = None,
 ) -> OverviewWriteResult:
-    """Acquire the session lock, then re-read, render, and atomically write the transition.
-
-    This is the entry point for callers that do NOT already hold `session_lock`. It
-    acquires the lock itself and returns LOCK_UNAVAILABLE (no write) when the lock is
-    contended or faulted; callers already holding the lock use
-    `apply_overview_transition_locked` instead to avoid self-deadlock on a second fd.
-    Serializing every compare-and-replace under one lock stops a concurrent approval and
-    the worker's event processor from losing an update. `wait_timeout` is forwarded to
-    `session_lock`: the worker passes a bounded value to wait out transient contention,
-    while approval-side callers leave it None (fail-fast).
-    """
+    """Serialize CAS; callers already holding the lock must use the locked variant."""
     with session_lock(session_path, wait_timeout=wait_timeout) as lock:
         if lock.state is not LockState.ACQUIRED:
             return OverviewWriteResult(
@@ -452,14 +356,7 @@ def apply_overview_transition_locked(
     transition: OverviewTransition,
     expected_source: Phase | None = None,
 ) -> OverviewWriteResult:
-    """Re-read, CAS on `expected_source`, render, and atomically write. Caller holds the lock.
-
-    THE entry point for callers already holding `session_lock` (the approval service).
-    Re-parses immediately before writing (never trusts a stale state). When
-    `expected_source` is given it is a compare-and-swap guard: a differing freshly-parsed
-    Phase yields PHASE_MOVED with no write. Parse failure or an atomic-write OSError
-    yields ok=False with no partial mutation.
-    """
+    """Re-read under the caller's lock and reject a stale expected source without writing."""
     parsed = read_overview_state(session_path)
     if parsed.state is None:
         return OverviewWriteResult(
@@ -488,32 +385,16 @@ def apply_overview_transition_locked(
     return OverviewWriteResult(ok=True, new_phase=transition.target_phase)
 
 
-# =============================================================================
-# Event processor
-# =============================================================================
-
-
 class OutcomeKind(Enum):
-    """Discriminated outcome of processing one workflow event."""
-
-    ACCEPTED_NO_CHANGE = "accepted_no_change"  # validated, same phase, no write
-    ACCEPTED_TRANSITION = "accepted_transition"  # validated + Phase atomically mutated
-    REJECTED_VALIDATION = (
-        "rejected_validation"  # validator rejected; no mutation attempted
-    )
-    REJECTED_MUTATION = (
-        "rejected_mutation"  # validated but atomic overview write failed
-    )
+    ACCEPTED_NO_CHANGE = "accepted_no_change"
+    ACCEPTED_TRANSITION = "accepted_transition"
+    REJECTED_VALIDATION = "rejected_validation"
+    REJECTED_MUTATION = "rejected_mutation"
 
 
 @dataclass(frozen=True)
 class ProcessedOutcome:
-    """Truthful outcome of processing one workflow event.
-
-    The history writer consumes source_phase/target_phase/accepted/validation_error to
-    write source-counted, accept-flagged audit rows. `mutated` reports whether
-    `_overview.md` changed on disk.
-    """
+    """Carry authoritative source and acceptance data into the audit history."""
 
     kind: OutcomeKind
     accepted: bool
@@ -534,13 +415,7 @@ def process_workflow_event(
     iteration: int,
     now: datetime | None = None,
 ) -> ProcessedOutcome:
-    """Validate an event fully, then mutate only on an accepted phase change.
-
-    Control flow: build event -> `validate_workflow_event` (pure) -> reject if invalid
-    (no file touched) -> if accepted and Phase actually changes via continue/done,
-    atomically apply the transition -> convert any write failure into an explicit
-    REJECTED_MUTATION. waiting/blocked can never reach the mutation branch.
-    """
+    """Validate fully before mutation and turn write failures into explicit rejection."""
     event = WorkflowEvent(
         source_phase=source_phase,
         status=signal.status,

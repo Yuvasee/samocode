@@ -1,4 +1,3 @@
-"""Tests for worker/approval.py - pure check, service, CLI wiring, isolation."""
 
 import json
 import threading
@@ -27,9 +26,6 @@ from worker.workflow_state import (
     parse_overview_state,
 )
 
-# =============================================================================
-# Helpers
-# =============================================================================
 
 
 def _overview_text(
@@ -105,9 +101,6 @@ def sessions_dir(tmp_path: Path) -> Path:
     return d
 
 
-# =============================================================================
-# Pure check_approval
-# =============================================================================
 
 
 class TestCheckApproval:
@@ -184,9 +177,6 @@ class TestCheckApproval:
         assert check.rejection is ApprovalRejection.GATE_TARGET_INVALID
 
 
-# =============================================================================
-# approve_session success + effects
-# =============================================================================
 
 
 class TestApproveSessionSuccess:
@@ -235,9 +225,6 @@ class TestApproveSessionSuccess:
         assert result.outcome is ApprovalOutcome.APPROVED
 
 
-# =============================================================================
-# approve_session rejections (assert no mutation)
-# =============================================================================
 
 
 class TestApproveSessionRejections:
@@ -291,9 +278,6 @@ class TestApproveSessionRejections:
         assert result.rejection is ApprovalRejection.SIGNAL_PHASE_MISMATCH
 
 
-# =============================================================================
-# Idempotency / repetition / concurrency
-# =============================================================================
 
 
 class TestIdempotencyConcurrency:
@@ -306,7 +290,6 @@ class TestIdempotencyConcurrency:
         assert first.outcome is ApprovalOutcome.APPROVED
         second = approve_session(project, "task")
         assert second.rejection is ApprovalRejection.PHASE_HAS_NO_GATE
-        # Exactly one approval Flow Log entry.
         text = (session / "_overview.md").read_text()
         assert text.count("Approved planning -> implementation") == 1
 
@@ -338,8 +321,6 @@ class TestIdempotencyConcurrency:
     def test_lock_io_failure_returns_rejection(
         self, sessions_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        # A non-contention lock fault (ENOLCK, unsupported FS) is distinct from
-        # contention: LOCK_IO_FAILED -> exit 4 (not retryable), not exit 3.
         _make_session(sessions_dir)
         import contextlib
 
@@ -361,7 +342,6 @@ class TestIdempotencyConcurrency:
 
         @contextlib.contextmanager
         def advancing_lock(sp: Path):
-            # Simulate a concurrent winner reaching the gate target before we re-check.
             (sp / "_overview.md").write_text(_overview_text(phase="implementation"))
             yield LockOutcome(LockState.ACQUIRED)
 
@@ -374,9 +354,6 @@ class TestIdempotencyConcurrency:
     def test_under_lock_phase_off_target_is_state_conflict(
         self, sessions_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        # Under the lock the phase moved to a NON-target phase (an out-of-contract
-        # external writer), not the gate target: a state conflict (exit 4), never a
-        # benign concurrent approval (exit 6).
         _make_session(sessions_dir)
         import contextlib
 
@@ -395,8 +372,6 @@ class TestIdempotencyConcurrency:
     def test_write_phase_moved_to_target_maps_to_already_advanced(
         self, sessions_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        # Write-stage CAS miss where the observed phase equals the gate target (a
-        # concurrent winner) is ALREADY_ADVANCED (exit 6), not OVERVIEW_WRITE_FAILED.
         _make_session(sessions_dir)
         from worker.workflow_state import OverviewWriteError
 
@@ -418,8 +393,6 @@ class TestIdempotencyConcurrency:
     def test_write_phase_moved_off_target_is_state_conflict(
         self, sessions_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        # Write-stage CAS miss where the observed phase is NOT the gate target is an
-        # out-of-contract external writer: state conflict (exit 4), not exit 6.
         _make_session(sessions_dir)
         from worker.workflow_state import OverviewWriteError
 
@@ -441,14 +414,11 @@ class TestIdempotencyConcurrency:
     def test_under_lock_rejection_with_unchanged_phase_is_honest(
         self, sessions_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        # Pre-lock accepted, under-lock rejected, but the phase did NOT move: the honest
-        # cause is check_approval's rejection, not ALREADY_ADVANCED.
         _make_session(sessions_dir)
         import contextlib
 
         @contextlib.contextmanager
         def clearing_lock(sp: Path):
-            # Signal is consumed under the lock; phase stays 'planning'.
             (sp / "_signal.json").write_text("{}")
             yield LockOutcome(LockState.ACQUIRED)
 
@@ -488,9 +458,6 @@ class TestIdempotencyConcurrency:
             )
 
 
-# =============================================================================
-# Failure injection
-# =============================================================================
 
 
 class TestFailureInjection:
@@ -512,7 +479,6 @@ class TestFailureInjection:
         result = approve_session(_project(sessions_dir, tmp_path), "task")
         assert result.rejection is ApprovalRejection.OVERVIEW_WRITE_FAILED
         assert result.advanced is False
-        # Signal NOT consumed -> re-run (without monkeypatch) still finds it pending.
         assert json.loads((session / "_signal.json").read_text())["status"] == "waiting"
 
     def test_signal_consume_failure_keeps_advance_recoverable(
@@ -531,18 +497,13 @@ class TestFailureInjection:
         assert result.outcome is ApprovalOutcome.APPROVED_SIGNAL_RETAINED
         assert result.advanced is True
         assert result.signal_consumed is False
-        # Overview advanced despite consume failure.
         state = parse_overview_state((session / "_overview.md").read_text()).state
         assert state is not None and state.phase is Phase.IMPLEMENTATION
-        # Re-run (consume restored) refuses to re-advance.
         monkeypatch.undo()
         again = approve_session(project, "task")
         assert again.rejection is ApprovalRejection.PHASE_HAS_NO_GATE
 
 
-# =============================================================================
-# Provider / model independence
-# =============================================================================
 
 
 class TestProviderIndependence:
@@ -600,9 +561,6 @@ class TestProviderIndependence:
         assert not any("global_config" in m for m in imported)
 
 
-# =============================================================================
-# approve() config loading + exit codes + CLI
-# =============================================================================
 
 
 class TestApproveConfigAndCli:

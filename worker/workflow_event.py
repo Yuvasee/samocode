@@ -1,10 +1,4 @@
-"""Pure, provider-neutral workflow-event validation.
-
-`validate_workflow_event` is the single authority on whether a
-(source_phase, status, target, wait-reason, iterations) tuple is a legal workflow
-event. It performs no I/O and no mutation. The event processor and the approval service
-consume this same contract and add side effects around it.
-"""
+"""Pure validation of provider-neutral workflow events."""
 
 from dataclasses import dataclass
 from enum import Enum
@@ -14,8 +8,6 @@ from .signals import SignalStatus
 
 
 class RejectionReason(Enum):
-    """Typed cause of a rejected workflow event (for tests and audit rows)."""
-
     UNKNOWN_SOURCE_PHASE = "unknown_source_phase"
     UNKNOWN_TARGET_PHASE = "unknown_target_phase"
     STATUS_NOT_ALLOWED = "status_not_allowed"
@@ -31,11 +23,7 @@ class RejectionReason(Enum):
 
 @dataclass(frozen=True)
 class WorkflowEvent:
-    """A provider-neutral request to advance/hold workflow state.
-
-    requested_target None means "stay in source_phase". source_iterations counts runs
-    already spent in source_phase, including this one.
-    """
+    """`source_iterations` includes this run; a missing target means stay put."""
 
     source_phase: str | None
     status: SignalStatus
@@ -46,8 +34,6 @@ class WorkflowEvent:
 
 @dataclass(frozen=True)
 class WorkflowEventResult:
-    """Outcome of validating a WorkflowEvent. Never mutates state."""
-
     accepted: bool
     source_phase: Phase | None
     target_phase: Phase | None
@@ -75,11 +61,7 @@ def _accept(source: Phase, target: Phase) -> WorkflowEventResult:
 
 
 def validate_workflow_event(event: WorkflowEvent) -> WorkflowEventResult:
-    """Validate one workflow event. Pure: no I/O, no mutation, no logging.
-
-    Fail-fast rule order: source known, status allowed, iteration limit, target
-    parseable, then status-specific rules (waiting / blocked / done / continue).
-    """
+    """Validate without I/O, mutation, or logging; return the first violation."""
     source_config = get_phase_config(event.source_phase)
     if source_config is None:
         return _reject(
@@ -169,12 +151,11 @@ def validate_workflow_event(event: WorkflowEvent) -> WorkflowEventResult:
             )
         return _accept(source, Phase.DONE)
 
-    # CONTINUE
     if not is_change:
         return _accept(source, source)
     if source_config.gate_owns_transition(target):
         gate = source_config.approval_gate
-        assert gate is not None  # gate_owns_transition guarantees this
+        assert gate is not None
         return _reject(
             source,
             target,

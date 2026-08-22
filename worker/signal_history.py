@@ -1,17 +1,4 @@
-"""Signal history tracking for session debugging.
-
-Records provider iterations to `_signal_history.jsonl` for post-mortem analysis.
-
-Two row schemas coexist in one file and are read through a single normalizer:
-- Legacy (no `"v"` key): a single `phase` field, written by `record_signal`.
-- v2 (`"v": 2`): source_phase / target_phase / status / accepted / validation_error,
-  written by `record_processed_outcome` from a workflow_state.ProcessedOutcome.
-
-Legacy public names (SignalHistoryEntry, record_signal, read_signal_history,
-get_phase_iteration_count) remain thin compatibility shims over the same parse path.
-Iteration counting is by SOURCE phase, so rejected events and the boundary iteration
-that trips a limit are still counted for the phase they were spent in.
-"""
+"""Normalize versioned history and count every outcome by its source phase."""
 
 import json
 from collections.abc import Mapping
@@ -28,15 +15,8 @@ SCHEMA_VERSION = 2
 LEGACY_SCHEMA_VERSION = 1
 
 
-# =============================================================================
-# Legacy compatibility row (unchanged public contract)
-# =============================================================================
-
-
 @dataclass(frozen=True)
 class SignalHistoryEntry:
-    """A recorded signal with metadata (legacy row shape)."""
-
     timestamp: str
     iteration: int
     phase: str | None
@@ -66,10 +46,7 @@ def record_signal(
     iteration: int,
     phase_from_overview: str | None = None,
 ) -> None:
-    """Append a legacy signal row to history.
-
-    Uses phase from signal if available, falls back to phase_from_overview.
-    """
+    """Append a legacy-compatible history row."""
     entry = SignalHistoryEntry(
         timestamp=_now(),
         iteration=iteration,
@@ -83,19 +60,9 @@ def record_signal(
     _append(session_path, entry.to_dict())
 
 
-# =============================================================================
-# v2 typed history record
-# =============================================================================
-
-
 @dataclass(frozen=True)
 class HistoryRecord:
-    """Truthful, normalized record of one provider iteration.
-
-    Written as v2 by `record_processed_outcome`; legacy rows normalize into this shape
-    with accepted/target_phase None (unknown) and schema_version 1. `source_phase` is
-    the phase the iteration was spent in and is the counting key.
-    """
+    """Legacy rows leave outcome fields unknown; `source_phase` remains the counting key."""
 
     timestamp: str
     iteration: int
@@ -114,7 +81,6 @@ class HistoryRecord:
     schema_version: int = SCHEMA_VERSION
 
     def to_dict(self) -> dict[str, object]:
-        """Convert to JSON-serializable v2 dict."""
         return {
             "v": self.schema_version,
             "timestamp": self.timestamp,
@@ -140,12 +106,7 @@ def record_processed_outcome(
     iteration: int,
     outcome: ProcessedOutcome,
 ) -> HistoryRecord:
-    """Append a v2 audit row for a processed workflow event.
-
-    Records the raw signal status alongside the authoritative outcome so rejected
-    events and limit-boundary iterations are both counted by source phase. Returns the
-    written record.
-    """
+    """Record both the raw signal and its authoritative processing outcome."""
     record = HistoryRecord(
         timestamp=_now(),
         iteration=iteration,
@@ -168,25 +129,13 @@ def record_processed_outcome(
     return record
 
 
-# =============================================================================
-# Normalizing reader + source-phase counting
-# =============================================================================
-
-
 def read_history(session_path: Path) -> list[HistoryRecord]:
-    """Read all rows, normalizing legacy and v2 rows into HistoryRecord.
-
-    Corrupt (non-JSON) and non-object lines are skipped, matching the legacy reader.
-    """
+    """Normalize both schemas and skip corrupt rows for legacy compatibility."""
     return [_normalize(row) for row in _iter_rows(session_path)]
 
 
 def count_source_phase_iterations(session_path: Path, phase: str) -> int:
-    """Count iterations spent in `phase` (by source phase, case-insensitive).
-
-    Includes rejected events and the boundary iteration that trips a limit, because
-    each was recorded with its source phase.
-    """
+    """Include rejected and limit-boundary runs in their source phase."""
     wanted = phase.lower()
     return sum(
         1
@@ -195,17 +144,8 @@ def count_source_phase_iterations(session_path: Path, phase: str) -> int:
     )
 
 
-# =============================================================================
-# Legacy read shims (unchanged public contract)
-# =============================================================================
-
-
 def get_phase_iteration_count(session_path: Path, phase: str) -> int:
-    """Count iterations in a phase for per-phase limit enforcement.
-
-    Compatibility shim over source-phase counting; legacy rows count by their `phase`
-    field (== normalized source_phase).
-    """
+    """Compatibility shim over source-phase counting."""
     return count_source_phase_iterations(session_path, phase)
 
 
@@ -226,17 +166,11 @@ def read_signal_history(session_path: Path) -> list[SignalHistoryEntry]:
     ]
 
 
-# =============================================================================
-# Internals
-# =============================================================================
-
-
 def _now() -> str:
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
 def _phase_value(phase: Phase | None) -> str | None:
-    """Return the enum value of a phase, or None."""
     return phase.value if phase is not None else None
 
 
@@ -264,7 +198,6 @@ def _iter_rows(session_path: Path) -> list[dict[str, object]]:
 
 
 def _normalize(data: dict[str, object]) -> HistoryRecord:
-    """Fold a legacy or v2 row dict into a HistoryRecord."""
     if data.get("v") is None:  # legacy row: only `phase` is known
         return HistoryRecord(
             timestamp=_as_str(data.get("timestamp")) or "",

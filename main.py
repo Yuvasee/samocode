@@ -63,18 +63,10 @@ def process_signal(
     iteration: int,
     logger: logging.Logger,
 ) -> Signal:
-    """Validate one iteration's signal, record it, and return the effective signal.
-
-    Delegates every rule to `process_workflow_event` (the single validation +
-    atomic-mutation authority) and every audit row to `record_processed_outcome`.
-    Accepted events return the child's original signal unchanged; rejected events
-    become an explicit BLOCKED with a truthful reason and needs.
-    """
+    """Use one authority to validate, mutate, audit, and surface truthful rejection."""
     if source_phase is None:
         bootstrap = _resolve_bootstrap_phase(session_path, logger)
         if bootstrap.phase is None:
-            # Overview unreadable/unparseable, or child smuggled a non-init phase:
-            # block rather than trust it. The reason carries the truthful cause.
             assert bootstrap.block_reason is not None
             return Signal(
                 status=SignalStatus.BLOCKED,
@@ -84,16 +76,12 @@ def process_signal(
             )
         source_phase = bootstrap.phase
 
-    # source_iterations must count this run: history is written AFTER processing, so
-    # the current iteration is not yet recorded. validate_workflow_event trips on
-    # count > max, so +1 makes the (max+1)-th run in a phase the boundary.
+    # History is written later, so +1 includes this run in the limit check.
     source_iterations = count_source_phase_iterations(session_path, source_phase) + 1
 
     outcome = process_workflow_event(
         session_path, signal, source_phase, source_iterations, iteration
     )
-    # Record every iteration where the source phase is known, including rejected ones,
-    # so per-phase counting stays truthful.
     record_processed_outcome(session_path, signal, iteration, outcome)
 
     return _signal_for_outcome(signal, outcome, source_phase, logger)
@@ -101,8 +89,6 @@ def process_signal(
 
 @dataclass(frozen=True)
 class BootstrapPhase:
-    """Resolved bootstrap source phase, or a block reason when it cannot be trusted."""
-
     phase: str | None
     block_reason: str | None = None
 
@@ -110,16 +96,7 @@ class BootstrapPhase:
 def _resolve_bootstrap_phase(
     session_path: Path, logger: logging.Logger
 ) -> BootstrapPhase:
-    """Resolve the source phase for an iteration whose pre-run phase was unknown.
-
-    Init is the authoritative source for a bootstrap iteration: the child ran the init
-    step and cannot self-declare a later phase. No overview yet -> init. A now-parseable
-    overview the child just wrote is trusted only to guard against smuggling: its phase
-    must be init or a legal init successor, else it is blocked. The returned source is
-    always init, so this iteration's signal is validated as an init event and cannot
-    advance more than one phase (init -> its successor) in a single provider iteration.
-    Unreadable vs unparseable overviews are reported distinctly.
-    """
+    """Keep init authoritative during bootstrap so one run cannot jump two phases."""
     parsed = read_overview_state(session_path)
     if parsed.error is OverviewParseError.FILE_NOT_FOUND:
         return BootstrapPhase(phase=Phase.INIT.value)
@@ -135,11 +112,7 @@ def _resolve_bootstrap_phase(
     init_config = get_phase_config(Phase.INIT.value)
     assert init_config is not None
     if written is not Phase.INIT and not init_config.can_transition_to(written):
-        # Quarantine the smuggled phase: reset the overview to init before blocking.
-        # Routing on the next process reads the overview phase directly (extract_phase),
-        # so a retained smuggled phase would make source_phase non-None and bypass this
-        # guard entirely, letting the child reach an arbitrary phase after restart.
-        # A CAS on the smuggled phase makes the reset idempotent and race-safe.
+        # A retained phase would bypass bootstrap validation after restart; CAS-reset it.
         overview_path = session_path / OVERVIEW_FILENAME
         reset = apply_overview_transition(
             session_path,
@@ -159,13 +132,10 @@ def _resolve_bootstrap_phase(
             reset.error is OverviewWriteError.PHASE_MOVED
             and reset.observed_phase is Phase.INIT
         ):
-            # A concurrent actor already reset to init; the desired state is achieved, so
-            # this is not a failure and needs no quarantine.
+            # Another writer already established the safe state.
             reset_note = "; overview already at init"
         else:
-            # Independent quarantine: the in-place reset failed, so rename the overview
-            # aside with a distinct syscall. A restart then finds no overview and cleanly
-            # re-bootstraps to init instead of trusting the retained smuggled phase.
+            # Renaming is an independent recovery path when the in-place write fails.
             try:
                 os.replace(overview_path, session_path / "_overview.rejected.md")
                 reset_note = (
@@ -197,7 +167,6 @@ _HUMAN_DECISION_REJECTIONS: frozenset[RejectionReason] = frozenset(
 
 
 def _needs_for_rejection(reason: RejectionReason | None) -> str:
-    """Map a rejection cause to the `needs` a synthesized BLOCKED should carry."""
     return "human_decision" if reason in _HUMAN_DECISION_REJECTIONS else "investigation"
 
 
@@ -207,11 +176,7 @@ def _signal_for_outcome(
     source_phase: str,
     logger: logging.Logger,
 ) -> Signal:
-    """Turn a ProcessedOutcome into the loop's effective control signal.
-
-    Accepted -> proceed with the child's original signal (dispatch reads its status).
-    Rejected (validation or mutation) -> halt as BLOCKED with a truthful reason/needs.
-    """
+    """Preserve accepted signals and convert rejections into truthful blocks."""
     if outcome.accepted:
         if outcome.kind is OutcomeKind.ACCEPTED_TRANSITION and outcome.target_phase:
             logger.info(
@@ -509,7 +474,6 @@ def run_orchestrator(args: argparse.Namespace) -> None:
 
             signal = read_signal_file(session_path)
 
-            # Validate signal, record the truthful outcome, resolve the effective signal
             signal = process_signal(signal, phase, session_path, iteration, logger)
 
             # Use phase from signal if available, otherwise use previously extracted phase
@@ -604,10 +568,8 @@ def cmd_install(args: argparse.Namespace) -> None:
 
 
 def cmd_approve(args: argparse.Namespace) -> None:
-    """Approve a session's pending gate and map the typed result to an exit code."""
     result = approve(Path(args.config).expanduser().resolve(), args.session)
-    # ALREADY_ADVANCED is a fail-fast rejection (a concurrent winner advanced the
-    # phase), so it is not treated as success and prints to stderr.
+    # A concurrent winner is intentionally fail-fast, not success for this caller.
     succeeded = result.outcome in (
         ApprovalOutcome.APPROVED,
         ApprovalOutcome.APPROVED_SIGNAL_RETAINED,

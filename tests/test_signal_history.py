@@ -329,10 +329,8 @@ class TestSignalHistoryEntry:
 
 
 class TestRecordProcessedOutcome:
-    """v2 recorder consuming ProcessedOutcome."""
 
     def test_new_schema_round_trip(self, tmp_path: Path) -> None:
-        """Accepted transition round-trips through read_history with truthful fields."""
         session = tmp_path / "s"
         session.mkdir()
         signal = Signal(
@@ -359,7 +357,6 @@ class TestRecordProcessedOutcome:
         assert rec == written
 
     def test_records_rejected_audit_row(self, tmp_path: Path) -> None:
-        """Rejected validation preserves accepted=False, reason, and error."""
         session = tmp_path / "s"
         session.mkdir()
         signal = Signal(status=SignalStatus.CONTINUE, phase="testing")
@@ -382,7 +379,6 @@ class TestRecordProcessedOutcome:
         assert rec.mutated is False
 
     def test_accepted_and_rejected_flags_distinct(self, tmp_path: Path) -> None:
-        """Both audit rows persist with their own accepted flags."""
         session = tmp_path / "s"
         session.mkdir()
         record_processed_outcome(
@@ -403,10 +399,8 @@ class TestRecordProcessedOutcome:
 
 
 class TestSourcePhaseCounting:
-    """Counting is by source phase and includes rejected / boundary rows."""
 
     def test_counts_by_source_not_target(self, tmp_path: Path) -> None:
-        """Transition iteration counts toward source, not target (regression)."""
         session = tmp_path / "s"
         session.mkdir()
         record_processed_outcome(
@@ -420,7 +414,6 @@ class TestSourcePhaseCounting:
         assert count_source_phase_iterations(session, "testing") == 0
 
     def test_counts_rejected_and_limit_boundary(self, tmp_path: Path) -> None:
-        """Rejected event and the limit-boundary iteration both count by source."""
         session = tmp_path / "s"
         session.mkdir()
         for i in range(2):
@@ -446,7 +439,6 @@ class TestSourcePhaseCounting:
         assert count_source_phase_iterations(session, "implementation") == 3
 
     def test_get_phase_iteration_count_delegates(self, tmp_path: Path) -> None:
-        """Legacy shim equals source-phase count across mixed schemas."""
         session = tmp_path / "s"
         session.mkdir()
         record_signal(session, Signal(status=SignalStatus.CONTINUE, phase="init"), 1)
@@ -462,7 +454,6 @@ class TestSourcePhaseCounting:
 
 
 class TestHistoryCompatibility:
-    """Normalizing reader over mixed / corrupt rows."""
 
     def test_reads_mixed_legacy_and_v2(self, tmp_path: Path) -> None:
         session = tmp_path / "s"
@@ -513,7 +504,6 @@ class TestHistoryCompatibility:
         assert rec.accepted is None
 
     def test_read_signal_history_projects_v2(self, tmp_path: Path) -> None:
-        """Legacy reader still works over v2 rows (phase <- source_phase)."""
         session = tmp_path / "s"
         session.mkdir()
         record_processed_outcome(

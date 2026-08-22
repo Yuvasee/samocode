@@ -1,4 +1,3 @@
-"""Tests for worker/workflow_state.py - strict parsing, atomic mutation, processing."""
 
 import threading
 import time
@@ -63,9 +62,6 @@ def _raise_oserror(*_args: object, **_kwargs: object) -> None:
     raise OSError("injected replace failure")
 
 
-# =============================================================================
-# Strict parsing
-# =============================================================================
 
 
 class TestParseOverviewState:
@@ -140,9 +136,6 @@ class TestParseOverviewState:
         assert result.state.phase is Phase.INVESTIGATION
 
 
-# =============================================================================
-# Atomic write primitive
-# =============================================================================
 
 
 class TestAtomicWriteText:
@@ -174,9 +167,6 @@ class TestAtomicWriteText:
         assert [p.name for p in tmp_path.iterdir()] == ["f.md"]
 
 
-# =============================================================================
-# Pure render
-# =============================================================================
 
 
 class TestRenderOverview:
@@ -232,9 +222,6 @@ class TestRenderOverview:
         assert "## Files\n" in out
 
 
-# =============================================================================
-# Atomic apply
-# =============================================================================
 
 
 class TestApplyOverviewTransition:
@@ -280,19 +267,10 @@ class TestApplyOverviewTransition:
         assert overview.read_text() == before
 
 
-# =============================================================================
-# Session lock serialization (race regression)
-# =============================================================================
 
 
 class TestSessionLockSerialization:
-    """Deterministic proof that overview compare-and-replace is serialized.
-
-    flock treats two open descriptions of the same file independently even within one
-    process, so holding `session_lock` here makes a second lock acquisition fail
-    without threads or timing. That is the exact race RV2-003 flagged: a worker event
-    apply must not slip a compare-and-replace between an approval's read and write.
-    """
+    """`flock` treats separate file descriptions as independent lock owners."""
 
     def test_apply_refused_while_session_lock_held(self, temp_session: Path) -> None:
         overview = _write_overview(temp_session, phase="investigation")
@@ -323,8 +301,6 @@ class TestSessionLockSerialization:
     def test_locked_entry_point_writes_when_caller_owns_lock(
         self, temp_session: Path
     ) -> None:
-        # The approval service holds the lock across its whole critical section and calls
-        # the locked entry point; the apply must reuse it, not deadlock on a second fd.
         _write_overview(temp_session, phase="investigation")
         with session_lock(temp_session) as held:
             assert held.state is LockState.ACQUIRED
@@ -339,7 +315,6 @@ class TestSessionLockSerialization:
     def test_process_event_refused_while_session_lock_held(
         self, temp_session: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        # Shorten the worker's bounded wait so the held-lock case returns promptly.
         monkeypatch.setattr(ws, "WORKER_LOCK_WAIT_SECONDS", 0.05)
         before = _write_overview(temp_session, phase="investigation").read_text()
         with session_lock(temp_session) as held:
@@ -358,12 +333,7 @@ class TestSessionLockSerialization:
 
 
 class TestWorkerLockWait:
-    """RV3-001: the worker waits out transient contention; approval stays fail-fast.
-
-    flock treats two open descriptions independently even within one process, so a
-    background thread holding its own `session_lock` fd blocks the main thread's apply
-    fd deterministically - no reliance on wall-clock timing beyond the hold interval.
-    """
+    """Exercise deterministic contention through independently opened lock fds."""
 
     def test_apply_waits_for_lock_release(self, temp_session: Path) -> None:
         _write_overview(temp_session, phase="investigation")
@@ -380,7 +350,6 @@ class TestWorkerLockWait:
         thread.start()
         try:
             assert acquired.wait(1.0)
-            # Release the holder shortly; the waiting worker must then acquire and write.
             timer = threading.Timer(0.15, release.set)
             timer.start()
             result = apply_overview_transition(
@@ -430,9 +399,6 @@ class TestWorkerLockWait:
         assert (temp_session / "_overview.md").read_text() == before
 
 
-# =============================================================================
-# Event processor
-# =============================================================================
 
 
 def _signal(
