@@ -246,9 +246,15 @@ class LockOutcome:
 
 @contextlib.contextmanager
 def session_lock(
-    session_path: Path, *, wait_timeout: float | None = None
+    session_path: Path, *, wait_timeout: float = 0.0
 ) -> Iterator[LockOutcome]:
-    """Keep one lock inode; None fails fast, while a timeout retries monotonically."""
+    """Serialize session-state writers via flock on a dedicated lock file.
+
+    The lock file is never unlinked: flock serializes on the inode, so removing
+    and recreating it would let two processes hold the lock at once.
+    `wait_timeout` is the maximum time to retry on contention; the default 0.0
+    gives up immediately.
+    """
     try:
         fd = os.open(
             str(session_path / SESSION_LOCK_FILENAME), os.O_CREAT | os.O_RDWR, 0o644
@@ -257,13 +263,13 @@ def session_lock(
         yield LockOutcome.failed(f"Cannot open session lock file: {exc}")
         return
     try:
-        deadline = None if wait_timeout is None else time.monotonic() + wait_timeout
+        deadline = time.monotonic() + wait_timeout
         while True:
             try:
                 fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
                 break
             except BlockingIOError:
-                if deadline is None or time.monotonic() >= deadline:
+                if time.monotonic() >= deadline:
                     yield LockOutcome.contended()
                     return
                 time.sleep(_LOCK_RETRY_INTERVAL_SECONDS)
@@ -460,7 +466,7 @@ def apply_overview_transition(
     transition: OverviewTransition,
     expected_source: Phase | None = None,
     *,
-    wait_timeout: float | None = None,
+    wait_timeout: float = 0.0,
 ) -> OverviewWriteResult:
     """Serialize CAS; callers already holding the lock must use the locked variant."""
     with session_lock(session_path, wait_timeout=wait_timeout) as lock:
@@ -578,7 +584,8 @@ class ProcessedOutcome:
         return self.write_failure.parse_error if self.write_failure else None
 
     @property
-    def validation_error(self) -> str | None:
+    def rejection_message(self) -> str | None:
+        """Message from whichever stage rejected: validation or overview mutation."""
         if self.validation_message is not None:
             return self.validation_message
         return self.write_failure.message if self.write_failure else None
@@ -622,7 +629,7 @@ class ProcessedOutcome:
         )
 
 
-def process_workflow_event(
+def apply_workflow_event(
     session_path: Path,
     signal: Signal,
     source_phase: str | None,
@@ -630,7 +637,11 @@ def process_workflow_event(
     iteration: int,
     now: datetime | None = None,
 ) -> ProcessedOutcome:
-    """Validate fully before mutation and turn write failures into explicit rejection."""
+    """Validate fully, then apply an accepted transition to _overview.md on disk.
+
+    Write failures become explicit rejection; no mutation happens before
+    validation passes.
+    """
     event = WorkflowEvent(
         source_phase=source_phase,
         status=signal.status,

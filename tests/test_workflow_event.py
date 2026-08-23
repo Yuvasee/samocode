@@ -94,6 +94,7 @@ class TestWaiting:
         )
         assert not result.accepted
         assert result.rejection_reason is RejectionReason.WAITING_MISSING_REASON
+        assert result.target_phase is None  # no phase change was requested
 
     def test_unlisted_reason_rejects(self) -> None:
         result = validate_workflow_event(
@@ -113,6 +114,7 @@ class TestWaiting:
         )
         assert not result.accepted
         assert result.rejection_reason is RejectionReason.WAITING_CANNOT_CHANGE_PHASE
+        assert result.target_phase is Phase.IMPLEMENTATION  # the requested target
 
 
 class TestBlocked:

@@ -73,6 +73,7 @@ from .signal_history import (
     HistoryRecord,
     SignalHistoryEntry,
     count_source_phase_iterations,
+    count_source_phase_iterations_including_current,
     get_phase_iteration_count,
     read_history,
     read_signal_history,
@@ -124,7 +125,7 @@ from .workflow_state import (
     apply_overview_transition_locked,
     atomic_write_text,
     parse_overview_state,
-    process_workflow_event,
+    apply_workflow_event,
     read_overview_state,
     render_overview,
 )
@@ -201,6 +202,7 @@ __all__ = [
     "HistoryRecord",
     "SignalHistoryEntry",
     "count_source_phase_iterations",
+    "count_source_phase_iterations_including_current",
     "get_phase_iteration_count",
     "read_history",
     "read_signal_history",
@@ -232,7 +234,7 @@ __all__ = [
     "apply_overview_transition_locked",
     "atomic_write_text",
     "parse_overview_state",
-    "process_workflow_event",
+    "apply_workflow_event",
     "read_overview_state",
     "render_overview",
     # Startup

@@ -90,58 +90,52 @@ class ApprovalResult:
     message: str | None = None
 
     def __post_init__(self) -> None:
+        # One branch per outcome, each stating exactly what it may carry.
         if self.outcome is ApprovalOutcome.REJECTED:
             if self.rejection is None or not self.message:
                 raise ValueError("Rejected approval requires a rejection and message")
-            if (
-                self.overview_parse_error is not None
-                and self.rejection is not ApprovalRejection.OVERVIEW_INVALID
-            ):
+            if self.rejection is ApprovalRejection.OVERVIEW_INVALID:
+                if self.overview_parse_error is None:
+                    raise ValueError(
+                        "Invalid-overview rejection requires a parse error"
+                    )
+            elif self.overview_parse_error is not None:
                 raise ValueError(
                     "Only invalid-overview rejection carries a parse error"
                 )
-            if (
-                self.rejection is ApprovalRejection.OVERVIEW_INVALID
-                and self.overview_parse_error is None
-            ):
-                raise ValueError("Invalid-overview rejection requires a parse error")
-            if self.write_failure is not None and self.rejection not in (
-                ApprovalRejection.OVERVIEW_WRITE_FAILED,
-                ApprovalRejection.OVERVIEW_STATE_CONFLICT,
+            if self.rejection is ApprovalRejection.OVERVIEW_WRITE_FAILED:
+                if self.write_failure is None:
+                    raise ValueError(
+                        "Overview-write rejection requires a write failure"
+                    )
+            elif (
+                self.rejection is not ApprovalRejection.OVERVIEW_STATE_CONFLICT
+                and self.write_failure is not None
             ):
                 raise ValueError(
                     "Rejection type cannot carry an overview write failure"
                 )
+            return
+
+        # APPROVED, APPROVED_SIGNAL_RETAINED, and ALREADY_ADVANCED share one shape.
+        if self.source_phase is None or self.target_phase is None:
+            raise ValueError("Non-rejected approval requires source and target phases")
+        if self.source_phase is self.target_phase:
+            raise ValueError("Non-rejected approval requires a phase change")
+        if self.rejection is not None or self.overview_parse_error is not None:
+            raise ValueError("Non-rejected approval cannot carry rejection details")
+        if not self.message:
+            raise ValueError("Non-rejected approval requires a message")
+        if self.outcome is ApprovalOutcome.ALREADY_ADVANCED:
             if (
-                self.rejection is ApprovalRejection.OVERVIEW_WRITE_FAILED
-                and self.write_failure is None
+                self.write_failure is not None
+                and self.write_failure.error is not OverviewWriteError.PHASE_MOVED
             ):
-                raise ValueError("Overview-write rejection requires a write failure")
-        else:
-            if self.source_phase is None or self.target_phase is None:
-                raise ValueError(
-                    "Non-rejected approval requires source and target phases"
-                )
-            if self.source_phase is self.target_phase:
-                raise ValueError("Non-rejected approval requires a phase change")
-            if self.rejection is not None or self.overview_parse_error is not None:
-                raise ValueError("Non-rejected approval cannot carry rejection details")
-            if not self.message:
-                raise ValueError("Non-rejected approval requires a message")
-        if (
-            self.outcome is not ApprovalOutcome.ALREADY_ADVANCED
-            and self.write_failure is not None
-            and self.outcome is not ApprovalOutcome.REJECTED
-        ):
+                raise ValueError("Already-advanced diagnostics must be PHASE_MOVED")
+        elif self.write_failure is not None:
             raise ValueError(
                 "Only rejected or already-advanced results carry write failures"
             )
-        if (
-            self.outcome is ApprovalOutcome.ALREADY_ADVANCED
-            and self.write_failure is not None
-            and self.write_failure.error is not OverviewWriteError.PHASE_MOVED
-        ):
-            raise ValueError("Already-advanced diagnostics must be PHASE_MOVED")
 
     @property
     def advanced(self) -> bool:
@@ -222,7 +216,7 @@ class ApprovalResult:
         )
 
 
-def _reject(reason: ApprovalRejection, message: str) -> ApprovalCheck:
+def _denied_check(reason: ApprovalRejection, message: str) -> ApprovalCheck:
     return ApprovalCheck.denied(reason, message)
 
 
@@ -233,13 +227,13 @@ def check_approval(state: OverviewState, signal: Signal) -> ApprovalCheck:
     assert config is not None  # source came from the Phase enum parse
     gate = config.approval_gate
     if gate is None:
-        return _reject(
+        return _denied_check(
             ApprovalRejection.PHASE_HAS_NO_GATE,
             f"Phase '{source.value}' owns no approval gate; nothing to approve",
         )
 
     if not config.can_transition_to(gate.approved_next):
-        return _reject(
+        return _denied_check(
             ApprovalRejection.GATE_TARGET_INVALID,
             f"Gate target '{gate.approved_next.value}' is not an allowed transition "
             f"from '{source.value}'",
@@ -248,14 +242,14 @@ def check_approval(state: OverviewState, signal: Signal) -> ApprovalCheck:
     if signal.status is not SignalStatus.WAITING:
         # Preserve parse detail instead of reporting a misleading generic status.
         detail = f" ({signal.reason})" if signal.reason else ""
-        return _reject(
+        return _denied_check(
             ApprovalRejection.SIGNAL_NOT_WAITING,
             f"No pending approval: signal status is '{signal.status.value}'{detail}, "
             f"expected 'waiting' for reason '{gate.waiting_for}'",
         )
 
     if signal.phase is not None and signal.phase.lower() != source.value:
-        return _reject(
+        return _denied_check(
             ApprovalRejection.SIGNAL_PHASE_MISMATCH,
             f"Pending signal names phase '{signal.phase}', "
             f"but session is in '{source.value}'",
@@ -263,7 +257,7 @@ def check_approval(state: OverviewState, signal: Signal) -> ApprovalCheck:
 
     reason = (signal.waiting_for or "").strip()
     if reason != gate.waiting_for:
-        return _reject(
+        return _denied_check(
             ApprovalRejection.SIGNAL_REASON_MISMATCH,
             f"Pending signal waits for '{reason or '(none)'}', "
             f"gate requires '{gate.waiting_for}'",
@@ -274,7 +268,7 @@ def check_approval(state: OverviewState, signal: Signal) -> ApprovalCheck:
     )
 
 
-def _rejected(
+def _rejected_result(
     reason: ApprovalRejection,
     message: str,
     *,
@@ -296,10 +290,12 @@ def approve(
     try:
         project = ProjectConfig.from_file(config_path)
     except ValueError as exc:
-        return _rejected(ApprovalRejection.CONFIG_INVALID, f"Config error: {exc}")
+        return _rejected_result(
+            ApprovalRejection.CONFIG_INVALID, f"Config error: {exc}"
+        )
     errors = project.validate()
     if errors:
-        return _rejected(
+        return _rejected_result(
             ApprovalRejection.CONFIG_INVALID,
             "Invalid project config: " + "; ".join(errors),
         )
@@ -312,14 +308,18 @@ def approve_session(
     """Trust only the under-lock check; target moves are wins, other moves conflicts."""
     session_path = resolve_session_path(project.sessions, session_name)
     if not (session_path.exists() and session_path.is_dir()):
-        return _rejected(
+        return _rejected_result(
             ApprovalRejection.SESSION_NOT_FOUND,
             f"Session directory does not exist: {session_path}",
         )
 
+    # The pre-lock pass is a pure fail-fast: it rejects no-gate / wrong-signal
+    # calls without contending the lock. Its plan survives only as the yardstick
+    # for the under-lock re-check to tell "another approver already won" from
+    # "an external writer moved the phase".
     prelock_overview = read_overview_state(session_path)
     if prelock_overview.state is None:
-        return _rejected(
+        return _rejected_result(
             ApprovalRejection.OVERVIEW_INVALID,
             prelock_overview.message or "Invalid _overview.md",
             parse_error=prelock_overview.error,
@@ -330,7 +330,7 @@ def approve_session(
     )
     if prelock_check.plan is None:
         assert prelock_check.rejection is not None
-        return _rejected(
+        return _rejected_result(
             prelock_check.rejection,
             prelock_check.message or prelock_check.rejection.value,
             source=prelock_overview.state.phase,
@@ -339,13 +339,13 @@ def approve_session(
 
     with session_lock(session_path) as lock:
         if lock.state is LockState.CONTENDED:
-            return _rejected(
+            return _rejected_result(
                 ApprovalRejection.LOCK_CONTENDED,
                 "Another approval is in progress for this session; retry",
                 source=prelock_overview.state.phase,
             )
         if lock.state is LockState.FAILED:
-            return _rejected(
+            return _rejected_result(
                 ApprovalRejection.LOCK_IO_FAILED,
                 lock.message or "Approval lock could not be acquired",
                 source=prelock_overview.state.phase,
@@ -354,7 +354,7 @@ def approve_session(
         # Only state read under this lock is authoritative.
         locked_overview = read_overview_state(session_path)
         if locked_overview.state is None:
-            return _rejected(
+            return _rejected_result(
                 ApprovalRejection.OVERVIEW_INVALID,
                 locked_overview.message or "Invalid _overview.md",
                 parse_error=locked_overview.error,
@@ -366,7 +366,7 @@ def approve_session(
             observed_phase = locked_overview.state.phase
             if observed_phase == requested_plan.source_phase:
                 assert locked_check.rejection is not None
-                return _rejected(
+                return _rejected_result(
                     locked_check.rejection,
                     locked_check.message or locked_check.rejection.value,
                     source=observed_phase,

@@ -34,6 +34,12 @@ class WorkflowEvent:
 
 @dataclass(frozen=True)
 class WorkflowEventResult:
+    """Accepted events carry both phases; target == source means stay put.
+
+    On rejection, `target_phase` is the requested target phase — None when the
+    event requested no change or the target was not (yet) parsed.
+    """
+
     source_phase: Phase | None
     target_phase: Phase | None
     validation_error: str | None = None
@@ -135,20 +141,21 @@ def validate_workflow_event(event: WorkflowEvent) -> WorkflowEventResult:
                 RejectionReason.UNKNOWN_TARGET_PHASE,
                 f"Unknown target phase: {raw_target}",
             )
+    requested = target if is_change else None
 
     if event.status is SignalStatus.WAITING:
         reason = (event.waiting_for or "").strip()
         if not reason:
             return _reject(
                 source,
-                source,
+                requested,
                 RejectionReason.WAITING_MISSING_REASON,
                 f"Phase '{source.value}' 'waiting' requires a non-empty reason",
             )
         if not source_config.is_wait_allowed(reason):
             return _reject(
                 source,
-                source,
+                requested,
                 RejectionReason.WAITING_REASON_NOT_ALLOWED,
                 f"Wait reason '{reason}' not allowed in '{source.value}'. "
                 f"Allowed: {sorted(source_config.allowed_waits)}",
@@ -156,7 +163,7 @@ def validate_workflow_event(event: WorkflowEvent) -> WorkflowEventResult:
         if is_change:
             return _reject(
                 source,
-                target,
+                requested,
                 RejectionReason.WAITING_CANNOT_CHANGE_PHASE,
                 f"'waiting' cannot change phase ({source.value} -> {target.value})",
             )
@@ -166,7 +173,7 @@ def validate_workflow_event(event: WorkflowEvent) -> WorkflowEventResult:
         if is_change:
             return _reject(
                 source,
-                target,
+                requested,
                 RejectionReason.BLOCKED_CANNOT_CHANGE_PHASE,
                 f"'blocked' cannot change phase ({source.value} -> {target.value})",
             )
@@ -176,7 +183,7 @@ def validate_workflow_event(event: WorkflowEvent) -> WorkflowEventResult:
         if source is not Phase.DONE or (is_change and target is not Phase.DONE):
             return _reject(
                 source,
-                target,
+                requested,
                 RejectionReason.DONE_ONLY_IN_TERMINAL,
                 "'done' is only valid in the terminal 'done' phase",
             )

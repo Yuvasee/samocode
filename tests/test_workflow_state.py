@@ -23,7 +23,7 @@ from worker.workflow_state import (
     apply_overview_transition_locked,
     atomic_write_text,
     parse_overview_state,
-    process_workflow_event,
+    apply_workflow_event,
     read_overview_state,
     render_overview,
     session_lock,
@@ -363,7 +363,7 @@ class TestSessionLockSerialization:
         before = _write_overview(temp_session, phase="investigation").read_text()
         with session_lock(temp_session) as held:
             assert held.state is LockState.ACQUIRED
-            outcome = process_workflow_event(
+            outcome = apply_workflow_event(
                 temp_session,
                 Signal(status=SignalStatus.CONTINUE, phase="requirements"),
                 "investigation",
@@ -452,7 +452,7 @@ def _signal(
 class TestProcessWorkflowEvent:
     def test_same_phase_continue_no_mutation(self, temp_session: Path) -> None:
         before = _write_overview(temp_session).read_text()
-        outcome = process_workflow_event(
+        outcome = apply_workflow_event(
             temp_session, _signal(SignalStatus.CONTINUE), "investigation", 1, 2
         )
         assert outcome.kind is OutcomeKind.ACCEPTED_NO_CHANGE
@@ -461,7 +461,7 @@ class TestProcessWorkflowEvent:
 
     def test_accepted_transition_mutates(self, temp_session: Path) -> None:
         _write_overview(temp_session, phase="investigation")
-        outcome = process_workflow_event(
+        outcome = apply_workflow_event(
             temp_session,
             _signal(SignalStatus.CONTINUE, "requirements"),
             "investigation",
@@ -476,7 +476,7 @@ class TestProcessWorkflowEvent:
 
     def test_status_not_allowed_rejected(self, temp_session: Path) -> None:
         _write_overview(temp_session, phase="init")
-        outcome = process_workflow_event(
+        outcome = apply_workflow_event(
             temp_session, _signal(SignalStatus.DONE), "init", 1, 1
         )
         assert outcome.kind is OutcomeKind.REJECTED_VALIDATION
@@ -485,7 +485,7 @@ class TestProcessWorkflowEvent:
 
     def test_invalid_transition_rejected(self, temp_session: Path) -> None:
         before = _write_overview(temp_session, phase="implementation").read_text()
-        outcome = process_workflow_event(
+        outcome = apply_workflow_event(
             temp_session, _signal(SignalStatus.CONTINUE, "done"), "implementation", 1, 2
         )
         assert outcome.rejection_reason is RejectionReason.TRANSITION_NOT_ALLOWED
@@ -493,7 +493,7 @@ class TestProcessWorkflowEvent:
 
     def test_iteration_limit_rejected(self, temp_session: Path) -> None:
         _write_overview(temp_session, phase="init")
-        outcome = process_workflow_event(
+        outcome = apply_workflow_event(
             temp_session, _signal(SignalStatus.CONTINUE, "investigation"), "init", 6, 6
         )
         assert outcome.rejection_reason is RejectionReason.ITERATION_LIMIT_EXCEEDED
@@ -501,7 +501,7 @@ class TestProcessWorkflowEvent:
 
     def test_gated_continue_requires_approval(self, temp_session: Path) -> None:
         before = _write_overview(temp_session, phase="planning").read_text()
-        outcome = process_workflow_event(
+        outcome = apply_workflow_event(
             temp_session,
             _signal(SignalStatus.CONTINUE, "implementation"),
             "planning",
@@ -513,7 +513,7 @@ class TestProcessWorkflowEvent:
 
     def test_waiting_same_phase_no_mutation(self, temp_session: Path) -> None:
         before = _write_overview(temp_session, phase="planning").read_text()
-        outcome = process_workflow_event(
+        outcome = apply_workflow_event(
             temp_session,
             _signal(SignalStatus.WAITING, "planning", "plan_approval"),
             "planning",
@@ -526,7 +526,7 @@ class TestProcessWorkflowEvent:
 
     def test_waiting_cannot_change_phase(self, temp_session: Path) -> None:
         before = _write_overview(temp_session, phase="planning").read_text()
-        outcome = process_workflow_event(
+        outcome = apply_workflow_event(
             temp_session,
             _signal(SignalStatus.WAITING, "implementation", "plan_approval"),
             "planning",
@@ -538,7 +538,7 @@ class TestProcessWorkflowEvent:
 
     def test_blocked_cannot_change_phase(self, temp_session: Path) -> None:
         before = _write_overview(temp_session, phase="implementation").read_text()
-        outcome = process_workflow_event(
+        outcome = apply_workflow_event(
             temp_session, _signal(SignalStatus.BLOCKED, "done"), "implementation", 1, 2
         )
         assert outcome.rejection_reason is RejectionReason.BLOCKED_CANNOT_CHANGE_PHASE
@@ -549,7 +549,7 @@ class TestProcessWorkflowEvent:
     ) -> None:
         before = _write_overview(temp_session, phase="investigation").read_text()
         monkeypatch.setattr(ws.os, "replace", _raise_oserror)
-        outcome = process_workflow_event(
+        outcome = apply_workflow_event(
             temp_session,
             _signal(SignalStatus.CONTINUE, "requirements"),
             "investigation",
@@ -566,7 +566,7 @@ class TestProcessWorkflowEvent:
     ) -> None:
         _write_overview(temp_session, phase="investigation")
         monkeypatch.setattr(ws.os, "replace", _raise_oserror)
-        first = process_workflow_event(
+        first = apply_workflow_event(
             temp_session,
             _signal(SignalStatus.CONTINUE, "requirements"),
             "investigation",
@@ -575,7 +575,7 @@ class TestProcessWorkflowEvent:
         )
         assert not first.accepted
         monkeypatch.undo()
-        second = process_workflow_event(
+        second = apply_workflow_event(
             temp_session,
             _signal(SignalStatus.CONTINUE, "requirements"),
             "investigation",
@@ -590,7 +590,7 @@ class TestProcessWorkflowEvent:
         overview.write_text(
             _overview_text(phase="investigation").replace("## Flow Log\n", "")
         )
-        outcome = process_workflow_event(
+        outcome = apply_workflow_event(
             temp_session,
             _signal(SignalStatus.CONTINUE, "requirements"),
             "investigation",

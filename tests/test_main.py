@@ -91,7 +91,7 @@ class TestProcessSignalBootstrap:
         session.mkdir(parents=True)
         sig = _sig(SignalStatus.CONTINUE)
 
-        result = main.process_signal(sig, None, session, 1, _logger())
+        result = main.apply_signal(sig, None, session, 1, _logger())
 
         assert result.status is SignalStatus.CONTINUE
         rows = _history_rows(session)
@@ -103,11 +103,9 @@ class TestProcessSignalBootstrap:
         session = tmp_path / "_sessions" / "task"
         session.mkdir(parents=True)
         for i in range(1, 6):
-            main.process_signal(
-                _sig(SignalStatus.CONTINUE), None, session, i, _logger()
-            )
+            main.apply_signal(_sig(SignalStatus.CONTINUE), None, session, i, _logger())
 
-        result = main.process_signal(
+        result = main.apply_signal(
             _sig(SignalStatus.CONTINUE), None, session, 6, _logger()
         )
 
@@ -120,7 +118,7 @@ class TestProcessSignalBootstrap:
         session = _session(tmp_path, "investigation")
         sig = _sig(SignalStatus.CONTINUE)
 
-        result = main.process_signal(sig, None, session, 1, _logger())
+        result = main.apply_signal(sig, None, session, 1, _logger())
 
         assert result.status is SignalStatus.CONTINUE
         assert _history_rows(session)[0]["source_phase"] == "init"
@@ -129,7 +127,7 @@ class TestProcessSignalBootstrap:
         session = _session(tmp_path, "investigation")
         sig = _sig(SignalStatus.CONTINUE, phase="requirements")
 
-        result = main.process_signal(sig, None, session, 1, _logger())
+        result = main.apply_signal(sig, None, session, 1, _logger())
 
         assert result.status is SignalStatus.BLOCKED
         assert _history_rows(session)[0]["source_phase"] == "init"
@@ -140,7 +138,7 @@ class TestProcessSignalBootstrap:
         (session / "_overview.md").write_text("# no status fields here\n")
         sig = _sig(SignalStatus.CONTINUE)
 
-        result = main.process_signal(sig, None, session, 1, _logger())
+        result = main.apply_signal(sig, None, session, 1, _logger())
 
         assert result.status is SignalStatus.BLOCKED
         assert result.needs == "investigation"
@@ -153,7 +151,7 @@ class TestProcessSignalBootstrap:
         (session / "_overview.md").mkdir()  # read_text raises OSError -> READ_FAILED
         sig = _sig(SignalStatus.CONTINUE)
 
-        result = main.process_signal(sig, None, session, 1, _logger())
+        result = main.apply_signal(sig, None, session, 1, _logger())
 
         assert result.status is SignalStatus.BLOCKED
         assert "cannot be read" in (result.reason or "")
@@ -163,7 +161,7 @@ class TestProcessSignalBootstrap:
         session = _session(tmp_path, "quality")
         sig = _sig(SignalStatus.CONTINUE)
 
-        result = main.process_signal(sig, None, session, 1, _logger())
+        result = main.apply_signal(sig, None, session, 1, _logger())
 
         assert result.status is SignalStatus.BLOCKED
         assert "smuggled" in (result.reason or "")
@@ -173,7 +171,7 @@ class TestProcessSignalBootstrap:
         session = _session(tmp_path, "init")
         sig = _sig(SignalStatus.CONTINUE, phase="investigation")
 
-        result = main.process_signal(sig, None, session, 1, _logger())
+        result = main.apply_signal(sig, None, session, 1, _logger())
 
         assert result.status is SignalStatus.CONTINUE
         assert _overview_phase(session) is Phase.INVESTIGATION
@@ -187,7 +185,7 @@ class TestProcessSignalBootstrap:
         session = _session(tmp_path, "quality")
         sig = _sig(SignalStatus.CONTINUE)
 
-        result = main.process_signal(sig, None, session, 1, _logger())
+        result = main.apply_signal(sig, None, session, 1, _logger())
 
         assert result.status is SignalStatus.BLOCKED
         assert "reset to init" in (result.reason or "")
@@ -295,7 +293,7 @@ class TestProcessSignalAccepted:
         session = _session(tmp_path, "init")
         sig = _sig(SignalStatus.CONTINUE)
 
-        result = main.process_signal(sig, "init", session, 1, _logger())
+        result = main.apply_signal(sig, "init", session, 1, _logger())
 
         assert result.status is SignalStatus.CONTINUE
         assert _overview_phase(session) is Phase.INIT
@@ -309,7 +307,7 @@ class TestProcessSignalAccepted:
         session = _session(tmp_path, "init")
         sig = _sig(SignalStatus.CONTINUE, phase="investigation")
 
-        result = main.process_signal(sig, "init", session, 1, _logger())
+        result = main.apply_signal(sig, "init", session, 1, _logger())
 
         assert result is sig  # original signal returned unchanged
         assert _overview_phase(session) is Phase.INVESTIGATION
@@ -322,7 +320,7 @@ class TestProcessSignalAccepted:
         session = _session(tmp_path, "requirements")
         sig = _sig(SignalStatus.WAITING, phase="requirements", for_="qa_answers")
 
-        result = main.process_signal(sig, "requirements", session, 1, _logger())
+        result = main.apply_signal(sig, "requirements", session, 1, _logger())
 
         assert result.status is SignalStatus.WAITING
         assert _overview_phase(session) is Phase.REQUIREMENTS
@@ -334,7 +332,7 @@ class TestProcessSignalRejected:
         session = _session(tmp_path, "init")
         sig = _sig(SignalStatus.CONTINUE, phase="quality")
 
-        result = main.process_signal(sig, "init", session, 1, _logger())
+        result = main.apply_signal(sig, "init", session, 1, _logger())
 
         assert result.status is SignalStatus.BLOCKED
         assert result.phase == "init"
@@ -349,7 +347,7 @@ class TestProcessSignalRejected:
         session = _session(tmp_path, "planning")
         sig = _sig(SignalStatus.CONTINUE, phase="implementation")
 
-        result = main.process_signal(sig, "planning", session, 1, _logger())
+        result = main.apply_signal(sig, "planning", session, 1, _logger())
 
         assert result.status is SignalStatus.BLOCKED
         assert result.needs == "human_decision"
@@ -362,7 +360,7 @@ class TestProcessSignalRejected:
         session = _session(tmp_path, "implementation")
         sig = _sig(SignalStatus.DONE, phase="implementation")
 
-        result = main.process_signal(sig, "implementation", session, 1, _logger())
+        result = main.apply_signal(sig, "implementation", session, 1, _logger())
 
         assert result.status is SignalStatus.BLOCKED
         assert result.needs == "investigation"
@@ -373,11 +371,11 @@ class TestIterationLimitBoundary:
     def test_last_allowed_run_accepted(self, tmp_path: Path) -> None:
         session = _session(tmp_path, "pr-readiness")
         for i in range(1, 5):
-            main.process_signal(
+            main.apply_signal(
                 _sig(SignalStatus.CONTINUE), "pr-readiness", session, i, _logger()
             )
 
-        result = main.process_signal(
+        result = main.apply_signal(
             _sig(SignalStatus.CONTINUE), "pr-readiness", session, 5, _logger()
         )
 
@@ -386,11 +384,11 @@ class TestIterationLimitBoundary:
     def test_boundary_run_blocked_and_counted(self, tmp_path: Path) -> None:
         session = _session(tmp_path, "pr-readiness")
         for i in range(1, 6):
-            main.process_signal(
+            main.apply_signal(
                 _sig(SignalStatus.CONTINUE), "pr-readiness", session, i, _logger()
             )
 
-        result = main.process_signal(
+        result = main.apply_signal(
             _sig(SignalStatus.CONTINUE), "pr-readiness", session, 6, _logger()
         )
 
@@ -415,7 +413,7 @@ class TestRejectedMutation:
         monkeypatch.setattr(workflow_state, "apply_overview_transition", fail)
         sig = _sig(SignalStatus.CONTINUE, phase="investigation")
 
-        result = main.process_signal(sig, "init", session, 1, _logger())
+        result = main.apply_signal(sig, "init", session, 1, _logger())
 
         assert result.status is SignalStatus.BLOCKED
         assert result.needs == "investigation"
@@ -454,7 +452,7 @@ class TestPlanningApprovalRestart:
                 {"status": "waiting", "for": "plan_approval", "phase": "planning"}
             )
         )
-        result = main.process_signal(waiting, "planning", session, 1, _logger())
+        result = main.apply_signal(waiting, "planning", session, 1, _logger())
         assert result.status is SignalStatus.WAITING
         assert _overview_phase(session) is Phase.PLANNING
 
@@ -462,7 +460,7 @@ class TestPlanningApprovalRestart:
         assert approval.outcome is ApprovalOutcome.APPROVED
         assert _overview_phase(session) is Phase.IMPLEMENTATION
 
-        cont = main.process_signal(
+        cont = main.apply_signal(
             _sig(SignalStatus.CONTINUE), "implementation", session, 2, _logger()
         )
         assert cont.status is SignalStatus.CONTINUE
@@ -473,7 +471,7 @@ class TestPrReadinessAutoDone:
         session = _session(tmp_path, "pr-readiness")
         sig = _sig(SignalStatus.CONTINUE, phase="done")
 
-        result = main.process_signal(sig, "pr-readiness", session, 1, _logger())
+        result = main.apply_signal(sig, "pr-readiness", session, 1, _logger())
 
         assert result.status is SignalStatus.CONTINUE
         assert _overview_phase(session) is Phase.DONE
@@ -483,7 +481,7 @@ class TestPrReadinessAutoDone:
         session = _session(tmp_path, "done")
         sig = _sig(SignalStatus.DONE, phase="done", summary="all set")
 
-        result = main.process_signal(sig, "done", session, 1, _logger())
+        result = main.apply_signal(sig, "done", session, 1, _logger())
 
         assert result.status is SignalStatus.DONE
         assert _history_rows(session)[0]["accepted"] is True

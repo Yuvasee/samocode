@@ -114,7 +114,7 @@ def record_processed_outcome(
         target_phase=_phase_value(outcome.target_phase),
         raw_status=signal.status.value,
         accepted=outcome.accepted,
-        validation_error=outcome.validation_error,
+        validation_error=outcome.rejection_message,
         summary=signal.summary,
         reason=signal.reason,
         needs=signal.needs,
@@ -142,6 +142,14 @@ def count_source_phase_iterations(session_path: Path, phase: str) -> int:
         for record in read_history(session_path)
         if record.source_phase and record.source_phase.lower() == wanted
     )
+
+
+def count_source_phase_iterations_including_current(
+    session_path: Path, phase: str
+) -> int:
+    """History rows are appended only after processing, so the in-flight run is
+    not yet recorded; the +1 charges it to its source phase for limit checks."""
+    return count_source_phase_iterations(session_path, phase) + 1
 
 
 def get_phase_iteration_count(session_path: Path, phase: str) -> int:

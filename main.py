@@ -34,7 +34,7 @@ from worker import (
     approve,
     clear_signal_file,
     compose_startup,
-    count_source_phase_iterations,
+    count_source_phase_iterations_including_current,
     exit_code_for,
     extract_phase,
     extract_total_iterations,
@@ -46,7 +46,7 @@ from worker import (
     notify_complete,
     notify_error,
     notify_waiting,
-    process_workflow_event,
+    apply_workflow_event,
     read_overview_state,
     read_signal_file,
     record_processed_outcome,
@@ -57,7 +57,7 @@ from worker import (
 )
 
 
-def process_signal(
+def apply_signal(
     signal: Signal,
     source_phase: str | None,
     session_path: Path,
@@ -66,6 +66,9 @@ def process_signal(
 ) -> Signal:
     """Use one authority to validate, mutate, audit, and surface truthful rejection."""
     if source_phase is None:
+        # A None source phase means the loop started without an _overview.md
+        # (fresh session): the child was dispatched as init, so whatever phase
+        # the overview now declares must be reachable from init.
         inspection = _inspect_bootstrap_overview(session_path)
         if inspection.status is BootstrapInspectionStatus.USE_INIT:
             source_phase = Phase.INIT.value
@@ -85,10 +88,11 @@ def process_signal(
                 needs="investigation",
             )
 
-    # History is written later, so +1 includes this run in the limit check.
-    source_iterations = count_source_phase_iterations(session_path, source_phase) + 1
+    source_iterations = count_source_phase_iterations_including_current(
+        session_path, source_phase
+    )
 
-    outcome = process_workflow_event(
+    outcome = apply_workflow_event(
         session_path, signal, source_phase, source_iterations, iteration
     )
     record_processed_outcome(session_path, signal, iteration, outcome)
@@ -217,6 +221,8 @@ def _format_bootstrap_block_reason(
     inspection: BootstrapInspection,
     recovery: BootstrapRecovery | None,
 ) -> str:
+    """Callers pass `recovery` exactly for UNREACHABLE_PHASE (the only status
+    that attempts recovery); INVALID_OVERVIEW and USE_INIT never recover."""
     if inspection.status is BootstrapInspectionStatus.INVALID_OVERVIEW:
         assert inspection.message is not None and recovery is None
         return inspection.message
@@ -272,7 +278,7 @@ def _signal_for_outcome(
             )
         return signal
 
-    reason = outcome.validation_error or "Workflow event rejected"
+    reason = outcome.rejection_message or "Workflow event rejected"
     needs = _needs_for_rejection(outcome.rejection_reason)
     logger.error(f"Signal rejected in '{source_phase}': {reason}")
     return Signal(
@@ -562,7 +568,7 @@ def run_orchestrator(args: argparse.Namespace) -> None:
 
             signal = read_signal_file(session_path)
 
-            signal = process_signal(signal, phase, session_path, iteration, logger)
+            signal = apply_signal(signal, phase, session_path, iteration, logger)
 
             # Use phase from signal if available, otherwise use previously extracted phase
             signal_phase = signal.phase or phase
