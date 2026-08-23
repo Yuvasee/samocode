@@ -120,6 +120,8 @@ Write `_signal.json` before exiting. The `phase` field controls transitions:
 **`needs` values**: `human_decision`, `clarification`, `error_resolution`
 **`for` values**: `qa_answers`, `plan_approval`, `file_update`, `human_action`
 
+**`plan_approval` gate**: the orchestrator worker pauses and waits for the human to run `samocode approve --config ... --session ...`. That command validates the pending gate, atomically advances the overview, and consumes the signal. The child must never manually advance Phase or clear a `plan_approval` signal.
+
 ### Examples
 
 ```json

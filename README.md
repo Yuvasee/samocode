@@ -227,6 +227,25 @@ The child agent writes `_signal.json` to control the loop:
 | `blocked` | Stop, notify human | `{"status": "blocked", "reason": "...", "needs": "human_decision"}` |
 | `waiting` | Pause for input | `{"status": "waiting", "for": "qa_answers"}` |
 
+**Plan approval gate:** when the planning phase signals `{"status": "waiting", "for": "plan_approval"}`, review the plan and then run:
+```bash
+samocode approve --config ~/project/.samocode --session my-task
+```
+This atomically advances the session to the implementation phase and consumes the pending signal. Do **not** manually edit `_overview.md`.
+
+`samocode approve` exits with a code describing the outcome (also in `--help`):
+
+| Code | Meaning |
+|------|---------|
+| 0 | Approved: this call advanced the phase and consumed the signal |
+| 1 | Rejected: precondition failed (no gate, wrong/absent signal, etc.) |
+| 3 | Lock contended: another approval is in progress; retry |
+| 4 | State/IO fault: overview-write fault (may be transient), lock I/O (not retryable), or the phase moved off the gate target (an external writer may have moved it); not advanced by this call — read stderr to disambiguate |
+| 5 | Advanced but signal retained: phase advanced; retained `_signal.json` is inert, cleanup optional |
+| 6 | Already advanced: another approval reached the gate target; this call made no change |
+
+(argparse reserves exit code 2 for CLI usage errors.)
+
 ## Session Structure
 
 ```

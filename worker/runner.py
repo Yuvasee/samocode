@@ -20,6 +20,7 @@ from .routing import (
     ExecutionTarget,
     resolve_execution_target,
 )
+from .signals import OVERVIEW_FILENAME
 from .timestamps import (
     file_timestamp,
     iteration_timestamp,
@@ -49,8 +50,8 @@ def validate_session_structure(session_path: Path) -> list[str]:
     # Check for nested _samocode subfolder (invalid pattern)
     nested_samocode = session_path / "_samocode"
     if nested_samocode.exists() and nested_samocode.is_dir():
-        nested_overview = nested_samocode / "_overview.md"
-        root_overview = session_path / "_overview.md"
+        nested_overview = nested_samocode / OVERVIEW_FILENAME
+        root_overview = session_path / OVERVIEW_FILENAME
 
         if nested_overview.exists():
             if root_overview.exists():
@@ -141,7 +142,7 @@ def resolve_iteration_plan(
     for warning in validate_session_structure(session_path):
         logger.warning(warning)
 
-    if not (session_path / "_overview.md").exists():
+    if not (session_path / OVERVIEW_FILENAME).exists():
         phase: str | None = "init"
         iteration: int | None = 1
         agent_name: str | None = "init-agent"
@@ -421,31 +422,6 @@ def extract_phase(session_path: Path) -> str | None:
     return match.group(1).strip() if match else None
 
 
-def update_phase(session_path: Path, new_phase: str) -> bool:
-    """Update Phase field in session _overview.md.
-
-    Returns True if updated, False if file doesn't exist or no Phase field found.
-    """
-    overview_path = session_path / "_overview.md"
-    if not overview_path.exists():
-        return False
-
-    content = overview_path.read_text()
-    new_content, count = re.subn(
-        r"^Phase:\s*.+$",
-        f"Phase: {new_phase}",
-        content,
-        count=1,
-        flags=re.MULTILINE,
-    )
-
-    if count == 0:
-        return False
-
-    overview_path.write_text(new_content)
-    return True
-
-
 def extract_iteration(session_path: Path) -> int | None:
     """Extract Iteration from session _overview.md Status section."""
     content = _read_overview(session_path)
@@ -471,7 +447,7 @@ def increment_total_iterations(session_path: Path) -> int:
 
     If Total Iterations line doesn't exist, adds it after Iteration line.
     """
-    overview_path = session_path / "_overview.md"
+    overview_path = session_path / OVERVIEW_FILENAME
     if not overview_path.exists():
         return 1
 
@@ -691,7 +667,7 @@ def stream_logs(
 
 def _read_overview(session_path: Path) -> str | None:
     """Read _overview.md content, returns None if not exists."""
-    overview_path = session_path / "_overview.md"
+    overview_path = session_path / OVERVIEW_FILENAME
     if not overview_path.exists():
         return None
     return overview_path.read_text()

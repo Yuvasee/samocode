@@ -10,13 +10,33 @@ from pathlib import Path
 
 import pytest
 
-from worker.signals import Signal, SignalStatus
+from worker.phases import Phase
 from worker.signal_history import (
+    HistoryRecord,
     SignalHistoryEntry,
+    count_source_phase_iterations,
     get_phase_iteration_count,
+    read_history,
     read_signal_history,
+    record_processed_outcome,
     record_signal,
 )
+from worker.signals import Signal, SignalStatus
+from worker.workflow_event import RejectionReason
+from worker.workflow_state import ProcessedOutcome
+
+
+def _accepted_transition(source: Phase, target: Phase) -> ProcessedOutcome:
+    return ProcessedOutcome.accepted_transition(source, target)
+
+
+def _rejected_limit(source: Phase) -> ProcessedOutcome:
+    return ProcessedOutcome.rejected_validation(
+        source,
+        None,
+        RejectionReason.ITERATION_LIMIT_EXCEEDED,
+        "Phase 'implementation' exceeded 100 iteration limit",
+    )
 
 
 class TestRecordSignal:
@@ -297,3 +317,198 @@ class TestSignalHistoryEntry:
 
         with pytest.raises(AttributeError):
             entry.iteration = 2  # type: ignore[misc]
+
+
+class TestRecordProcessedOutcome:
+    def test_new_schema_round_trip(self, tmp_path: Path) -> None:
+        session = tmp_path / "s"
+        session.mkdir()
+        signal = Signal(
+            status=SignalStatus.CONTINUE, phase="testing", summary="done impl"
+        )
+        outcome = _accepted_transition(Phase.IMPLEMENTATION, Phase.TESTING)
+
+        written = record_processed_outcome(
+            session, signal, iteration=7, outcome=outcome
+        )
+
+        records = read_history(session)
+        assert len(records) == 1
+        rec = records[0]
+        assert rec.schema_version == 2
+        assert rec.source_phase == "implementation"
+        assert rec.target_phase == "testing"
+        assert rec.raw_status == "continue"
+        assert rec.accepted is True
+        assert rec.validation_error is None
+        assert rec.outcome_kind == "accepted_transition"
+        assert rec.mutated is True
+        assert rec.summary == "done impl"
+        assert rec == written
+
+    def test_records_rejected_audit_row(self, tmp_path: Path) -> None:
+        session = tmp_path / "s"
+        session.mkdir()
+        signal = Signal(status=SignalStatus.CONTINUE, phase="testing")
+        outcome = ProcessedOutcome.rejected_validation(
+            Phase.IMPLEMENTATION,
+            Phase.TESTING,
+            RejectionReason.TRANSITION_REQUIRES_APPROVAL,
+            "requires approval",
+        )
+
+        record_processed_outcome(session, signal, iteration=3, outcome=outcome)
+
+        rec = read_history(session)[0]
+        assert rec.accepted is False
+        assert rec.rejection_reason == "transition_requires_approval"
+        assert rec.validation_error == "requires approval"
+        assert rec.mutated is False
+
+    def test_accepted_and_rejected_flags_distinct(self, tmp_path: Path) -> None:
+        session = tmp_path / "s"
+        session.mkdir()
+        record_processed_outcome(
+            session,
+            Signal(status=SignalStatus.CONTINUE, phase="testing"),
+            1,
+            _accepted_transition(Phase.IMPLEMENTATION, Phase.TESTING),
+        )
+        record_processed_outcome(
+            session,
+            Signal(status=SignalStatus.CONTINUE),
+            2,
+            _rejected_limit(Phase.IMPLEMENTATION),
+        )
+
+        flags = [r.accepted for r in read_history(session)]
+        assert flags == [True, False]
+
+
+class TestSourcePhaseCounting:
+    def test_counts_by_source_not_target(self, tmp_path: Path) -> None:
+        session = tmp_path / "s"
+        session.mkdir()
+        record_processed_outcome(
+            session,
+            Signal(status=SignalStatus.CONTINUE, phase="testing"),
+            1,
+            _accepted_transition(Phase.IMPLEMENTATION, Phase.TESTING),
+        )
+
+        assert count_source_phase_iterations(session, "implementation") == 1
+        assert count_source_phase_iterations(session, "testing") == 0
+
+    def test_counts_rejected_and_limit_boundary(self, tmp_path: Path) -> None:
+        session = tmp_path / "s"
+        session.mkdir()
+        for i in range(2):
+            record_processed_outcome(
+                session,
+                Signal(status=SignalStatus.CONTINUE),
+                i + 1,
+                ProcessedOutcome.accepted_no_change(
+                    Phase.IMPLEMENTATION, Phase.IMPLEMENTATION
+                ),
+            )
+        record_processed_outcome(
+            session,
+            Signal(status=SignalStatus.CONTINUE),
+            3,
+            _rejected_limit(Phase.IMPLEMENTATION),  # boundary iteration
+        )
+
+        assert count_source_phase_iterations(session, "implementation") == 3
+
+    def test_get_phase_iteration_count_delegates(self, tmp_path: Path) -> None:
+        session = tmp_path / "s"
+        session.mkdir()
+        record_signal(session, Signal(status=SignalStatus.CONTINUE, phase="init"), 1)
+        record_processed_outcome(
+            session,
+            Signal(status=SignalStatus.CONTINUE, phase="investigation"),
+            2,
+            _accepted_transition(Phase.INIT, Phase.INVESTIGATION),
+        )
+
+        assert get_phase_iteration_count(session, "init") == 2
+        assert get_phase_iteration_count(session, "investigation") == 0
+
+
+class TestHistoryCompatibility:
+    def test_reads_mixed_legacy_and_v2(self, tmp_path: Path) -> None:
+        session = tmp_path / "s"
+        session.mkdir()
+        record_signal(session, Signal(status=SignalStatus.CONTINUE, phase="init"), 1)
+        record_processed_outcome(
+            session,
+            Signal(status=SignalStatus.CONTINUE, phase="investigation"),
+            2,
+            _accepted_transition(Phase.INIT, Phase.INVESTIGATION),
+        )
+
+        records = read_history(session)
+        assert [r.schema_version for r in records] == [1, 2]
+        assert records[0].source_phase == "init"
+        assert records[0].accepted is None  # legacy: unknown
+        assert records[0].target_phase is None
+        assert records[1].source_phase == "init"
+        assert records[1].target_phase == "investigation"
+
+    def test_skips_corrupt_and_nonobject_rows(self, tmp_path: Path) -> None:
+        session = tmp_path / "s"
+        session.mkdir()
+        history = session / "_signal_history.jsonl"
+        history.write_text(
+            '{"phase": "init", "status": "continue", "iteration": 1, "timestamp": "t"}\n'
+            "not valid json\n"
+            "[1, 2, 3]\n"
+            '{"v": 2, "source_phase": "init", "status": "continue", '
+            '"iteration": 2, "timestamp": "t", "accepted": false}\n'
+        )
+
+        records = read_history(session)
+        assert len(records) == 2
+        assert records[0].schema_version == 1
+        assert records[1].accepted is False
+
+    def test_legacy_minimal_row_normalizes(self, tmp_path: Path) -> None:
+        session = tmp_path / "s"
+        session.mkdir()
+        history = session / "_signal_history.jsonl"
+        history.write_text('{"phase": "init"}\n')
+
+        rec = read_history(session)[0]
+        assert rec.source_phase == "init"
+        assert rec.raw_status == ""
+        assert rec.iteration == 0
+        assert rec.accepted is None
+
+    def test_read_signal_history_projects_v2(self, tmp_path: Path) -> None:
+        session = tmp_path / "s"
+        session.mkdir()
+        record_processed_outcome(
+            session,
+            Signal(status=SignalStatus.WAITING, waiting_for="plan_approval"),
+            1,
+            ProcessedOutcome.accepted_no_change(Phase.PLANNING, Phase.PLANNING),
+        )
+
+        entries = read_signal_history(session)
+        assert len(entries) == 1
+        assert entries[0].phase == "planning"
+        assert entries[0].status == "waiting"
+        assert entries[0].waiting_for == "plan_approval"
+
+    def test_history_record_is_frozen(self) -> None:
+        rec = HistoryRecord(
+            timestamp="t",
+            iteration=1,
+            source_phase="init",
+            target_phase=None,
+            raw_status="continue",
+            accepted=None,
+            validation_error=None,
+        )
+        with pytest.raises(AttributeError):
+            rec.iteration = 2  # type: ignore[misc]

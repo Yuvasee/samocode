@@ -77,7 +77,7 @@ Working Dir: [worktree_path or project_folder]
 [Task description from orchestrator]
 
 ## Status
-Phase: investigation
+Phase: init
 Iteration: 1
 Blocked: no
 Last Action: Session initialized
@@ -109,7 +109,11 @@ cd [SESSION_PATH] && git add -A && git commit -m "init: Create session [session-
 {"status": "continue", "phase": "investigation"}
 ```
 
-Signal `phase: investigation` to transition. Orchestrator auto-updates `_overview.md` Phase.
+Leave `_overview.md` at `Phase: init`. Signal `phase: investigation`; the worker
+applies the authoritative `init -> investigation` transition and updates the Phase.
+Do not write `Phase: investigation` yourself — the pinned bootstrap source is `init`,
+so a pre-written successor phase makes the transition's compare-and-swap see an
+unexpected phase and block the session.
 
 ## Error Handling
 

@@ -6,6 +6,12 @@ from enum import Enum
 from pathlib import Path
 
 
+# Session-relative filenames shared across modules; signals.py is the lowest-level
+# module (no intra-package imports) so both live here without an import cycle.
+SIGNAL_FILENAME = "_signal.json"
+OVERVIEW_FILENAME = "_overview.md"
+
+
 class SignalStatus(Enum):
     """Valid signal statuses for orchestrator control."""
 
@@ -44,7 +50,7 @@ def clear_signal_file(session_path: Path) -> str | None:
     Returns previous contents if file existed and had content, None otherwise.
     """
     session_path.mkdir(parents=True, exist_ok=True)
-    signal_file = session_path / "_signal.json"
+    signal_file = session_path / SIGNAL_FILENAME
     previous: str | None = None
     if signal_file.exists():
         content = signal_file.read_text().strip()
@@ -56,7 +62,7 @@ def clear_signal_file(session_path: Path) -> str | None:
 
 def read_signal_file(session_path: Path) -> Signal:
     """Read and parse signal file. Returns BLOCKED signal on parse errors."""
-    signal_file = session_path / "_signal.json"
+    signal_file = session_path / SIGNAL_FILENAME
 
     if not signal_file.exists():
         return Signal(

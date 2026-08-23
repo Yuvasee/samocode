@@ -1,6 +1,17 @@
 """Samocode worker package - core orchestrator components."""
 
 from .adapters import supported_providers
+from .approval import (
+    ApprovalCheck,
+    ApprovalOutcome,
+    ApprovalPlan,
+    ApprovalRejection,
+    ApprovalResult,
+    approve,
+    approve_session,
+    check_approval,
+    exit_code_for,
+)
 from .config import (
     ProjectConfig,
     RuntimeConfig,
@@ -29,11 +40,14 @@ from .logging import add_session_handler, setup_logging
 from .notifications import notify_blocked, notify_complete, notify_error, notify_waiting
 from .phases import (
     PHASE_CONFIGS,
+    ApprovalGate,
     Phase,
     PhaseConfig,
+    PhaseRegistryError,
     get_agent_for_phase,
     get_phase_config,
     is_iteration_limit_exceeded,
+    validate_phase_registry,
     validate_signal_for_phase,
     validate_transition,
 )
@@ -53,16 +67,22 @@ from .runner import (
     increment_total_iterations,
     run_ai_with_retry,
     run_claude_with_retry,
-    update_phase,
     validate_session_structure,
 )
 from .signal_history import (
+    HistoryRecord,
     SignalHistoryEntry,
+    count_source_phase_iterations,
+    count_source_phase_iterations_including_current,
     get_phase_iteration_count,
+    read_history,
     read_signal_history,
+    record_processed_outcome,
     record_signal,
 )
 from .signals import (
+    OVERVIEW_FILENAME,
+    SIGNAL_FILENAME,
     Signal,
     SignalStatus,
     clear_signal_file,
@@ -85,8 +105,42 @@ from .timestamps import (
     jsonl_timestamp,
     log_timestamp,
 )
+from .workflow_event import (
+    RejectionReason,
+    WorkflowEvent,
+    WorkflowEventResult,
+    validate_workflow_event,
+)
+from .workflow_state import (
+    OutcomeKind,
+    OverviewParseError,
+    OverviewParseResult,
+    OverviewState,
+    OverviewTransition,
+    OverviewWriteError,
+    OverviewWriteFailure,
+    OverviewWriteResult,
+    ProcessedOutcome,
+    apply_overview_transition,
+    apply_overview_transition_locked,
+    atomic_write_text,
+    parse_overview_state,
+    apply_workflow_event,
+    read_overview_state,
+    render_overview,
+)
 
 __all__ = [
+    # Approval
+    "ApprovalCheck",
+    "ApprovalOutcome",
+    "ApprovalPlan",
+    "ApprovalRejection",
+    "ApprovalResult",
+    "approve",
+    "approve_session",
+    "check_approval",
+    "exit_code_for",
     # Config
     "ProjectConfig",
     "RuntimeConfig",
@@ -117,12 +171,15 @@ __all__ = [
     "notify_error",
     "notify_waiting",
     # Phases
+    "ApprovalGate",
     "Phase",
     "PhaseConfig",
+    "PhaseRegistryError",
     "PHASE_CONFIGS",
     "get_agent_for_phase",
     "get_phase_config",
     "is_iteration_limit_exceeded",
+    "validate_phase_registry",
     "validate_signal_for_phase",
     "validate_transition",
     # Routing
@@ -140,18 +197,46 @@ __all__ = [
     "increment_total_iterations",
     "run_ai_with_retry",
     "run_claude_with_retry",
-    "update_phase",
     "validate_session_structure",
     # Signal history
+    "HistoryRecord",
     "SignalHistoryEntry",
+    "count_source_phase_iterations",
+    "count_source_phase_iterations_including_current",
     "get_phase_iteration_count",
+    "read_history",
     "read_signal_history",
+    "record_processed_outcome",
     "record_signal",
     # Signals
+    "OVERVIEW_FILENAME",
+    "SIGNAL_FILENAME",
     "Signal",
     "SignalStatus",
     "clear_signal_file",
     "read_signal_file",
+    # Workflow events
+    "RejectionReason",
+    "WorkflowEvent",
+    "WorkflowEventResult",
+    "validate_workflow_event",
+    # Workflow state
+    "OutcomeKind",
+    "OverviewParseError",
+    "OverviewParseResult",
+    "OverviewState",
+    "OverviewTransition",
+    "OverviewWriteError",
+    "OverviewWriteFailure",
+    "OverviewWriteResult",
+    "ProcessedOutcome",
+    "apply_overview_transition",
+    "apply_overview_transition_locked",
+    "atomic_write_text",
+    "parse_overview_state",
+    "apply_workflow_event",
+    "read_overview_state",
+    "render_overview",
     # Startup
     "LEGACY_DEFAULT_PROVIDER",
     "StartupComposition",

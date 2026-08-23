@@ -9,129 +9,289 @@ import argparse
 import logging
 import os
 import sys
+from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
 
 from worker import (
+    OVERVIEW_FILENAME,
+    ApprovalOutcome,
     ExecutionResolutionError,
     ExecutionStatus,
     GlobalConfigError,
+    OutcomeKind,
+    OverviewParseError,
+    OverviewTransition,
+    OverviewWriteError,
+    Phase,
     PlanResolutionError,
+    ProcessedOutcome,
+    RejectionReason,
     Signal,
     SignalStatus,
     add_session_handler,
+    apply_overview_transition,
+    approve,
     clear_signal_file,
     compose_startup,
+    count_source_phase_iterations_including_current,
+    exit_code_for,
     extract_phase,
     extract_total_iterations,
     get_phase_config,
-    get_phase_iteration_count,
     global_config_path,
     increment_total_iterations,
     install,
-    is_iteration_limit_exceeded,
     notify_blocked,
     notify_complete,
     notify_error,
     notify_waiting,
+    apply_workflow_event,
+    read_overview_state,
     read_signal_file,
-    record_signal,
+    record_processed_outcome,
     run_ai_with_retry,
     setup_logging,
     supported_providers,
     uninstall,
-    update_phase,
-    validate_signal_for_phase,
-    validate_transition,
 )
 
 
-def validate_and_process_signal(
+def apply_signal(
     signal: Signal,
-    current_phase: str | None,
+    source_phase: str | None,
     session_path: Path,
     iteration: int,
     logger: logging.Logger,
 ) -> Signal:
-    """Validate signal and enforce phase constraints.
-
-    Returns the signal (possibly modified if invalid).
-    Records signal to history.
-    """
-    # Record signal to history first (even if invalid)
-    record_signal(session_path, signal, iteration, current_phase)
-
-    signal_phase = signal.phase or current_phase
-
-    # Validate signal is allowed for phase
-    # Use current_phase for validation (where agent IS), not target phase (where it wants to GO)
-    # This allows "continue" signal when transitioning to done phase
-    validation_phase = current_phase or signal_phase
-    is_valid, error = validate_signal_for_phase(validation_phase, signal.status.value)
-    if not is_valid:
-        logger.error(f"Invalid signal: {error}")
-        return Signal(
-            status=SignalStatus.BLOCKED,
-            phase=signal_phase,
-            reason=f"Invalid signal: {error}",
-            needs="investigation",
-        )
-
-    # Check per-phase iteration limit
-    if signal_phase:
-        phase_iterations = get_phase_iteration_count(session_path, signal_phase)
-        exceeded, max_allowed = is_iteration_limit_exceeded(
-            signal_phase, phase_iterations
-        )
-        if exceeded:
-            logger.error(
-                f"Phase '{signal_phase}' exceeded iteration limit: "
-                f"{phase_iterations} > {max_allowed}"
-            )
+    """Use one authority to validate, mutate, audit, and surface truthful rejection."""
+    if source_phase is None:
+        # A None source phase means the loop started without an _overview.md
+        # (fresh session): the child was dispatched as init, so whatever phase
+        # the overview now declares must be reachable from init.
+        inspection = _inspect_bootstrap_overview(session_path)
+        if inspection.status is BootstrapInspectionStatus.USE_INIT:
+            source_phase = Phase.INIT.value
+        else:
+            recovery = None
+            if inspection.status is BootstrapInspectionStatus.UNREACHABLE_PHASE:
+                assert inspection.declared_phase is not None
+                recovery = _reset_or_quarantine_bootstrap_overview(
+                    session_path, inspection.declared_phase
+                )
+            block_reason = _format_bootstrap_block_reason(inspection, recovery)
+            logger.error(block_reason)
             return Signal(
                 status=SignalStatus.BLOCKED,
-                phase=signal_phase,
-                reason=f"Phase '{signal_phase}' exceeded {max_allowed} iteration limit",
+                phase=None,
+                reason=block_reason,
                 needs="investigation",
             )
 
-    # Validate phase transition (if signal indicates phase change)
-    if signal.phase and current_phase and signal.phase.lower() != current_phase.lower():
-        # Enforce gate: gated phases must signal 'waiting' before transitioning
-        current_config = get_phase_config(current_phase)
-        if (
-            current_config
-            and current_config.requires_gate
-            and signal.status != SignalStatus.WAITING
+    source_iterations = count_source_phase_iterations_including_current(
+        session_path, source_phase
+    )
+
+    outcome = apply_workflow_event(
+        session_path, signal, source_phase, source_iterations, iteration
+    )
+    record_processed_outcome(session_path, signal, iteration, outcome)
+
+    return _signal_for_outcome(signal, outcome, source_phase, logger)
+
+
+class BootstrapInspectionStatus(Enum):
+    USE_INIT = "use_init"
+    INVALID_OVERVIEW = "invalid_overview"
+    UNREACHABLE_PHASE = "unreachable_phase"
+
+
+@dataclass(frozen=True)
+class BootstrapInspection:
+    status: BootstrapInspectionStatus
+    declared_phase: Phase | None = None
+    message: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.status is BootstrapInspectionStatus.USE_INIT:
+            if self.declared_phase is not None or self.message is not None:
+                raise ValueError("USE_INIT inspection cannot carry failure details")
+        elif self.status is BootstrapInspectionStatus.INVALID_OVERVIEW:
+            if self.declared_phase is not None or not self.message:
+                raise ValueError("INVALID_OVERVIEW inspection requires only a message")
+        elif self.declared_phase is None or self.message is not None:
+            raise ValueError("UNREACHABLE_PHASE inspection requires only a phase")
+
+
+class BootstrapRecoveryStatus(Enum):
+    RESET = "reset"
+    ALREADY_SAFE = "already_safe"
+    QUARANTINED = "quarantined"
+    FAILED = "failed"
+
+
+@dataclass(frozen=True)
+class BootstrapRecovery:
+    status: BootstrapRecoveryStatus
+    reset_error: str | None = None
+    quarantine_error: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.status in (
+            BootstrapRecoveryStatus.RESET,
+            BootstrapRecoveryStatus.ALREADY_SAFE,
         ):
-            logger.error(
-                f"Phase '{current_phase}' requires gate: must signal 'waiting' before transitioning"
-            )
-            return Signal(
-                status=SignalStatus.BLOCKED,
-                phase=current_phase,
-                reason=f"Phase '{current_phase}' requires human approval before transitioning",
-                needs="human_decision",
-            )
+            if self.reset_error is not None or self.quarantine_error is not None:
+                raise ValueError("Successful bootstrap recovery cannot carry errors")
+        elif self.status is BootstrapRecoveryStatus.QUARANTINED:
+            if not self.reset_error or self.quarantine_error is not None:
+                raise ValueError("Quarantine recovery requires only the reset error")
+        elif not self.reset_error or not self.quarantine_error:
+            raise ValueError("Failed bootstrap recovery requires both errors")
 
-        is_valid, error = validate_transition(current_phase, signal.phase)
-        if not is_valid:
-            logger.error(error)
-            return Signal(
-                status=SignalStatus.BLOCKED,
-                phase=current_phase,
-                reason=error,
-                needs="investigation",
-            )
-        # Update _overview.md Phase field to match signal (single source of truth)
-        if update_phase(session_path, signal.phase):
-            logger.info(f"Phase updated: {current_phase} -> {signal.phase}")
 
-    return signal
+def _inspect_bootstrap_overview(session_path: Path) -> BootstrapInspection:
+    parsed = read_overview_state(session_path)
+    if parsed.error is OverviewParseError.FILE_NOT_FOUND:
+        return BootstrapInspection(BootstrapInspectionStatus.USE_INIT)
+    if parsed.state is None:
+        if parsed.error is OverviewParseError.READ_FAILED:
+            reason = f"Overview exists but cannot be read: {parsed.message}"
+        else:
+            reason = f"Overview exists but is unparseable: {parsed.message}"
+        return BootstrapInspection(
+            BootstrapInspectionStatus.INVALID_OVERVIEW,
+            message=reason,
+        )
+
+    declared_phase = parsed.state.phase
+    init_config = get_phase_config(Phase.INIT.value)
+    assert init_config is not None
+    if declared_phase is Phase.INIT or init_config.can_transition_to(declared_phase):
+        return BootstrapInspection(BootstrapInspectionStatus.USE_INIT)
+    return BootstrapInspection(
+        BootstrapInspectionStatus.UNREACHABLE_PHASE,
+        declared_phase=declared_phase,
+    )
+
+
+def _reset_or_quarantine_bootstrap_overview(
+    session_path: Path, declared_phase: Phase
+) -> BootstrapRecovery:
+    reset = apply_overview_transition(
+        session_path,
+        OverviewTransition(
+            target_phase=Phase.INIT,
+            blocked="no",
+            last_action=(
+                f"Bootstrap rejected smuggled phase '{declared_phase.value}'; "
+                "reset to init"
+            ),
+            next_action="Re-run init",
+        ),
+        expected_source=declared_phase,
+    )
+    if reset.ok:
+        return BootstrapRecovery(BootstrapRecoveryStatus.RESET)
+    if (
+        reset.error is OverviewWriteError.PHASE_MOVED
+        and reset.observed_phase is Phase.INIT
+    ):
+        return BootstrapRecovery(BootstrapRecoveryStatus.ALREADY_SAFE)
+
+    reset_error = reset.message or "unknown reset failure"
+    try:
+        os.replace(
+            session_path / OVERVIEW_FILENAME,
+            session_path / "_overview.rejected.md",
+        )
+    except OSError as exc:
+        return BootstrapRecovery(
+            BootstrapRecoveryStatus.FAILED,
+            reset_error=reset_error,
+            quarantine_error=str(exc),
+        )
+    return BootstrapRecovery(
+        BootstrapRecoveryStatus.QUARANTINED,
+        reset_error=reset_error,
+    )
+
+
+def _format_bootstrap_block_reason(
+    inspection: BootstrapInspection,
+    recovery: BootstrapRecovery | None,
+) -> str:
+    """Callers pass `recovery` exactly for UNREACHABLE_PHASE (the only status
+    that attempts recovery); INVALID_OVERVIEW and USE_INIT never recover."""
+    if inspection.status is BootstrapInspectionStatus.INVALID_OVERVIEW:
+        assert inspection.message is not None and recovery is None
+        return inspection.message
+    if inspection.status is not BootstrapInspectionStatus.UNREACHABLE_PHASE:
+        raise ValueError("USE_INIT inspection has no block reason")
+    assert inspection.declared_phase is not None and recovery is not None
+
+    if recovery.status is BootstrapRecoveryStatus.RESET:
+        recovery_note = "; overview reset to init"
+    elif recovery.status is BootstrapRecoveryStatus.ALREADY_SAFE:
+        recovery_note = "; overview already at init"
+    elif recovery.status is BootstrapRecoveryStatus.QUARANTINED:
+        recovery_note = (
+            f"; overview reset FAILED ({recovery.reset_error}); overview quarantined "
+            "(renamed to _overview.rejected.md) so restart re-bootstraps to init"
+        )
+    else:
+        recovery_note = (
+            f"; overview reset FAILED ({recovery.reset_error}); quarantine rename also "
+            f"FAILED ({recovery.quarantine_error}); manual recovery required before "
+            f"restart: remove {OVERVIEW_FILENAME} or restore its Phase to init"
+        )
+    return (
+        f"Bootstrap overview declares phase '{inspection.declared_phase.value}', which "
+        f"init cannot reach; refusing to trust a smuggled phase{recovery_note}"
+    )
+
+
+# Rejections a human (not the agent) must resolve; all others need more investigation.
+_HUMAN_DECISION_REJECTIONS: frozenset[RejectionReason] = frozenset(
+    {
+        RejectionReason.TRANSITION_REQUIRES_APPROVAL,
+        RejectionReason.ITERATION_LIMIT_EXCEEDED,
+    }
+)
+
+
+def _needs_for_rejection(reason: RejectionReason | None) -> str:
+    return "human_decision" if reason in _HUMAN_DECISION_REJECTIONS else "investigation"
+
+
+def _signal_for_outcome(
+    signal: Signal,
+    outcome: ProcessedOutcome,
+    source_phase: str,
+    logger: logging.Logger,
+) -> Signal:
+    """Preserve accepted signals and convert rejections into truthful blocks."""
+    if outcome.accepted:
+        if outcome.kind is OutcomeKind.ACCEPTED_TRANSITION and outcome.target_phase:
+            logger.info(
+                f"Phase updated: {source_phase} -> {outcome.target_phase.value}"
+            )
+        return signal
+
+    reason = outcome.rejection_message or "Workflow event rejected"
+    needs = _needs_for_rejection(outcome.rejection_reason)
+    logger.error(f"Signal rejected in '{source_phase}': {reason}")
+    return Signal(
+        status=SignalStatus.BLOCKED,
+        phase=source_phase,
+        reason=reason,
+        needs=needs,
+    )
 
 
 # === CLI ===
 
-SUBCOMMANDS = ("run", "install", "uninstall")
+SUBCOMMANDS = ("run", "install", "uninstall", "approve")
 
 
 def add_run_arguments(parser: argparse.ArgumentParser) -> None:
@@ -215,6 +375,36 @@ Examples:
     subparsers.add_parser(
         "uninstall",
         help="Remove samocode-owned skills/agents/commands",
+    )
+
+    approve_parser = subparsers.add_parser(
+        "approve",
+        help="Approve the current phase's pending approval gate and advance it",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "Exit codes:\n"
+            "  0  approved: this call advanced the phase and consumed the signal\n"
+            "  1  rejected: precondition failed (no gate, wrong/absent signal, etc.)\n"
+            "  3  lock contended: another approval is in progress; retry\n"
+            "  4  state/IO fault: overview-write fault (may be transient), lock I/O "
+            "(not retryable), or the phase moved off the gate target (an external "
+            "writer may have moved it); not advanced by this call - read stderr\n"
+            "  5  advanced but signal retained: phase advanced; retained _signal.json "
+            "is inert, cleanup optional\n"
+            "  6  already advanced: another approval reached the gate target; this "
+            "call made no change\n"
+            "  (2 is reserved by argparse for CLI usage errors)"
+        ),
+    )
+    approve_parser.add_argument(
+        "--config",
+        required=True,
+        help="Path to .samocode config file (e.g., ~/project/.samocode)",
+    )
+    approve_parser.add_argument(
+        "--session",
+        required=True,
+        help="Session name, not path (e.g., 'my-task' or '26-01-21-my-task')",
     )
 
     return parser
@@ -305,7 +495,7 @@ def run_orchestrator(args: argparse.Namespace) -> None:
         while True:
             iteration += 1
             # Track cumulative iterations in _overview.md (persists across restarts)
-            if session_path.exists() and (session_path / "_overview.md").exists():
+            if session_path.exists() and (session_path / OVERVIEW_FILENAME).exists():
                 cumulative_iterations = increment_total_iterations(session_path)
 
             # Add session handler once the provider creates the session directory
@@ -378,14 +568,7 @@ def run_orchestrator(args: argparse.Namespace) -> None:
 
             signal = read_signal_file(session_path)
 
-            # Validate signal and record to history
-            signal = validate_and_process_signal(
-                signal,
-                phase,
-                session_path,
-                iteration,
-                logger,
-            )
+            signal = apply_signal(signal, phase, session_path, iteration, logger)
 
             # Use phase from signal if available, otherwise use previously extracted phase
             signal_phase = signal.phase or phase
@@ -478,6 +661,21 @@ def cmd_install(args: argparse.Namespace) -> None:
         sys.exit(1)
 
 
+def cmd_approve(args: argparse.Namespace) -> None:
+    result = approve(Path(args.config).expanduser().resolve(), args.session)
+    # A concurrent winner is intentionally fail-fast, not success for this caller.
+    succeeded = result.outcome in (
+        ApprovalOutcome.APPROVED,
+        ApprovalOutcome.APPROVED_SIGNAL_RETAINED,
+    )
+    stream = sys.stdout if succeeded else sys.stderr
+    detail = result.message or (
+        result.rejection.value if result.rejection else result.outcome.value
+    )
+    print(detail, file=stream)
+    sys.exit(exit_code_for(result))
+
+
 def cmd_uninstall(_args: argparse.Namespace) -> None:
     """Remove samocode-owned assets from provider directories."""
     uninstall()
@@ -491,6 +689,7 @@ def main() -> None:
         "run": run_orchestrator,
         "install": cmd_install,
         "uninstall": cmd_uninstall,
+        "approve": cmd_approve,
     }
     # parse_args() guarantees a command (defaults to "run"); the get() guard
     # keeps the dispatcher total and future-proof.
