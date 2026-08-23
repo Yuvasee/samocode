@@ -10,6 +10,7 @@ import logging
 import os
 import sys
 from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
 
 from worker import (
@@ -65,16 +66,24 @@ def process_signal(
 ) -> Signal:
     """Use one authority to validate, mutate, audit, and surface truthful rejection."""
     if source_phase is None:
-        bootstrap = _resolve_bootstrap_phase(session_path, logger)
-        if bootstrap.phase is None:
-            assert bootstrap.block_reason is not None
+        inspection = _inspect_bootstrap_overview(session_path)
+        if inspection.status is BootstrapInspectionStatus.USE_INIT:
+            source_phase = Phase.INIT.value
+        else:
+            recovery = None
+            if inspection.status is BootstrapInspectionStatus.UNREACHABLE_PHASE:
+                assert inspection.declared_phase is not None
+                recovery = _reset_or_quarantine_bootstrap_overview(
+                    session_path, inspection.declared_phase
+                )
+            block_reason = _format_bootstrap_block_reason(inspection, recovery)
+            logger.error(block_reason)
             return Signal(
                 status=SignalStatus.BLOCKED,
                 phase=None,
-                reason=bootstrap.block_reason,
+                reason=block_reason,
                 needs="investigation",
             )
-        source_phase = bootstrap.phase
 
     # History is written later, so +1 includes this run in the limit check.
     source_iterations = count_source_phase_iterations(session_path, source_phase) + 1
@@ -87,74 +96,153 @@ def process_signal(
     return _signal_for_outcome(signal, outcome, source_phase, logger)
 
 
+class BootstrapInspectionStatus(Enum):
+    USE_INIT = "use_init"
+    INVALID_OVERVIEW = "invalid_overview"
+    UNREACHABLE_PHASE = "unreachable_phase"
+
+
 @dataclass(frozen=True)
-class BootstrapPhase:
-    phase: str | None
-    block_reason: str | None = None
+class BootstrapInspection:
+    status: BootstrapInspectionStatus
+    declared_phase: Phase | None = None
+    message: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.status is BootstrapInspectionStatus.USE_INIT:
+            if self.declared_phase is not None or self.message is not None:
+                raise ValueError("USE_INIT inspection cannot carry failure details")
+        elif self.status is BootstrapInspectionStatus.INVALID_OVERVIEW:
+            if self.declared_phase is not None or not self.message:
+                raise ValueError("INVALID_OVERVIEW inspection requires only a message")
+        elif self.declared_phase is None or self.message is not None:
+            raise ValueError("UNREACHABLE_PHASE inspection requires only a phase")
 
 
-def _resolve_bootstrap_phase(
-    session_path: Path, logger: logging.Logger
-) -> BootstrapPhase:
-    """Keep init authoritative during bootstrap so one run cannot jump two phases."""
+class BootstrapRecoveryStatus(Enum):
+    RESET = "reset"
+    ALREADY_SAFE = "already_safe"
+    QUARANTINED = "quarantined"
+    FAILED = "failed"
+
+
+@dataclass(frozen=True)
+class BootstrapRecovery:
+    status: BootstrapRecoveryStatus
+    reset_error: str | None = None
+    quarantine_error: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.status in (
+            BootstrapRecoveryStatus.RESET,
+            BootstrapRecoveryStatus.ALREADY_SAFE,
+        ):
+            if self.reset_error is not None or self.quarantine_error is not None:
+                raise ValueError("Successful bootstrap recovery cannot carry errors")
+        elif self.status is BootstrapRecoveryStatus.QUARANTINED:
+            if not self.reset_error or self.quarantine_error is not None:
+                raise ValueError("Quarantine recovery requires only the reset error")
+        elif not self.reset_error or not self.quarantine_error:
+            raise ValueError("Failed bootstrap recovery requires both errors")
+
+
+def _inspect_bootstrap_overview(session_path: Path) -> BootstrapInspection:
     parsed = read_overview_state(session_path)
     if parsed.error is OverviewParseError.FILE_NOT_FOUND:
-        return BootstrapPhase(phase=Phase.INIT.value)
+        return BootstrapInspection(BootstrapInspectionStatus.USE_INIT)
     if parsed.state is None:
         if parsed.error is OverviewParseError.READ_FAILED:
             reason = f"Overview exists but cannot be read: {parsed.message}"
         else:
             reason = f"Overview exists but is unparseable: {parsed.message}"
-        logger.error(reason)
-        return BootstrapPhase(phase=None, block_reason=reason)
+        return BootstrapInspection(
+            BootstrapInspectionStatus.INVALID_OVERVIEW,
+            message=reason,
+        )
 
-    written = parsed.state.phase
+    declared_phase = parsed.state.phase
     init_config = get_phase_config(Phase.INIT.value)
     assert init_config is not None
-    if written is not Phase.INIT and not init_config.can_transition_to(written):
-        # A retained phase would bypass bootstrap validation after restart; CAS-reset it.
-        overview_path = session_path / OVERVIEW_FILENAME
-        reset = apply_overview_transition(
-            session_path,
-            OverviewTransition(
-                target_phase=Phase.INIT,
-                blocked="no",
-                last_action=(
-                    f"Bootstrap rejected smuggled phase '{written.value}'; reset to init"
-                ),
-                next_action="Re-run init",
+    if declared_phase is Phase.INIT or init_config.can_transition_to(declared_phase):
+        return BootstrapInspection(BootstrapInspectionStatus.USE_INIT)
+    return BootstrapInspection(
+        BootstrapInspectionStatus.UNREACHABLE_PHASE,
+        declared_phase=declared_phase,
+    )
+
+
+def _reset_or_quarantine_bootstrap_overview(
+    session_path: Path, declared_phase: Phase
+) -> BootstrapRecovery:
+    reset = apply_overview_transition(
+        session_path,
+        OverviewTransition(
+            target_phase=Phase.INIT,
+            blocked="no",
+            last_action=(
+                f"Bootstrap rejected smuggled phase '{declared_phase.value}'; "
+                "reset to init"
             ),
-            expected_source=written,
+            next_action="Re-run init",
+        ),
+        expected_source=declared_phase,
+    )
+    if reset.ok:
+        return BootstrapRecovery(BootstrapRecoveryStatus.RESET)
+    if (
+        reset.error is OverviewWriteError.PHASE_MOVED
+        and reset.observed_phase is Phase.INIT
+    ):
+        return BootstrapRecovery(BootstrapRecoveryStatus.ALREADY_SAFE)
+
+    reset_error = reset.message or "unknown reset failure"
+    try:
+        os.replace(
+            session_path / OVERVIEW_FILENAME,
+            session_path / "_overview.rejected.md",
         )
-        if reset.ok:
-            reset_note = "; overview reset to init"
-        elif (
-            reset.error is OverviewWriteError.PHASE_MOVED
-            and reset.observed_phase is Phase.INIT
-        ):
-            # Another writer already established the safe state.
-            reset_note = "; overview already at init"
-        else:
-            # Renaming is an independent recovery path when the in-place write fails.
-            try:
-                os.replace(overview_path, session_path / "_overview.rejected.md")
-                reset_note = (
-                    f"; overview reset FAILED ({reset.message}); overview quarantined "
-                    "(renamed to _overview.rejected.md) so restart re-bootstraps to init"
-                )
-            except OSError as exc:
-                reset_note = (
-                    f"; overview reset FAILED ({reset.message}); quarantine rename also "
-                    f"FAILED ({exc}); manual recovery required before restart: remove "
-                    f"{OVERVIEW_FILENAME} or restore its Phase to init"
-                )
-        reason = (
-            f"Bootstrap overview declares phase '{written.value}', which init cannot "
-            f"reach; refusing to trust a smuggled phase{reset_note}"
+    except OSError as exc:
+        return BootstrapRecovery(
+            BootstrapRecoveryStatus.FAILED,
+            reset_error=reset_error,
+            quarantine_error=str(exc),
         )
-        logger.error(reason)
-        return BootstrapPhase(phase=None, block_reason=reason)
-    return BootstrapPhase(phase=Phase.INIT.value)
+    return BootstrapRecovery(
+        BootstrapRecoveryStatus.QUARANTINED,
+        reset_error=reset_error,
+    )
+
+
+def _format_bootstrap_block_reason(
+    inspection: BootstrapInspection,
+    recovery: BootstrapRecovery | None,
+) -> str:
+    if inspection.status is BootstrapInspectionStatus.INVALID_OVERVIEW:
+        assert inspection.message is not None and recovery is None
+        return inspection.message
+    if inspection.status is not BootstrapInspectionStatus.UNREACHABLE_PHASE:
+        raise ValueError("USE_INIT inspection has no block reason")
+    assert inspection.declared_phase is not None and recovery is not None
+
+    if recovery.status is BootstrapRecoveryStatus.RESET:
+        recovery_note = "; overview reset to init"
+    elif recovery.status is BootstrapRecoveryStatus.ALREADY_SAFE:
+        recovery_note = "; overview already at init"
+    elif recovery.status is BootstrapRecoveryStatus.QUARANTINED:
+        recovery_note = (
+            f"; overview reset FAILED ({recovery.reset_error}); overview quarantined "
+            "(renamed to _overview.rejected.md) so restart re-bootstraps to init"
+        )
+    else:
+        recovery_note = (
+            f"; overview reset FAILED ({recovery.reset_error}); quarantine rename also "
+            f"FAILED ({recovery.quarantine_error}); manual recovery required before "
+            f"restart: remove {OVERVIEW_FILENAME} or restore its Phase to init"
+        )
+    return (
+        f"Bootstrap overview declares phase '{inspection.declared_phase.value}', which "
+        f"init cannot reach; refusing to trust a smuggled phase{recovery_note}"
+    )
 
 
 # Rejections a human (not the agent) must resolve; all others need more investigation.

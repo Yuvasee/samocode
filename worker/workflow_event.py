@@ -34,11 +34,46 @@ class WorkflowEvent:
 
 @dataclass(frozen=True)
 class WorkflowEventResult:
-    accepted: bool
     source_phase: Phase | None
     target_phase: Phase | None
     validation_error: str | None = None
     rejection_reason: RejectionReason | None = None
+
+    def __post_init__(self) -> None:
+        if self.rejection_reason is None:
+            if self.source_phase is None or self.target_phase is None:
+                raise ValueError(
+                    "Accepted workflow events require source and target phases"
+                )
+            if self.validation_error is not None:
+                raise ValueError(
+                    "Accepted workflow events cannot carry a validation error"
+                )
+        elif not self.validation_error:
+            raise ValueError("Rejected workflow events require a validation error")
+
+    @property
+    def accepted(self) -> bool:
+        return self.rejection_reason is None
+
+    @classmethod
+    def accepted_event(cls, source: Phase, target: Phase) -> "WorkflowEventResult":
+        return cls(source_phase=source, target_phase=target)
+
+    @classmethod
+    def rejected_event(
+        cls,
+        source: Phase | None,
+        target: Phase | None,
+        reason: RejectionReason,
+        message: str,
+    ) -> "WorkflowEventResult":
+        return cls(
+            source_phase=source,
+            target_phase=target,
+            validation_error=message,
+            rejection_reason=reason,
+        )
 
 
 def _reject(
@@ -47,17 +82,11 @@ def _reject(
     reason: RejectionReason,
     message: str,
 ) -> WorkflowEventResult:
-    return WorkflowEventResult(
-        accepted=False,
-        source_phase=source,
-        target_phase=target,
-        validation_error=message,
-        rejection_reason=reason,
-    )
+    return WorkflowEventResult.rejected_event(source, target, reason, message)
 
 
 def _accept(source: Phase, target: Phase) -> WorkflowEventResult:
-    return WorkflowEventResult(accepted=True, source_phase=source, target_phase=target)
+    return WorkflowEventResult.accepted_event(source, target)
 
 
 def validate_workflow_event(event: WorkflowEvent) -> WorkflowEventResult:
@@ -81,7 +110,9 @@ def validate_workflow_event(event: WorkflowEvent) -> WorkflowEventResult:
             f"Allowed: {sorted(source_config.allowed_signals)}",
         )
 
-    exceeded, max_allowed = is_iteration_limit_exceeded(source.value, event.source_iterations)
+    exceeded, max_allowed = is_iteration_limit_exceeded(
+        source.value, event.source_iterations
+    )
     if exceeded:
         return _reject(
             source,

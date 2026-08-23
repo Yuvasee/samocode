@@ -1,4 +1,3 @@
-
 import pytest
 
 from worker.phases import Phase
@@ -6,6 +5,7 @@ from worker.signals import SignalStatus
 from worker.workflow_event import (
     RejectionReason,
     WorkflowEvent,
+    WorkflowEventResult,
     validate_workflow_event,
 )
 
@@ -132,7 +132,9 @@ class TestBlocked:
 
 class TestContinue:
     def test_staying_accepts(self) -> None:
-        result = validate_workflow_event(_event("implementation", SignalStatus.CONTINUE))
+        result = validate_workflow_event(
+            _event("implementation", SignalStatus.CONTINUE)
+        )
         assert result.accepted
         assert result.target_phase is Phase.IMPLEMENTATION
 
@@ -203,3 +205,15 @@ class TestResultShape:
         result = validate_workflow_event(event)
         assert (result.validation_error is None) == result.accepted
         assert (result.rejection_reason is None) == result.accepted
+
+    def test_accepted_result_requires_both_phases(self) -> None:
+        with pytest.raises(ValueError, match="source and target"):
+            WorkflowEventResult(source_phase=Phase.INIT, target_phase=None)
+
+    def test_rejected_result_requires_message(self) -> None:
+        with pytest.raises(ValueError, match="validation error"):
+            WorkflowEventResult(
+                source_phase=Phase.INIT,
+                target_phase=None,
+                rejection_reason=RejectionReason.UNKNOWN_TARGET_PHASE,
+            )

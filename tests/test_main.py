@@ -13,11 +13,9 @@ from worker.signals import Signal, SignalStatus
 from worker.workflow_event import RejectionReason
 from worker.workflow_state import (
     OverviewParseError,
-    OverviewWriteError,
     OverviewWriteResult,
     read_overview_state,
 )
-
 
 
 def _overview_text(
@@ -83,8 +81,6 @@ def _project(tmp_path: Path) -> ProjectConfig:
     return ProjectConfig(
         main_repo=repo, worktrees=worktrees, sessions=tmp_path / "_sessions"
     )
-
-
 
 
 class TestProcessSignalBootstrap:
@@ -203,21 +199,24 @@ class TestProcessSignalBootstrap:
         session = _session(tmp_path, "quality")
 
         def fail(*_a: object, **_k: object) -> OverviewWriteResult:
-            return OverviewWriteResult(
-                ok=False, error=OverviewWriteError.WRITE_FAILED, message="boom"
-            )
+            return OverviewWriteResult.write_failed("boom")
 
         monkeypatch.setattr(main, "apply_overview_transition", fail)
-        bootstrap = main._resolve_bootstrap_phase(session, _logger())
+        inspection = main._inspect_bootstrap_overview(session)
+        assert inspection.declared_phase is Phase.QUALITY
+        recovery = main._reset_or_quarantine_bootstrap_overview(
+            session, inspection.declared_phase
+        )
+        reason = main._format_bootstrap_block_reason(inspection, recovery)
 
-        assert bootstrap.phase is None
-        assert "quarantined" in (bootstrap.block_reason or "")
+        assert recovery.status is main.BootstrapRecoveryStatus.QUARANTINED
+        assert "quarantined" in reason
         assert not (session / "_overview.md").exists()
         assert (session / "_overview.rejected.md").exists()
 
         assert read_overview_state(session).error is OverviewParseError.FILE_NOT_FOUND
-        restart = main._resolve_bootstrap_phase(session, _logger())
-        assert restart.phase == Phase.INIT.value
+        restart = main._inspect_bootstrap_overview(session)
+        assert restart.status is main.BootstrapInspectionStatus.USE_INIT
 
     def test_failed_reset_and_failed_quarantine_reports_both(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -225,19 +224,21 @@ class TestProcessSignalBootstrap:
         session = _session(tmp_path, "quality")
 
         def fail(*_a: object, **_k: object) -> OverviewWriteResult:
-            return OverviewWriteResult(
-                ok=False, error=OverviewWriteError.WRITE_FAILED, message="boom"
-            )
+            return OverviewWriteResult.write_failed("boom")
 
         def bad_replace(_src: object, _dst: object) -> None:
             raise OSError("rename boom")
 
         monkeypatch.setattr(main, "apply_overview_transition", fail)
         monkeypatch.setattr(main.os, "replace", bad_replace)
-        bootstrap = main._resolve_bootstrap_phase(session, _logger())
+        inspection = main._inspect_bootstrap_overview(session)
+        assert inspection.declared_phase is Phase.QUALITY
+        recovery = main._reset_or_quarantine_bootstrap_overview(
+            session, inspection.declared_phase
+        )
+        reason = main._format_bootstrap_block_reason(inspection, recovery)
 
-        assert bootstrap.phase is None
-        reason = bootstrap.block_reason or ""
+        assert recovery.status is main.BootstrapRecoveryStatus.FAILED
         assert "reset FAILED" in reason
         assert "quarantine rename also FAILED" in reason
         assert "manual recovery required before restart" in reason
@@ -252,19 +253,19 @@ class TestProcessSignalBootstrap:
             replace_calls.append((src, dst))
 
         def moved(*_a: object, **_k: object) -> OverviewWriteResult:
-            return OverviewWriteResult(
-                ok=False,
-                error=OverviewWriteError.PHASE_MOVED,
-                observed_phase=Phase.INIT,
-                message="moved",
-            )
+            return OverviewWriteResult.phase_moved(Phase.INIT, "moved")
 
         monkeypatch.setattr(main.os, "replace", spy_replace)
         monkeypatch.setattr(main, "apply_overview_transition", moved)
-        bootstrap = main._resolve_bootstrap_phase(session, _logger())
+        inspection = main._inspect_bootstrap_overview(session)
+        assert inspection.declared_phase is Phase.QUALITY
+        recovery = main._reset_or_quarantine_bootstrap_overview(
+            session, inspection.declared_phase
+        )
+        reason = main._format_bootstrap_block_reason(inspection, recovery)
 
-        assert bootstrap.phase is None
-        assert "already at init" in (bootstrap.block_reason or "")
+        assert recovery.status is main.BootstrapRecoveryStatus.ALREADY_SAFE
+        assert "already at init" in reason
         assert replace_calls == []  # no quarantine rename attempted
 
     def test_reset_normalizes_blocked_to_no(self, tmp_path: Path) -> None:
@@ -274,16 +275,19 @@ class TestProcessSignalBootstrap:
             _overview_text("quality", blocked="waiting_human")
         )
 
-        bootstrap = main._resolve_bootstrap_phase(session, _logger())
+        inspection = main._inspect_bootstrap_overview(session)
+        assert inspection.declared_phase is Phase.QUALITY
+        recovery = main._reset_or_quarantine_bootstrap_overview(
+            session, inspection.declared_phase
+        )
+        reason = main._format_bootstrap_block_reason(inspection, recovery)
 
-        assert bootstrap.phase is None
-        assert "reset to init" in (bootstrap.block_reason or "")
+        assert recovery.status is main.BootstrapRecoveryStatus.RESET
+        assert "reset to init" in reason
         parsed = read_overview_state(session)
         assert parsed.state is not None
         assert parsed.state.phase is Phase.INIT
         assert parsed.state.blocked == "no"
-
-
 
 
 class TestProcessSignalAccepted:
@@ -323,8 +327,6 @@ class TestProcessSignalAccepted:
         assert result.status is SignalStatus.WAITING
         assert _overview_phase(session) is Phase.REQUIREMENTS
         assert _history_rows(session)[0]["accepted"] is True
-
-
 
 
 class TestProcessSignalRejected:
@@ -367,8 +369,6 @@ class TestProcessSignalRejected:
         assert _history_rows(session)[0]["rejection_reason"] == "status_not_allowed"
 
 
-
-
 class TestIterationLimitBoundary:
     def test_last_allowed_run_accepted(self, tmp_path: Path) -> None:
         session = _session(tmp_path, "pr-readiness")
@@ -403,8 +403,6 @@ class TestIterationLimitBoundary:
         assert len(rows) == 6
 
 
-
-
 class TestRejectedMutation:
     def test_write_failure_blocked_investigation(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -412,9 +410,7 @@ class TestRejectedMutation:
         session = _session(tmp_path, "init")
 
         def fail(*_args: object, **_kwargs: object) -> OverviewWriteResult:
-            return OverviewWriteResult(
-                ok=False, error=OverviewWriteError.WRITE_FAILED, message="boom"
-            )
+            return OverviewWriteResult.write_failed("boom")
 
         monkeypatch.setattr(workflow_state, "apply_overview_transition", fail)
         sig = _sig(SignalStatus.CONTINUE, phase="investigation")
@@ -426,8 +422,6 @@ class TestRejectedMutation:
         assert "boom" in (result.reason or "")
         assert _overview_phase(session) is Phase.INIT  # unchanged
         assert _history_rows(session)[0]["outcome_kind"] == "rejected_mutation"
-
-
 
 
 class TestNeedsMapping:
@@ -447,8 +441,6 @@ class TestNeedsMapping:
             None,
         ):
             assert main._needs_for_rejection(reason) == "investigation"
-
-
 
 
 class TestPlanningApprovalRestart:
@@ -476,8 +468,6 @@ class TestPlanningApprovalRestart:
         assert cont.status is SignalStatus.CONTINUE
 
 
-
-
 class TestPrReadinessAutoDone:
     def test_pr_readiness_continue_advances_to_done(self, tmp_path: Path) -> None:
         session = _session(tmp_path, "pr-readiness")
@@ -497,8 +487,6 @@ class TestPrReadinessAutoDone:
 
         assert result.status is SignalStatus.DONE
         assert _history_rows(session)[0]["accepted"] is True
-
-
 
 
 class TestCliParsing:

@@ -21,6 +21,7 @@ from .workflow_event import (
     validate_workflow_event,
 )
 
+
 class OverviewParseError(Enum):
     FILE_NOT_FOUND = "file_not_found"
     READ_FAILED = "read_failed"
@@ -57,6 +58,24 @@ class OverviewParseResult:
     error: OverviewParseError | None = None
     message: str | None = None
 
+    def __post_init__(self) -> None:
+        if (self.state is None) == (self.error is None):
+            raise ValueError(
+                "Overview parse result requires exactly one of state or error"
+            )
+        if self.error is None and self.message is not None:
+            raise ValueError("Successful overview parse cannot carry an error message")
+        if self.error is not None and not self.message:
+            raise ValueError("Failed overview parse requires an error message")
+
+    @classmethod
+    def parsed(cls, state: OverviewState) -> "OverviewParseResult":
+        return cls(state=state)
+
+    @classmethod
+    def failed(cls, error: OverviewParseError, message: str) -> "OverviewParseResult":
+        return cls(state=None, error=error, message=message)
+
 
 _FLOW_LOG_HEADING = re.compile(r"^##\s+Flow Log\s*$", re.MULTILINE)
 
@@ -76,7 +95,7 @@ def _extract_single(
 
 
 def _parse_failure(error: OverviewParseError, message: str) -> OverviewParseResult:
-    return OverviewParseResult(state=None, error=error, message=message)
+    return OverviewParseResult.failed(error, message)
 
 
 def parse_overview_state(content: str) -> OverviewParseResult:
@@ -141,8 +160,8 @@ def parse_overview_state(content: str) -> OverviewParseResult:
             OverviewParseError.DUPLICATE_FLOW_LOG, "Multiple '## Flow Log' headings"
         )
 
-    return OverviewParseResult(
-        state=OverviewState(
+    return OverviewParseResult.parsed(
+        OverviewState(
             phase=phase,
             blocked=blocked_val,
             last_action=last_val,
@@ -206,6 +225,24 @@ class LockOutcome:
     state: LockState
     message: str | None = None
 
+    def __post_init__(self) -> None:
+        if self.state is LockState.FAILED and not self.message:
+            raise ValueError("Failed lock outcome requires a message")
+        if self.state is not LockState.FAILED and self.message is not None:
+            raise ValueError("Non-failed lock outcome cannot carry a message")
+
+    @classmethod
+    def acquired(cls) -> "LockOutcome":
+        return cls(LockState.ACQUIRED)
+
+    @classmethod
+    def contended(cls) -> "LockOutcome":
+        return cls(LockState.CONTENDED)
+
+    @classmethod
+    def failed(cls, message: str) -> "LockOutcome":
+        return cls(LockState.FAILED, message)
+
 
 @contextlib.contextmanager
 def session_lock(
@@ -217,7 +254,7 @@ def session_lock(
             str(session_path / SESSION_LOCK_FILENAME), os.O_CREAT | os.O_RDWR, 0o644
         )
     except OSError as exc:
-        yield LockOutcome(LockState.FAILED, f"Cannot open session lock file: {exc}")
+        yield LockOutcome.failed(f"Cannot open session lock file: {exc}")
         return
     try:
         deadline = None if wait_timeout is None else time.monotonic() + wait_timeout
@@ -227,16 +264,14 @@ def session_lock(
                 break
             except BlockingIOError:
                 if deadline is None or time.monotonic() >= deadline:
-                    yield LockOutcome(LockState.CONTENDED)
+                    yield LockOutcome.contended()
                     return
                 time.sleep(_LOCK_RETRY_INTERVAL_SECONDS)
             except OSError as exc:
-                yield LockOutcome(
-                    LockState.FAILED, f"Cannot acquire session lock: {exc}"
-                )
+                yield LockOutcome.failed(f"Cannot acquire session lock: {exc}")
                 return
         try:
-            yield LockOutcome(LockState.ACQUIRED)
+            yield LockOutcome.acquired()
         finally:
             with contextlib.suppress(OSError):
                 fcntl.flock(fd, fcntl.LOCK_UN)
@@ -259,17 +294,109 @@ class OverviewWriteError(Enum):
     PARSE_FAILED = "parse_failed"  # re-read/parse failed before writing
     WRITE_FAILED = "write_failed"  # atomic_write_text raised OSError
     PHASE_MOVED = "phase_moved"  # expected_source != freshly parsed phase (CAS miss)
-    LOCK_UNAVAILABLE = "lock_unavailable"  # session lock contended/faulted; no write
+    LOCK_CONTENDED = "lock_contended"
+    LOCK_IO_FAILED = "lock_io_failed"
+    LOCK_UNAVAILABLE = "lock_unavailable"
+
+
+@dataclass(frozen=True)
+class OverviewWriteFailure:
+    error: OverviewWriteError
+    message: str
+    observed_phase: Phase | None = None
+    parse_error: OverviewParseError | None = None
+
+    def __post_init__(self) -> None:
+        if not self.message:
+            raise ValueError("Overview write failure requires a message")
+        if self.error is OverviewWriteError.PHASE_MOVED:
+            if self.observed_phase is None or self.parse_error is not None:
+                raise ValueError("PHASE_MOVED requires only an observed phase")
+        elif self.error is OverviewWriteError.PARSE_FAILED:
+            if self.parse_error is None or self.observed_phase is not None:
+                raise ValueError("PARSE_FAILED requires only a parse error")
+        elif self.observed_phase is not None or self.parse_error is not None:
+            raise ValueError(f"{self.error.value} cannot carry phase or parse details")
 
 
 @dataclass(frozen=True)
 class OverviewWriteResult:
-    ok: bool
     new_phase: Phase | None = None
-    observed_phase: Phase | None = None  # freshly-parsed phase on a PHASE_MOVED miss
-    error: OverviewWriteError | None = None
-    parse_error: OverviewParseError | None = None
-    message: str | None = None
+    failure: OverviewWriteFailure | None = None
+
+    def __post_init__(self) -> None:
+        if (self.new_phase is None) == (self.failure is None):
+            raise ValueError(
+                "Overview write result requires exactly one of phase or failure"
+            )
+
+    @property
+    def ok(self) -> bool:
+        return self.failure is None
+
+    @property
+    def error(self) -> OverviewWriteError | None:
+        return self.failure.error if self.failure else None
+
+    @property
+    def observed_phase(self) -> Phase | None:
+        return self.failure.observed_phase if self.failure else None
+
+    @property
+    def parse_error(self) -> OverviewParseError | None:
+        return self.failure.parse_error if self.failure else None
+
+    @property
+    def message(self) -> str | None:
+        return self.failure.message if self.failure else None
+
+    @classmethod
+    def applied(cls, phase: Phase) -> "OverviewWriteResult":
+        return cls(new_phase=phase)
+
+    @classmethod
+    def failed(cls, failure: OverviewWriteFailure) -> "OverviewWriteResult":
+        return cls(failure=failure)
+
+    @classmethod
+    def parse_failed(
+        cls, error: OverviewParseError, message: str
+    ) -> "OverviewWriteResult":
+        return cls.failed(
+            OverviewWriteFailure(
+                OverviewWriteError.PARSE_FAILED,
+                message,
+                parse_error=error,
+            )
+        )
+
+    @classmethod
+    def phase_moved(cls, observed: Phase, message: str) -> "OverviewWriteResult":
+        return cls.failed(
+            OverviewWriteFailure(
+                OverviewWriteError.PHASE_MOVED,
+                message,
+                observed_phase=observed,
+            )
+        )
+
+    @classmethod
+    def write_failed(cls, message: str) -> "OverviewWriteResult":
+        return cls.failed(
+            OverviewWriteFailure(OverviewWriteError.WRITE_FAILED, message)
+        )
+
+    @classmethod
+    def lock_contended(cls, message: str) -> "OverviewWriteResult":
+        return cls.failed(
+            OverviewWriteFailure(OverviewWriteError.LOCK_CONTENDED, message)
+        )
+
+    @classmethod
+    def lock_io_failed(cls, message: str) -> "OverviewWriteResult":
+        return cls.failed(
+            OverviewWriteFailure(OverviewWriteError.LOCK_IO_FAILED, message)
+        )
 
 
 def _replace_field(content: str, field: str, value: str) -> str:
@@ -337,14 +464,13 @@ def apply_overview_transition(
 ) -> OverviewWriteResult:
     """Serialize CAS; callers already holding the lock must use the locked variant."""
     with session_lock(session_path, wait_timeout=wait_timeout) as lock:
-        if lock.state is not LockState.ACQUIRED:
-            return OverviewWriteResult(
-                ok=False,
-                error=OverviewWriteError.LOCK_UNAVAILABLE,
-                message=(
-                    lock.message
-                    or "Session lock is held by a concurrent writer; not writing"
-                ),
+        if lock.state is LockState.CONTENDED:
+            return OverviewWriteResult.lock_contended(
+                "Session lock is held by a concurrent writer; not writing"
+            )
+        if lock.state is LockState.FAILED:
+            return OverviewWriteResult.lock_io_failed(
+                lock.message or "Session lock could not be acquired"
             )
         return apply_overview_transition_locked(
             session_path, transition, expected_source
@@ -359,18 +485,15 @@ def apply_overview_transition_locked(
     """Re-read under the caller's lock and reject a stale expected source without writing."""
     parsed = read_overview_state(session_path)
     if parsed.state is None:
-        return OverviewWriteResult(
-            ok=False,
-            error=OverviewWriteError.PARSE_FAILED,
-            parse_error=parsed.error,
-            message=parsed.message,
+        assert parsed.error is not None and parsed.message is not None
+        return OverviewWriteResult.parse_failed(
+            parsed.error,
+            parsed.message,
         )
     if expected_source is not None and parsed.state.phase != expected_source:
-        return OverviewWriteResult(
-            ok=False,
-            error=OverviewWriteError.PHASE_MOVED,
-            observed_phase=parsed.state.phase,
-            message=(
+        return OverviewWriteResult.phase_moved(
+            parsed.state.phase,
+            (
                 f"Phase moved to '{parsed.state.phase.value}', "
                 f"expected '{expected_source.value}'; not writing"
             ),
@@ -379,10 +502,8 @@ def apply_overview_transition_locked(
     try:
         atomic_write_text(session_path / OVERVIEW_FILENAME, new_content)
     except OSError as exc:
-        return OverviewWriteResult(
-            ok=False, error=OverviewWriteError.WRITE_FAILED, message=str(exc)
-        )
-    return OverviewWriteResult(ok=True, new_phase=transition.target_phase)
+        return OverviewWriteResult.write_failed(str(exc))
+    return OverviewWriteResult.applied(transition.target_phase)
 
 
 class OutcomeKind(Enum):
@@ -397,14 +518,108 @@ class ProcessedOutcome:
     """Carry authoritative source and acceptance data into the audit history."""
 
     kind: OutcomeKind
-    accepted: bool
     source_phase: Phase | None
     target_phase: Phase | None
-    mutated: bool
     rejection_reason: RejectionReason | None = None
-    write_error: OverviewWriteError | None = None
-    parse_error: OverviewParseError | None = None
-    validation_error: str | None = None
+    validation_message: str | None = None
+    write_failure: OverviewWriteFailure | None = None
+
+    def __post_init__(self) -> None:
+        if self.kind in (
+            OutcomeKind.ACCEPTED_NO_CHANGE,
+            OutcomeKind.ACCEPTED_TRANSITION,
+        ):
+            if self.source_phase is None or self.target_phase is None:
+                raise ValueError("Accepted outcomes require source and target phases")
+            if self.rejection_reason or self.validation_message or self.write_failure:
+                raise ValueError("Accepted outcomes cannot carry failure details")
+            if (
+                self.kind is OutcomeKind.ACCEPTED_TRANSITION
+                and self.source_phase is self.target_phase
+            ):
+                raise ValueError("Accepted transition requires a phase change")
+            if (
+                self.kind is OutcomeKind.ACCEPTED_NO_CHANGE
+                and self.source_phase is not self.target_phase
+            ):
+                raise ValueError("Accepted no-change outcome requires one phase")
+        elif self.kind is OutcomeKind.REJECTED_VALIDATION:
+            if self.rejection_reason is None or not self.validation_message:
+                raise ValueError("Validation rejection requires a reason and message")
+            if self.write_failure is not None:
+                raise ValueError("Validation rejection cannot carry a write failure")
+        elif self.kind is OutcomeKind.REJECTED_MUTATION:
+            if self.source_phase is None or self.target_phase is None:
+                raise ValueError("Mutation rejection requires source and target phases")
+            if self.source_phase is self.target_phase:
+                raise ValueError("Mutation rejection requires a phase change")
+            if self.write_failure is None:
+                raise ValueError("Mutation rejection requires a write failure")
+            if self.rejection_reason or self.validation_message:
+                raise ValueError("Mutation rejection cannot carry validation details")
+
+    @property
+    def accepted(self) -> bool:
+        return self.kind in (
+            OutcomeKind.ACCEPTED_NO_CHANGE,
+            OutcomeKind.ACCEPTED_TRANSITION,
+        )
+
+    @property
+    def mutated(self) -> bool:
+        return self.kind is OutcomeKind.ACCEPTED_TRANSITION
+
+    @property
+    def write_error(self) -> OverviewWriteError | None:
+        return self.write_failure.error if self.write_failure else None
+
+    @property
+    def parse_error(self) -> OverviewParseError | None:
+        return self.write_failure.parse_error if self.write_failure else None
+
+    @property
+    def validation_error(self) -> str | None:
+        if self.validation_message is not None:
+            return self.validation_message
+        return self.write_failure.message if self.write_failure else None
+
+    @classmethod
+    def accepted_no_change(cls, source: Phase, target: Phase) -> "ProcessedOutcome":
+        return cls(OutcomeKind.ACCEPTED_NO_CHANGE, source, target)
+
+    @classmethod
+    def accepted_transition(cls, source: Phase, target: Phase) -> "ProcessedOutcome":
+        return cls(OutcomeKind.ACCEPTED_TRANSITION, source, target)
+
+    @classmethod
+    def rejected_validation(
+        cls,
+        source: Phase | None,
+        target: Phase | None,
+        reason: RejectionReason,
+        message: str,
+    ) -> "ProcessedOutcome":
+        return cls(
+            OutcomeKind.REJECTED_VALIDATION,
+            source,
+            target,
+            rejection_reason=reason,
+            validation_message=message,
+        )
+
+    @classmethod
+    def rejected_mutation(
+        cls,
+        source: Phase,
+        target: Phase,
+        failure: OverviewWriteFailure,
+    ) -> "ProcessedOutcome":
+        return cls(
+            OutcomeKind.REJECTED_MUTATION,
+            source,
+            target,
+            write_failure=failure,
+        )
 
 
 def process_workflow_event(
@@ -425,14 +640,14 @@ def process_workflow_event(
     )
     result = validate_workflow_event(event)
     if not result.accepted:
-        return ProcessedOutcome(
-            kind=OutcomeKind.REJECTED_VALIDATION,
-            accepted=False,
-            source_phase=result.source_phase,
-            target_phase=result.target_phase,
-            mutated=False,
-            rejection_reason=result.rejection_reason,
-            validation_error=result.validation_error,
+        assert (
+            result.rejection_reason is not None and result.validation_error is not None
+        )
+        return ProcessedOutcome.rejected_validation(
+            result.source_phase,
+            result.target_phase,
+            result.rejection_reason,
+            result.validation_error,
         )
 
     # Defense-in-depth against phase smuggling: only continue/done may mutate Phase.
@@ -443,12 +658,9 @@ def process_workflow_event(
         and result.target_phase != result.source_phase
     )
     if not is_change:
-        return ProcessedOutcome(
-            kind=OutcomeKind.ACCEPTED_NO_CHANGE,
-            accepted=True,
-            source_phase=result.source_phase,
-            target_phase=result.target_phase,
-            mutated=False,
+        assert result.source_phase is not None and result.target_phase is not None
+        return ProcessedOutcome.accepted_no_change(
+            result.source_phase, result.target_phase
         )
 
     assert result.source_phase is not None and result.target_phase is not None
@@ -463,20 +675,13 @@ def process_workflow_event(
         wait_timeout=WORKER_LOCK_WAIT_SECONDS,
     )
     if not write.ok:
-        return ProcessedOutcome(
-            kind=OutcomeKind.REJECTED_MUTATION,
-            accepted=False,
-            source_phase=result.source_phase,
-            target_phase=result.target_phase,
-            mutated=False,
-            write_error=write.error,
-            parse_error=write.parse_error,
-            validation_error=write.message,
+        assert write.failure is not None
+        return ProcessedOutcome.rejected_mutation(
+            result.source_phase,
+            result.target_phase,
+            write.failure,
         )
-    return ProcessedOutcome(
-        kind=OutcomeKind.ACCEPTED_TRANSITION,
-        accepted=True,
-        source_phase=result.source_phase,
-        target_phase=result.target_phase,
-        mutated=True,
+    return ProcessedOutcome.accepted_transition(
+        result.source_phase,
+        result.target_phase,
     )

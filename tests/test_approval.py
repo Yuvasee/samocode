@@ -1,4 +1,3 @@
-
 import json
 import threading
 from pathlib import Path
@@ -10,6 +9,7 @@ from worker import approval
 from worker.approval import (
     ApprovalOutcome,
     ApprovalRejection,
+    ApprovalResult,
     approve,
     approve_session,
     check_approval,
@@ -22,10 +22,10 @@ from worker.workflow_state import (
     LockOutcome,
     LockState,
     OverviewTransition,
+    OverviewWriteError,
     OverviewWriteResult,
     parse_overview_state,
 )
-
 
 
 def _overview_text(
@@ -99,8 +99,6 @@ def sessions_dir(tmp_path: Path) -> Path:
     d = tmp_path / "_sessions"
     d.mkdir()
     return d
-
-
 
 
 class TestCheckApproval:
@@ -177,8 +175,6 @@ class TestCheckApproval:
         assert check.rejection is ApprovalRejection.GATE_TARGET_INVALID
 
 
-
-
 class TestApproveSessionSuccess:
     def test_advances_planning_to_implementation(
         self, sessions_dir: Path, tmp_path: Path
@@ -223,8 +219,6 @@ class TestApproveSessionSuccess:
         _make_session(sessions_dir, name="26-08-22-task")
         result = approve_session(_project(sessions_dir, tmp_path), "task")
         assert result.outcome is ApprovalOutcome.APPROVED
-
-
 
 
 class TestApproveSessionRejections:
@@ -276,8 +270,6 @@ class TestApproveSessionRejections:
         _write_signal(session, phase="requirements")
         result = approve_session(_project(sessions_dir, tmp_path), "task")
         assert result.rejection is ApprovalRejection.SIGNAL_PHASE_MISMATCH
-
-
 
 
 class TestIdempotencyConcurrency:
@@ -373,14 +365,11 @@ class TestIdempotencyConcurrency:
         self, sessions_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _make_session(sessions_dir)
-        from worker.workflow_state import OverviewWriteError
 
         def moved(*_a: object, **_k: object) -> OverviewWriteResult:
-            return OverviewWriteResult(
-                ok=False,
-                error=OverviewWriteError.PHASE_MOVED,
-                observed_phase=Phase.IMPLEMENTATION,  # == planning gate target
-                message="moved",
+            return OverviewWriteResult.phase_moved(
+                Phase.IMPLEMENTATION,
+                "moved",
             )
 
         monkeypatch.setattr(approval, "apply_overview_transition_locked", moved)
@@ -394,14 +383,11 @@ class TestIdempotencyConcurrency:
         self, sessions_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _make_session(sessions_dir)
-        from worker.workflow_state import OverviewWriteError
 
         def moved(*_a: object, **_k: object) -> OverviewWriteResult:
-            return OverviewWriteResult(
-                ok=False,
-                error=OverviewWriteError.PHASE_MOVED,
-                observed_phase=Phase.PR_READINESS,  # != planning gate target
-                message="moved",
+            return OverviewWriteResult.phase_moved(
+                Phase.PR_READINESS,
+                "moved",
             )
 
         monkeypatch.setattr(approval, "apply_overview_transition_locked", moved)
@@ -458,8 +444,6 @@ class TestIdempotencyConcurrency:
             )
 
 
-
-
 class TestFailureInjection:
     def test_overview_write_failure(
         self, sessions_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -469,11 +453,7 @@ class TestFailureInjection:
         def fail(
             _sp: Path, _t: OverviewTransition, **_kw: object
         ) -> OverviewWriteResult:
-            from worker.workflow_state import OverviewWriteError
-
-            return OverviewWriteResult(
-                ok=False, error=OverviewWriteError.WRITE_FAILED, message="boom"
-            )
+            return OverviewWriteResult.write_failed("boom")
 
         monkeypatch.setattr(approval, "apply_overview_transition_locked", fail)
         result = approve_session(_project(sessions_dir, tmp_path), "task")
@@ -497,6 +477,7 @@ class TestFailureInjection:
         assert result.outcome is ApprovalOutcome.APPROVED_SIGNAL_RETAINED
         assert result.advanced is True
         assert result.signal_consumed is False
+        assert result.rejection is None
         state = parse_overview_state((session / "_overview.md").read_text()).state
         assert state is not None and state.phase is Phase.IMPLEMENTATION
         monkeypatch.undo()
@@ -504,6 +485,37 @@ class TestFailureInjection:
         assert again.rejection is ApprovalRejection.PHASE_HAS_NO_GATE
 
 
+class TestApprovalResultContracts:
+    def test_outcome_controls_derived_state(self) -> None:
+        approved = ApprovalResult.approved(
+            Phase.PLANNING, Phase.IMPLEMENTATION, "approved"
+        )
+        retained = ApprovalResult.approved_signal_retained(
+            Phase.PLANNING, Phase.IMPLEMENTATION, "retained"
+        )
+
+        assert approved.advanced and approved.signal_consumed is True
+        assert retained.advanced and retained.signal_consumed is False
+
+    def test_non_rejected_result_requires_phase_change(self) -> None:
+        with pytest.raises(ValueError, match="phase change"):
+            ApprovalResult.approved(Phase.PLANNING, Phase.PLANNING, "approved")
+
+    def test_invalid_overview_rejection_requires_parse_error(self) -> None:
+        with pytest.raises(ValueError, match="parse error"):
+            ApprovalResult.rejected(
+                ApprovalRejection.OVERVIEW_INVALID, "invalid overview"
+            )
+
+    def test_lock_rejection_cannot_carry_write_failure(self) -> None:
+        failure = OverviewWriteResult.write_failed("write failed").failure
+        assert failure is not None
+        with pytest.raises(ValueError, match="cannot carry"):
+            ApprovalResult.rejected(
+                ApprovalRejection.LOCK_CONTENDED,
+                "lock contended",
+                write_failure=failure,
+            )
 
 
 class TestProviderIndependence:
@@ -561,8 +573,6 @@ class TestProviderIndependence:
         assert not any("global_config" in m for m in imported)
 
 
-
-
 class TestApproveConfigAndCli:
     def test_approve_invalid_config_path(self, tmp_path: Path) -> None:
         result = approve(tmp_path / "missing.samocode", "task")
@@ -583,69 +593,38 @@ class TestApproveConfigAndCli:
         assert result.outcome is ApprovalOutcome.APPROVED
 
     def test_exit_code_approved_zero(self) -> None:
-        from worker.approval import ApprovalResult
-
-        r = ApprovalResult(
-            ApprovalOutcome.APPROVED, True, Phase.PLANNING, Phase.IMPLEMENTATION
-        )
+        r = ApprovalResult.approved(Phase.PLANNING, Phase.IMPLEMENTATION, "approved")
         assert exit_code_for(r) == 0
 
     def test_exit_code_already_advanced_fails_fast(self) -> None:
-        from worker.approval import ApprovalResult
-
-        r = ApprovalResult(
-            ApprovalOutcome.ALREADY_ADVANCED,
-            False,
-            Phase.PLANNING,
-            Phase.IMPLEMENTATION,
+        r = ApprovalResult.already_advanced(
+            Phase.PLANNING, Phase.IMPLEMENTATION, "already advanced"
         )
         assert exit_code_for(r) == 6
 
     def test_exit_code_signal_retained_five(self) -> None:
-        from worker.approval import ApprovalResult
-
-        r = ApprovalResult(
-            ApprovalOutcome.APPROVED_SIGNAL_RETAINED,
-            True,
-            Phase.PLANNING,
-            Phase.IMPLEMENTATION,
-            rejection=ApprovalRejection.SIGNAL_CONSUME_FAILED,
+        r = ApprovalResult.approved_signal_retained(
+            Phase.PLANNING, Phase.IMPLEMENTATION, "signal retained"
         )
         assert exit_code_for(r) == 5
 
     def test_exit_code_lock_contended_three(self) -> None:
-        from worker.approval import ApprovalResult
-
-        r = ApprovalResult(
-            ApprovalOutcome.REJECTED,
-            False,
-            None,
-            None,
-            rejection=ApprovalRejection.LOCK_CONTENDED,
-        )
+        r = ApprovalResult.rejected(ApprovalRejection.LOCK_CONTENDED, "lock contended")
         assert exit_code_for(r) == 3
 
     def test_exit_code_write_failed_four(self) -> None:
-        from worker.approval import ApprovalResult
-
-        r = ApprovalResult(
-            ApprovalOutcome.REJECTED,
-            False,
-            None,
-            None,
-            rejection=ApprovalRejection.OVERVIEW_WRITE_FAILED,
+        failure = OverviewWriteResult.write_failed("write failed").failure
+        assert failure is not None
+        r = ApprovalResult.rejected(
+            ApprovalRejection.OVERVIEW_WRITE_FAILED,
+            "write failed",
+            write_failure=failure,
         )
         assert exit_code_for(r) == 4
 
     def test_exit_code_generic_rejection_one(self) -> None:
-        from worker.approval import ApprovalResult
-
-        r = ApprovalResult(
-            ApprovalOutcome.REJECTED,
-            False,
-            None,
-            None,
-            rejection=ApprovalRejection.SESSION_NOT_FOUND,
+        r = ApprovalResult.rejected(
+            ApprovalRejection.SESSION_NOT_FOUND, "session not found"
         )
         assert exit_code_for(r) == 1
 

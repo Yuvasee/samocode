@@ -1,4 +1,4 @@
-
+import contextlib
 import threading
 import time
 from pathlib import Path
@@ -10,11 +10,15 @@ from worker.phases import Phase
 from worker.signals import Signal, SignalStatus
 from worker.workflow_event import RejectionReason
 from worker.workflow_state import (
+    LockOutcome,
     LockState,
     OutcomeKind,
     OverviewParseError,
     OverviewTransition,
     OverviewWriteError,
+    OverviewWriteFailure,
+    OverviewWriteResult,
+    ProcessedOutcome,
     apply_overview_transition,
     apply_overview_transition_locked,
     atomic_write_text,
@@ -62,6 +66,34 @@ def _raise_oserror(*_args: object, **_kwargs: object) -> None:
     raise OSError("injected replace failure")
 
 
+class TestResultContracts:
+    def test_write_result_requires_exactly_one_variant(self) -> None:
+        with pytest.raises(ValueError, match="exactly one"):
+            OverviewWriteResult()
+        with pytest.raises(ValueError, match="exactly one"):
+            OverviewWriteResult(
+                new_phase=Phase.INIT,
+                failure=OverviewWriteFailure(
+                    OverviewWriteError.WRITE_FAILED, "write failed"
+                ),
+            )
+
+    def test_phase_moved_failure_requires_observed_phase(self) -> None:
+        with pytest.raises(ValueError, match="observed phase"):
+            OverviewWriteFailure(OverviewWriteError.PHASE_MOVED, "phase moved")
+
+    def test_processed_outcome_kind_controls_derived_flags(self) -> None:
+        unchanged = ProcessedOutcome.accepted_no_change(Phase.INIT, Phase.INIT)
+        transitioned = ProcessedOutcome.accepted_transition(
+            Phase.INIT, Phase.INVESTIGATION
+        )
+
+        assert unchanged.accepted and not unchanged.mutated
+        assert transitioned.accepted and transitioned.mutated
+
+    def test_no_change_outcome_rejects_different_phases(self) -> None:
+        with pytest.raises(ValueError, match="one phase"):
+            ProcessedOutcome.accepted_no_change(Phase.INIT, Phase.INVESTIGATION)
 
 
 class TestParseOverviewState:
@@ -136,8 +168,6 @@ class TestParseOverviewState:
         assert result.state.phase is Phase.INVESTIGATION
 
 
-
-
 class TestAtomicWriteText:
     def test_writes_new_file(self, tmp_path: Path) -> None:
         target = tmp_path / "f.md"
@@ -165,8 +195,6 @@ class TestAtomicWriteText:
             atomic_write_text(target, "new")
         assert target.read_text() == "original"
         assert [p.name for p in tmp_path.iterdir()] == ["f.md"]
-
-
 
 
 class TestRenderOverview:
@@ -222,8 +250,6 @@ class TestRenderOverview:
         assert "## Files\n" in out
 
 
-
-
 class TestApplyOverviewTransition:
     def test_success_changes_phase_and_appends_flow_log(
         self, temp_session: Path
@@ -267,8 +293,6 @@ class TestApplyOverviewTransition:
         assert overview.read_text() == before
 
 
-
-
 class TestSessionLockSerialization:
     """`flock` treats separate file descriptions as independent lock owners."""
 
@@ -283,8 +307,28 @@ class TestSessionLockSerialization:
                 expected_source=Phase.INVESTIGATION,
             )
         assert not result.ok
-        assert result.error is OverviewWriteError.LOCK_UNAVAILABLE
+        assert result.error is OverviewWriteError.LOCK_CONTENDED
         assert overview.read_text() == before  # lost update prevented
+
+    def test_apply_reports_lock_io_failure(
+        self, temp_session: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        before = _write_overview(temp_session, phase="investigation").read_text()
+
+        @contextlib.contextmanager
+        def failed_lock(*_args: object, **_kwargs: object):
+            yield LockOutcome.failed("lock I/O failed")
+
+        monkeypatch.setattr(ws, "session_lock", failed_lock)
+        result = apply_overview_transition(
+            temp_session,
+            OverviewTransition(target_phase=Phase.REQUIREMENTS),
+            expected_source=Phase.INVESTIGATION,
+        )
+
+        assert result.error is OverviewWriteError.LOCK_IO_FAILED
+        assert result.message == "lock I/O failed"
+        assert (temp_session / "_overview.md").read_text() == before
 
     def test_apply_succeeds_after_lock_released(self, temp_session: Path) -> None:
         _write_overview(temp_session, phase="investigation")
@@ -327,7 +371,7 @@ class TestSessionLockSerialization:
                 2,
             )
         assert outcome.kind is OutcomeKind.REJECTED_MUTATION
-        assert outcome.write_error is OverviewWriteError.LOCK_UNAVAILABLE
+        assert outcome.write_error is OverviewWriteError.LOCK_CONTENDED
         assert not outcome.mutated
         assert (temp_session / "_overview.md").read_text() == before
 
@@ -394,11 +438,9 @@ class TestWorkerLockWait:
             thread.join(1.0)
 
         assert not result.ok
-        assert result.error is OverviewWriteError.LOCK_UNAVAILABLE
+        assert result.error is OverviewWriteError.LOCK_CONTENDED
         assert elapsed < 1.0  # gave up near the timeout, not at the holder's release
         assert (temp_session / "_overview.md").read_text() == before
-
-
 
 
 def _signal(

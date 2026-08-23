@@ -87,29 +87,6 @@ from .signals import (
     clear_signal_file,
     read_signal_file,
 )
-from .workflow_event import (
-    RejectionReason,
-    WorkflowEvent,
-    WorkflowEventResult,
-    validate_workflow_event,
-)
-from .workflow_state import (
-    OutcomeKind,
-    OverviewParseError,
-    OverviewParseResult,
-    OverviewState,
-    OverviewTransition,
-    OverviewWriteError,
-    OverviewWriteResult,
-    ProcessedOutcome,
-    apply_overview_transition,
-    apply_overview_transition_locked,
-    atomic_write_text,
-    parse_overview_state,
-    process_workflow_event,
-    read_overview_state,
-    render_overview,
-)
 from .startup import (
     LEGACY_DEFAULT_PROVIDER,
     StartupComposition,
@@ -126,6 +103,30 @@ from .timestamps import (
     iteration_timestamp,
     jsonl_timestamp,
     log_timestamp,
+)
+from .workflow_event import (
+    RejectionReason,
+    WorkflowEvent,
+    WorkflowEventResult,
+    validate_workflow_event,
+)
+from .workflow_state import (
+    OutcomeKind,
+    OverviewParseError,
+    OverviewParseResult,
+    OverviewState,
+    OverviewTransition,
+    OverviewWriteError,
+    OverviewWriteFailure,
+    OverviewWriteResult,
+    ProcessedOutcome,
+    apply_overview_transition,
+    apply_overview_transition_locked,
+    atomic_write_text,
+    parse_overview_state,
+    process_workflow_event,
+    read_overview_state,
+    render_overview,
 )
 
 __all__ = [
@@ -224,6 +225,7 @@ __all__ = [
     "OverviewState",
     "OverviewTransition",
     "OverviewWriteError",
+    "OverviewWriteFailure",
     "OverviewWriteResult",
     "ProcessedOutcome",
     "apply_overview_transition",

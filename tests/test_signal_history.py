@@ -11,7 +11,6 @@ from pathlib import Path
 import pytest
 
 from worker.phases import Phase
-from worker.signals import Signal, SignalStatus
 from worker.signal_history import (
     HistoryRecord,
     SignalHistoryEntry,
@@ -22,29 +21,21 @@ from worker.signal_history import (
     record_processed_outcome,
     record_signal,
 )
+from worker.signals import Signal, SignalStatus
 from worker.workflow_event import RejectionReason
-from worker.workflow_state import OutcomeKind, ProcessedOutcome
+from worker.workflow_state import ProcessedOutcome
 
 
 def _accepted_transition(source: Phase, target: Phase) -> ProcessedOutcome:
-    return ProcessedOutcome(
-        kind=OutcomeKind.ACCEPTED_TRANSITION,
-        accepted=True,
-        source_phase=source,
-        target_phase=target,
-        mutated=True,
-    )
+    return ProcessedOutcome.accepted_transition(source, target)
 
 
 def _rejected_limit(source: Phase) -> ProcessedOutcome:
-    return ProcessedOutcome(
-        kind=OutcomeKind.REJECTED_VALIDATION,
-        accepted=False,
-        source_phase=source,
-        target_phase=None,
-        mutated=False,
-        rejection_reason=RejectionReason.ITERATION_LIMIT_EXCEEDED,
-        validation_error="Phase 'implementation' exceeded 100 iteration limit",
+    return ProcessedOutcome.rejected_validation(
+        source,
+        None,
+        RejectionReason.ITERATION_LIMIT_EXCEEDED,
+        "Phase 'implementation' exceeded 100 iteration limit",
     )
 
 
@@ -329,7 +320,6 @@ class TestSignalHistoryEntry:
 
 
 class TestRecordProcessedOutcome:
-
     def test_new_schema_round_trip(self, tmp_path: Path) -> None:
         session = tmp_path / "s"
         session.mkdir()
@@ -360,14 +350,11 @@ class TestRecordProcessedOutcome:
         session = tmp_path / "s"
         session.mkdir()
         signal = Signal(status=SignalStatus.CONTINUE, phase="testing")
-        outcome = ProcessedOutcome(
-            kind=OutcomeKind.REJECTED_VALIDATION,
-            accepted=False,
-            source_phase=Phase.IMPLEMENTATION,
-            target_phase=Phase.TESTING,
-            mutated=False,
-            rejection_reason=RejectionReason.TRANSITION_REQUIRES_APPROVAL,
-            validation_error="requires approval",
+        outcome = ProcessedOutcome.rejected_validation(
+            Phase.IMPLEMENTATION,
+            Phase.TESTING,
+            RejectionReason.TRANSITION_REQUIRES_APPROVAL,
+            "requires approval",
         )
 
         record_processed_outcome(session, signal, iteration=3, outcome=outcome)
@@ -399,7 +386,6 @@ class TestRecordProcessedOutcome:
 
 
 class TestSourcePhaseCounting:
-
     def test_counts_by_source_not_target(self, tmp_path: Path) -> None:
         session = tmp_path / "s"
         session.mkdir()
@@ -421,12 +407,8 @@ class TestSourcePhaseCounting:
                 session,
                 Signal(status=SignalStatus.CONTINUE),
                 i + 1,
-                ProcessedOutcome(
-                    kind=OutcomeKind.ACCEPTED_NO_CHANGE,
-                    accepted=True,
-                    source_phase=Phase.IMPLEMENTATION,
-                    target_phase=Phase.IMPLEMENTATION,
-                    mutated=False,
+                ProcessedOutcome.accepted_no_change(
+                    Phase.IMPLEMENTATION, Phase.IMPLEMENTATION
                 ),
             )
         record_processed_outcome(
@@ -454,7 +436,6 @@ class TestSourcePhaseCounting:
 
 
 class TestHistoryCompatibility:
-
     def test_reads_mixed_legacy_and_v2(self, tmp_path: Path) -> None:
         session = tmp_path / "s"
         session.mkdir()
@@ -510,13 +491,7 @@ class TestHistoryCompatibility:
             session,
             Signal(status=SignalStatus.WAITING, waiting_for="plan_approval"),
             1,
-            ProcessedOutcome(
-                kind=OutcomeKind.ACCEPTED_NO_CHANGE,
-                accepted=True,
-                source_phase=Phase.PLANNING,
-                target_phase=Phase.PLANNING,
-                mutated=False,
-            ),
+            ProcessedOutcome.accepted_no_change(Phase.PLANNING, Phase.PLANNING),
         )
 
         entries = read_signal_history(session)
