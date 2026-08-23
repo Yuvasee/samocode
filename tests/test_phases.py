@@ -109,6 +109,11 @@ class TestPhaseConfigs:
             else:
                 assert config.approval_gate is None
 
+    def test_quality_budget_covers_bounded_polish_pipeline(self) -> None:
+        assert PHASE_CONFIGS[Phase.QUALITY].max_iterations == 20
+        assert is_iteration_limit_exceeded("quality", 20) == (False, 20)
+        assert is_iteration_limit_exceeded("quality", 21) == (True, 20)
+
 
 class TestRegistryInvariants:
     def _cfg(self, **kw: object) -> PhaseConfig:

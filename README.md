@@ -212,8 +212,8 @@ Claude. Requires **Python 3.11+**.
 | planning | Create phased plan, wait for approval (human gate) |
 | implementation | Execute plan phases iteratively |
 | testing | Verify by fresh agent (not ad-hoc tests) |
-| quality | Review, fix blocking issues, require decisions for important issues (max 3 iterations) |
-| pr-readiness | Final-head gate after fixes, merges, and manual debugging |
+| quality | Ordinary review/fixes, then a Code Clarity fix loop and final Comment Hygiene cleanup (max 3 fix batches per loop) |
+| pr-readiness | Final-head gate after regression tests; validates review debt and the clarity → hygiene provenance chain |
 | done | Generate summary, signal complete |
 
 ## Signal protocol

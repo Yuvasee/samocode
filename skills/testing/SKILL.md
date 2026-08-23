@@ -19,6 +19,15 @@ Tests the specific feature or bug fix implemented in the current session. NOT fu
 1. **Read session context:**
    - Read `_overview.md` to understand what was implemented
    - Review implementation docs to identify what needs testing
+   - Determine whether this is the post-quality regression run
+
+   **Post-quality regression invariant:** Final Comment Hygiene has already made the
+   last allowed project mutation. Before testing, record project `HEAD` and
+   `git status --porcelain`. Do not edit, generate, format, or commit project files;
+   put reports and screenshots under `SESSION_PATH` and use temporary or user-level
+   test configuration. After testing, require the same `HEAD` and status. If either
+   changed, do not proceed to PR readiness: document the mutation and return the
+   workflow to quality so Code Clarity and final Comment Hygiene run again.
 
 2. **Determine test strategy:**
    - Frontend changes -> Browser testing
@@ -109,8 +118,12 @@ Tests the specific feature or bug fix implemented in the current session. NOT fu
    - Commit (if git repo): `cd [SESSION_DIR] && git add . && git commit -m "Test: [feature]"`
 
 9. **Signal result:**
-    - Tests PASS -> signal `continue`, recommend quality phase
+    - First-run tests PASS -> signal `continue` to quality
+    - Post-quality tests PASS with unchanged HEAD/status -> signal `continue` to
+      PR readiness
     - Tests FAIL -> signal `blocked` with failure details (don't auto-fix)
+    - Post-quality run changed project HEAD/status -> signal `continue` to quality,
+      not PR readiness
     - **Do NOT signal `continue` if mandatory browser E2E was skipped.** If the app could not be brought up after two retries, or if both playwright-cli and Puppeteer are unavailable, signal `blocked` with `needs: "human_decision"` — never defer silently.
 
 ## Browser Tool Setup

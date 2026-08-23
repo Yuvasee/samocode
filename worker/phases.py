@@ -126,10 +126,10 @@ PHASE_CONFIGS: dict[Phase, PhaseConfig] = {
     Phase.QUALITY: PhaseConfig(
         phase=Phase.QUALITY,
         agent_name="quality-agent",
-        # Can skip regression testing if no fixes made or no tests
+        # Final polish may skip regression testing only when no tests exist
         allowed_next=frozenset({Phase.TESTING, Phase.PR_READINESS}),
         allowed_signals=frozenset({"continue", "blocked"}),
-        max_iterations=10,
+        max_iterations=20,
         default_profile="strong",
     ),
     Phase.PR_READINESS: PhaseConfig(

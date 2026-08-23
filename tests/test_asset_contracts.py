@@ -32,6 +32,110 @@ def test_quality_subagents_inherit_model_and_effort() -> None:
     assert "no effort override" in normalized
 
 
+def test_quality_pipeline_runs_clarity_before_final_comment_hygiene() -> None:
+    agent = (ROOT / "agents" / "quality-agent.md").read_text()
+    headings = [
+        "Step 1 — Cleanup",
+        "Step 2 — Multi-review",
+        "Step 3 — Triage + fix",
+        "Step 4 — Verify fixes",
+        "Step 5 — Clarity review",
+        "Step 6 — Clarity triage + fix",
+        "Step 7 — Clarity verify",
+        "Step 8 — Final Comment Hygiene",
+    ]
+    positions = [agent.index(heading) for heading in headings]
+
+    assert positions == sorted(positions)
+    assert "skills: quality, implementation, code-clarity, comment-hygiene" in agent
+
+    ordinary_triage = agent[positions[2] : positions[3]]
+    ordinary_verify = agent[positions[3] : positions[4]]
+    clarity_pipeline = agent[positions[4] : positions[7]]
+    hygiene = agent[positions[7] :]
+
+    assert "Quality Step: clarity-review" in ordinary_triage
+    assert "Quality Step: clarity-review" in ordinary_verify
+    assert "MUST use `code-clarity`" in clarity_pipeline
+    assert "review-only" in clarity_pipeline
+    assert "implementation" in clarity_pipeline
+    assert "MUST use `comment-hygiene`" in hygiene
+    assert "final operation allowed to mutate" in hygiene
+    assert "executable-code safety check" in hygiene
+
+    for phase in ("testing", "pr-readiness"):
+        signal = f'{{"status": "continue", "phase": "{phase}"}}'
+        assert signal not in agent[: positions[7]]
+        assert signal in hygiene
+
+
+def test_post_quality_pipeline_preserves_final_hygiene_boundary() -> None:
+    testing_agent = (ROOT / "agents" / "testing-agent.md").read_text()
+    testing_skill = (ROOT / "skills" / "testing" / "SKILL.md").read_text()
+    readiness_agent = (ROOT / "agents" / "pr-readiness-agent.md").read_text()
+    readiness_skill = (ROOT / "skills" / "pr-readiness" / "SKILL.md").read_text()
+
+    for content in (testing_agent, testing_skill):
+        normalized = " ".join(content.split())
+        assert "git status --porcelain" in content
+        assert "post-quality" in content.lower()
+        assert "HEAD" in normalized and "status" in normalized
+        assert "quality" in normalized
+
+    mutation_signal = testing_agent.index(
+        "Second run changed the project worktree (re-enter quality)"
+    )
+    assert (
+        '{"status": "continue", "phase": "quality"}'
+        in testing_agent[mutation_signal:]
+    )
+    assert "return the workflow to quality" in " ".join(testing_skill.split())
+
+    for content in (readiness_agent, readiness_skill):
+        normalized = " ".join(content.split())
+        assert "Code Clarity" in content
+        assert "Comment Hygiene" in content
+        assert "Reviewed HEAD" in content
+        assert "Input HEAD" in content
+        assert "Output HEAD" in content
+        assert "Tested HEAD" in content
+        assert "Disposition: settled" in content
+        assert "Reviewed HEAD" in normalized and "Input HEAD" in normalized
+        assert "Output HEAD" in normalized and "Tested HEAD" in normalized
+
+    readiness_agent_normalized = " ".join(readiness_agent.split())
+    readiness_skill_normalized = " ".join(readiness_skill.split())
+    assert (
+        "settled Code Clarity report's `Reviewed HEAD` equals Comment Hygiene "
+        "`Input HEAD`" in readiness_agent_normalized
+    )
+    assert (
+        "Comment Hygiene `Output HEAD` equals the regression test's `Tested HEAD` "
+        "and the current project `HEAD`" in readiness_agent_normalized
+    )
+    assert (
+        "settled Code Clarity report's `Reviewed HEAD` to equal Comment Hygiene "
+        "`Input HEAD`" in readiness_skill_normalized
+    )
+    assert (
+        "Comment Hygiene `Output HEAD` to equal both the regression report's "
+        "`Tested HEAD` and current project `HEAD`" in readiness_skill_normalized
+    )
+
+
+def test_workflow_documents_final_polish_order() -> None:
+    workflow = (ROOT / "workflow.md").read_text()
+    quality_description = next(
+        line for line in workflow.splitlines() if line.startswith("- **quality**:")
+    )
+
+    clarity = quality_description.index("Code Clarity")
+    hygiene = quality_description.index("Comment Hygiene")
+    assert clarity < hygiene
+    assert "final working-tree mutation" in quality_description
+    assert "`code-clarity`" in workflow
+
+
 def test_requirements_lookup_subagents_inherit_model_and_effort() -> None:
     content = (ROOT / "skills" / "task-definition" / "SKILL.md").read_text()
     normalized = " ".join(content.split())

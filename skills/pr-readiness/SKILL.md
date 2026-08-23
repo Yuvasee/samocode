@@ -34,7 +34,25 @@ Review final `HEAD` after implementation, fix loops, merges, and manual debuggin
    - Fail the gate for any `reject` row missing evidence
    - Verify fixed rows against final `HEAD`; reopen the row if the claimed fix is absent
 
-3. **Inspect final HEAD for high-risk surfaces:**
+3. **Verify final-polish provenance:**
+   - When an active Samocode session is known, locate its latest successful Code
+     Clarity report with `Disposition: settled`, final Comment Hygiene report, and
+     post-quality regression report
+   - Require the settled Code Clarity report's `Reviewed HEAD` to equal Comment
+     Hygiene `Input HEAD`; findings-bearing reports are valid only when the debt
+     ledger supports their settled disposition
+   - Require Comment Hygiene `Safety check: PASS`
+   - Require Comment Hygiene `Output HEAD` to equal both the regression report's
+     `Tested HEAD` and current project `HEAD`
+   - Equal Comment Hygiene input/output SHAs are valid when no comments changed
+   - Require a clean project working tree and no later project commit after the
+     Comment Hygiene output
+   - Fail for any undecided blocking/important `CL-*` row
+   - In an autonomous Samocode session, missing or inconsistent provenance fails the
+     gate. For a standalone invocation without session context, mark this check not
+     applicable and continue the other final-HEAD checks.
+
+4. **Inspect final HEAD for high-risk surfaces:**
    Focus on changed files that are shared, public, background, or cross-boundary:
    - Shared/public Python modules and package exports, especially `avoncore`
    - Background jobs, queue consumers/producers, fan-out, retries, and scheduled work
@@ -44,7 +62,7 @@ Review final `HEAD` after implementation, fix loops, merges, and manual debuggin
    - Config/default definitions and stale deprecations
    - Code touched after the last quality run
 
-4. **Run deterministic checks:**
+5. **Run deterministic checks:**
    - New `avoncore` promotion requires **2+ current Python service consumers**; frontend mirrors do not count
    - Future consumers require a ticket/TODO, not premature promotion
    - Search for name collisions before accepting new shared symbols
@@ -54,7 +72,7 @@ Review final `HEAD` after implementation, fix loops, merges, and manual debuggin
    - Search for duplicated env vars/defaults across settings, constructors, frontend config, tests, and docs
    - Search for stale deprecation shims, warnings, compatibility kwargs, or TODOs introduced by the branch
 
-5. **Walk feature edge cases when applicable:**
+6. **Walk feature edge cases when applicable:**
    - All validators enabled, partial validator set enabled, and all validators disabled
    - Queue succeeds but DB write fails; DB write succeeds but queue publish fails
    - Two users revalidate the same KI or shared entity concurrently
@@ -62,7 +80,7 @@ Review final `HEAD` after implementation, fix loops, merges, and manual debuggin
    - API-key user missing email/name or other human-profile fields
    - Retry after partial failure, refresh after background completion, and stale UI state
 
-6. **Produce gate result:**
+7. **Produce gate result:**
    Use this format:
 
    ```markdown
@@ -82,6 +100,13 @@ Review final `HEAD` after implementation, fix loops, merges, and manual debuggin
    ## Review Debt Ledger
    - [rows checked, rows updated, unresolved rows]
 
+   ## Final Polish Provenance
+   - Code Clarity: [artifact, Reviewed HEAD]
+   - Comment Hygiene: [artifact, Input HEAD, Output HEAD, safety result]
+   - Regression: [artifact, Tested HEAD]
+   - Final HEAD: [sha]
+   - Chain: PASS | FAIL | NOT APPLICABLE
+
    ## Checks Run
    - [deterministic checks and targeted tests/commands]
 
@@ -97,5 +122,7 @@ Fail if any of these are true:
 - Final `HEAD` introduces a new important issue in a shared/public module, background job, controller/service/repository boundary, concurrency/fan-out path, queue/DB consistency path, or config/default source
 - A deferred item has no ticket/link or concrete owner/reason
 - A rejected item has no evidence
+- An autonomous Samocode run has missing, stale, or inconsistent final-polish provenance
+- A project commit or working-tree mutation occurred after final Comment Hygiene
 
 Pass only when all important issues are fixed, explicitly deferred, or rejected with evidence, and final `HEAD` has been checked after the last merge/fix/debug loop.
