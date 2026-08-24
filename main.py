@@ -38,7 +38,7 @@ from worker import (
     approve,
     clear_signal_file,
     compose_startup,
-    count_source_phase_iterations_including_current,
+    count_epoch_source_phase_runs_including_current,
     exit_code_for,
     extract_phase,
     extract_total_iterations,
@@ -98,18 +98,25 @@ def apply_signal(
                 needs="investigation",
             )
 
-    source_iterations = count_source_phase_iterations_including_current(
+    epoch_runs = count_epoch_source_phase_runs_including_current(
         session_path, source_phase
     )
-
-    outcome = apply_workflow_event(
-        session_path,
-        signal,
-        source_phase,
-        source_iterations,
-        iteration,
-        working_dir=working_dir,
-    )
+    if epoch_runs.count is None:
+        outcome = ProcessedOutcome.rejected_validation(
+            Phase(source_phase),
+            None,
+            RejectionReason.RECOVERY_ANCHOR_INVALID,
+            "Recovery epoch invalid: " + "; ".join(epoch_runs.errors),
+        )
+    else:
+        outcome = apply_workflow_event(
+            session_path,
+            signal,
+            source_phase,
+            epoch_runs.count,
+            iteration,
+            working_dir=working_dir,
+        )
     record_processed_outcome(session_path, signal, iteration, outcome)
     if not outcome.accepted:
         _persist_workflow_rejection(session_path, outcome, logger)

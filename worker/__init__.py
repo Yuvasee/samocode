@@ -42,10 +42,12 @@ from .installer import (
     uninstall,
 )
 from .lifecycle import (
+    EpochPhaseRunCount,
     LifecycleCheck,
     LifecycleIssue,
     LifecycleIssueCode,
     RecoveryAnchor,
+    count_epoch_source_phase_runs_including_current,
     latest_applied_recovery_anchor,
     recovery_commit_marker,
     scoped_history,
@@ -198,10 +200,12 @@ __all__ = [
     "validate_final_polish",
     "validate_final_polish_evidence",
     # Lifecycle
+    "EpochPhaseRunCount",
     "LifecycleCheck",
     "LifecycleIssue",
     "LifecycleIssueCode",
     "RecoveryAnchor",
+    "count_epoch_source_phase_runs_including_current",
     "latest_applied_recovery_anchor",
     "scoped_history",
     "recovery_commit_marker",

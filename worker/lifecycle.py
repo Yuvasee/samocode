@@ -64,6 +64,26 @@ class LifecycleCheck:
 
 
 @dataclass(frozen=True)
+class EpochPhaseRunCount:
+    count: int | None
+    issues: tuple[LifecycleIssue, ...] = ()
+
+    def __post_init__(self) -> None:
+        if self.count is None and not self.issues:
+            raise ValueError("Epoch phase count requires either a count or issues")
+        if self.count is not None and self.issues:
+            raise ValueError("Epoch phase count requires either a count or issues")
+
+    @property
+    def ok(self) -> bool:
+        return self.count is not None
+
+    @property
+    def errors(self) -> tuple[str, ...]:
+        return tuple(issue.message for issue in self.issues)
+
+
+@dataclass(frozen=True)
 class RecoveryAnchor:
     recovery_id: str
     history_rows_before: int
@@ -123,10 +143,7 @@ def validate_final_polish_lifecycle(session_path: Path) -> LifecycleCheck:
 
 
 def validate_phase_provenance(session_path: Path, phase: Phase) -> LifecycleCheck:
-    """Fail when a late overview phase is not backed by accepted transitions."""
-    if phase not in {Phase.TESTING, Phase.QUALITY, Phase.PR_READINESS}:
-        return LifecycleCheck(())
-
+    """Validate the recovery epoch and late-phase transition provenance."""
     history, anchor_errors = scoped_history(session_path)
     if anchor_errors:
         return LifecycleCheck(
@@ -135,6 +152,8 @@ def validate_phase_provenance(session_path: Path, phase: Phase) -> LifecycleChec
                 for message in anchor_errors
             )
         )
+    if phase not in {Phase.TESTING, Phase.QUALITY, Phase.PR_READINESS}:
+        return LifecycleCheck(())
     transitions = accepted_transitions(history)
     latest = transitions[-1] if transitions else None
 
@@ -166,6 +185,27 @@ def validate_phase_provenance(session_path: Path, phase: Phase) -> LifecycleChec
             ),
         )
     )
+
+
+def count_epoch_source_phase_runs_including_current(
+    session_path: Path, phase: str
+) -> EpochPhaseRunCount:
+    history, anchor_errors = scoped_history(session_path)
+    if anchor_errors:
+        return EpochPhaseRunCount(
+            count=None,
+            issues=tuple(
+                LifecycleIssue(LifecycleIssueCode.RECOVERY_ANCHOR_INVALID, message)
+                for message in anchor_errors
+            ),
+        )
+    wanted = phase.lower()
+    completed_runs = sum(
+        1
+        for record in history
+        if record.source_phase and record.source_phase.lower() == wanted
+    )
+    return EpochPhaseRunCount(count=completed_runs + 1)
 
 
 def accepted_transitions(

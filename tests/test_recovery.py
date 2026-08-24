@@ -1,5 +1,6 @@
 import hashlib
 import json
+import logging
 import subprocess
 from argparse import Namespace
 from pathlib import Path
@@ -9,8 +10,11 @@ import pytest
 import main
 from worker.config import ProjectConfig, RuntimeConfig, SamocodeConfig
 from worker.final_polish import validate_final_polish
-from worker.lifecycle import validate_phase_provenance
-from worker.phases import Phase
+from worker.lifecycle import (
+    count_epoch_source_phase_runs_including_current,
+    validate_phase_provenance,
+)
+from worker.phases import Phase, is_iteration_limit_exceeded
 from worker.process_lease import ProcessLeaseState, acquire_process_lease
 from worker.recovery import (
     RecoveryOutcome,
@@ -18,6 +22,8 @@ from worker.recovery import (
     inspect_final_polish_recovery,
     recover_final_polish,
 )
+from worker.signal_history import count_source_phase_iterations_including_current
+from worker.signals import Signal, SignalStatus
 from worker.startup import StartupComposition
 from worker.workflow_state import read_overview_state
 
@@ -67,6 +73,30 @@ def _history_row(
             "mutated": accepted,
         }
     )
+
+
+def _no_change_history_row(source: str, iteration: int) -> str:
+    return json.dumps(
+        {
+            "v": 2,
+            "timestamp": "2026-08-24 10:00:00",
+            "iteration": iteration,
+            "source_phase": source,
+            "target_phase": source,
+            "status": "continue",
+            "accepted": True,
+            "validation_error": None,
+            "rejection_reason": None,
+            "outcome_kind": "accepted_no_change",
+            "mutated": False,
+        }
+    )
+
+
+def _insert_before_latest_history_row(session: Path, rows: list[str]) -> None:
+    history_path = session / "_signal_history.jsonl"
+    existing = history_path.read_text().splitlines()
+    history_path.write_text("\n".join([*existing[:-1], *rows, existing[-1]]) + "\n")
 
 
 def _git_init(path: Path) -> str:
@@ -197,6 +227,82 @@ def test_apply_snapshots_state_preserves_history_and_sets_anchor(tmp_path: Path)
     assert validate_final_polish(session, working_dir).ok
 
 
+def test_epoch_phase_budget_excludes_pre_recovery_quality_runs(
+    tmp_path: Path,
+) -> None:
+    config, session, _working_dir, _head = _recoverable_project(tmp_path)
+    _insert_before_latest_history_row(
+        session,
+        [_no_change_history_row("quality", iteration) for iteration in range(10, 35)],
+    )
+    lifetime_count = count_source_phase_iterations_including_current(session, "quality")
+    assert lifetime_count > 20
+    assert recover_final_polish(config, "task").ok
+
+    first_epoch_run = count_epoch_source_phase_runs_including_current(
+        session, "quality"
+    )
+
+    assert first_epoch_run.count == 1
+
+
+def test_epoch_phase_budget_counts_post_anchor_rows_and_enforces_boundary(
+    tmp_path: Path,
+) -> None:
+    config, session, _working_dir, _head = _recoverable_project(tmp_path)
+    assert recover_final_polish(config, "task").ok
+    history_path = session / "_signal_history.jsonl"
+    with history_path.open("a") as handle:
+        for iteration in range(1, 20):
+            handle.write(_no_change_history_row("quality", iteration) + "\n")
+
+    at_limit = count_epoch_source_phase_runs_including_current(session, "quality")
+    assert at_limit.count == 20
+    assert is_iteration_limit_exceeded("quality", at_limit.count)[0] is False
+
+    with history_path.open("a") as handle:
+        handle.write(_no_change_history_row("quality", 20) + "\n")
+    over_limit = count_epoch_source_phase_runs_including_current(session, "quality")
+    assert over_limit.count == 21
+    assert is_iteration_limit_exceeded("quality", over_limit.count)[0] is True
+
+
+def test_apply_signal_uses_recovery_epoch_budget_not_lifetime_history(
+    tmp_path: Path,
+) -> None:
+    config, session, working_dir, _head = _recoverable_project(tmp_path)
+    _insert_before_latest_history_row(
+        session,
+        [_no_change_history_row("quality", iteration) for iteration in range(10, 35)],
+    )
+    assert recover_final_polish(config, "task").ok
+    history_path = session / "_signal_history.jsonl"
+    with history_path.open("a") as handle:
+        handle.write(_history_row("implementation", "testing", 1) + "\n")
+        handle.write(_history_row("testing", "quality", 2) + "\n")
+        for iteration in range(3, 6):
+            handle.write(_no_change_history_row("quality", iteration) + "\n")
+    overview_path = session / "_overview.md"
+    overview_path.write_text(
+        overview_path.read_text().replace("Phase: implementation", "Phase: quality")
+    )
+
+    result = main.apply_signal(
+        Signal(status=SignalStatus.CONTINUE),
+        "quality",
+        session,
+        6,
+        logging.getLogger("test_epoch_budget"),
+        working_dir=working_dir,
+    )
+
+    assert result.status is SignalStatus.CONTINUE
+    assert count_source_phase_iterations_including_current(session, "quality") > 20
+    parsed = read_overview_state(session)
+    assert parsed.state is not None
+    assert parsed.state.phase is Phase.QUALITY
+
+
 @pytest.mark.parametrize("mutation", ["dirty", "plan", "signal", "phase"])
 def test_recovery_refuses_non_allowlisted_state(
     tmp_path: Path, mutation: str
@@ -324,8 +430,11 @@ def test_modified_pre_recovery_history_invalidates_anchor(tmp_path: Path) -> Non
     history_path.write_bytes(b" " + history_path.read_bytes()[1:])
 
     result = validate_final_polish(session, working_dir)
+    budget = count_epoch_source_phase_runs_including_current(session, "implementation")
 
     assert "modified" in "; ".join(result.errors)
+    assert budget.count is None
+    assert "modified" in "; ".join(budget.errors)
 
 
 def test_missing_applied_recovery_receipt_fails_closed(tmp_path: Path) -> None:
@@ -335,8 +444,39 @@ def test_missing_applied_recovery_receipt_fails_closed(tmp_path: Path) -> None:
     result.receipt_path.unlink()
 
     check = validate_final_polish(session, working_dir)
+    budget = count_epoch_source_phase_runs_including_current(session, "implementation")
+    preflight = validate_phase_provenance(session, Phase.IMPLEMENTATION)
 
     assert "valid receipts; expected 1" in "; ".join(check.errors)
+    assert budget.count is None
+    assert not preflight.ok
+
+
+def test_apply_signal_rejects_invalid_epoch_without_phase_mutation(
+    tmp_path: Path,
+) -> None:
+    config, session, working_dir, _head = _recoverable_project(tmp_path)
+    recovery = recover_final_polish(config, "task")
+    assert recovery.receipt_path is not None
+    recovery.receipt_path.unlink()
+
+    result = main.apply_signal(
+        Signal(status=SignalStatus.CONTINUE, phase="testing"),
+        "implementation",
+        session,
+        1,
+        logging.getLogger("test_invalid_epoch"),
+        working_dir=working_dir,
+    )
+
+    assert result.status is SignalStatus.BLOCKED
+    assert "Recovery epoch invalid" in (result.reason or "")
+    parsed = read_overview_state(session)
+    assert parsed.state is not None
+    assert parsed.state.phase is Phase.IMPLEMENTATION
+    assert parsed.state.blocked == "workflow_error"
+    latest = json.loads((session / "_signal_history.jsonl").read_text().splitlines()[-1])
+    assert latest["rejection_reason"] == "recovery_anchor_invalid"
 
 
 def test_recovery_cli_parser_requires_explicit_mode() -> None:
