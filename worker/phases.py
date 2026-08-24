@@ -61,7 +61,10 @@ class PhaseConfig:
         return bool(reason) and reason in self.allowed_waits
 
     def gate_owns_transition(self, target: Phase) -> bool:
-        return self.approval_gate is not None and self.approval_gate.approved_next == target
+        return (
+            self.approval_gate is not None
+            and self.approval_gate.approved_next == target
+        )
 
     @property
     def is_terminal(self) -> bool:
@@ -108,8 +111,7 @@ PHASE_CONFIGS: dict[Phase, PhaseConfig] = {
     Phase.IMPLEMENTATION: PhaseConfig(
         phase=Phase.IMPLEMENTATION,
         agent_name="implementation-agent",
-        # Can skip testing for test projects, research, or no test infrastructure
-        allowed_next=frozenset({Phase.TESTING, Phase.QUALITY}),
+        allowed_next=frozenset({Phase.TESTING}),
         allowed_signals=frozenset({"continue", "waiting", "blocked"}),
         max_iterations=100,
         default_profile="standard",  # Fallback when a plan phase has no explicit profile
@@ -126,16 +128,15 @@ PHASE_CONFIGS: dict[Phase, PhaseConfig] = {
     Phase.QUALITY: PhaseConfig(
         phase=Phase.QUALITY,
         agent_name="quality-agent",
-        # Can skip regression testing if no fixes made or no tests
-        allowed_next=frozenset({Phase.TESTING, Phase.PR_READINESS}),
+        allowed_next=frozenset({Phase.TESTING}),
         allowed_signals=frozenset({"continue", "blocked"}),
-        max_iterations=10,
+        max_iterations=20,
         default_profile="strong",
     ),
     Phase.PR_READINESS: PhaseConfig(
         phase=Phase.PR_READINESS,
         agent_name="pr-readiness-agent",
-        allowed_next=frozenset({Phase.DONE}),
+        allowed_next=frozenset({Phase.DONE, Phase.QUALITY}),
         allowed_signals=frozenset({"continue", "blocked"}),
         max_iterations=5,
         default_profile="strong",
@@ -167,7 +168,9 @@ def validate_phase_registry(configs: dict[Phase, PhaseConfig]) -> None:
             continue
 
         if config.is_terminal:
-            raise PhaseRegistryError(f"Terminal phase '{name}' cannot own an approval_gate")
+            raise PhaseRegistryError(
+                f"Terminal phase '{name}' cannot own an approval_gate"
+            )
         if gate.approved_next not in config.allowed_next:
             raise PhaseRegistryError(
                 f"Phase '{name}' approval target '{gate.approved_next.value}' "
@@ -200,7 +203,9 @@ def get_agent_for_phase(phase_str: str | None) -> str | None:
     return config.agent_name if config else None
 
 
-def validate_transition(from_phase: str | None, to_phase: str | None) -> tuple[bool, str]:
+def validate_transition(
+    from_phase: str | None, to_phase: str | None
+) -> tuple[bool, str]:
     """Validate a phase transition.
 
     Returns (is_valid, error_message).
@@ -238,7 +243,9 @@ def validate_transition(from_phase: str | None, to_phase: str | None) -> tuple[b
     return True, ""
 
 
-def validate_signal_for_phase(phase_str: str | None, signal_status: str) -> tuple[bool, str]:
+def validate_signal_for_phase(
+    phase_str: str | None, signal_status: str
+) -> tuple[bool, str]:
     """Validate that a signal status is allowed for a phase.
 
     Returns (is_valid, error_message).
@@ -257,7 +264,9 @@ def validate_signal_for_phase(phase_str: str | None, signal_status: str) -> tupl
     return True, ""
 
 
-def is_iteration_limit_exceeded(phase_str: str | None, iteration_count: int) -> tuple[bool, int]:
+def is_iteration_limit_exceeded(
+    phase_str: str | None, iteration_count: int
+) -> tuple[bool, int]:
     """Check if phase iteration limit is exceeded.
 
     Returns (is_exceeded, max_allowed).

@@ -124,7 +124,7 @@ that action.
 
 Phases:
 ```
-init → investigation → requirements → planning → implementation → testing → quality → pr-readiness → done
+init → investigation → requirements → planning → implementation → testing → quality → testing → pr-readiness → done
                             ↑              ↑
                        human gate     human gate
                        (answer Q&A)   (approve plan)
@@ -212,8 +212,8 @@ Claude. Requires **Python 3.11+**.
 | planning | Create phased plan, wait for approval (human gate) |
 | implementation | Execute plan phases iteratively |
 | testing | Verify by fresh agent (not ad-hoc tests) |
-| quality | Review, fix blocking issues, require decisions for important issues (max 3 iterations) |
-| pr-readiness | Final-head gate after fixes, merges, and manual debugging |
+| quality | Ordinary review/fixes, then a Code Clarity fix loop and final Comment Hygiene cleanup (max 3 fix batches per loop) |
+| pr-readiness | Final-head gate after regression tests; validates review debt and the clarity → hygiene provenance chain |
 | done | Generate summary, signal complete |
 
 ## Signal protocol
@@ -245,6 +245,39 @@ This atomically advances the session to the implementation phase and consumes th
 | 6 | Already advanced: another approval reached the gate target; this call made no change |
 
 (argparse reserves exit code 2 for CLI usage errors.)
+
+### Supported final-polish recovery
+
+If deterministic lifecycle validation blocks a legacy session with
+`Blocked: workflow_error`, first inspect the exact state without mutation:
+
+```bash
+samocode recover final-polish \
+  --config ~/project/.samocode \
+  --session my-task \
+  --check
+```
+
+If the command reports that the state is recoverable, apply the bounded recovery:
+
+```bash
+samocode recover final-polish \
+  --config ~/project/.samocode \
+  --session my-task \
+  --apply
+```
+
+This is not a general phase editor. It accepts only a rejected
+`pr-readiness -> done` event whose implementation plan is complete, whose non-history
+final-polish evidence and current HEAD are valid, and whose only defect is missing
+lifecycle provenance. It snapshots the overview, signal, full history, and plan under
+`_recovery/`; leaves `_signal_history.jsonl` unchanged; and resets the authoritative
+phase to completed implementation. The next normal run must record a fresh
+`implementation -> testing -> quality -> testing -> pr-readiness` sequence.
+
+`samocode run` also checks late-phase provenance before clearing signals or invoking
+an AI provider. Never hand-edit `_overview.md`, `_signal.json`, or
+`_signal_history.jsonl` to bypass that check.
 
 ## Session Structure
 

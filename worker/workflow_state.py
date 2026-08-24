@@ -12,6 +12,7 @@ from datetime import datetime
 from enum import Enum
 from pathlib import Path
 
+from .final_polish import validate_final_polish
 from .phases import Phase
 from .signals import OVERVIEW_FILENAME, Signal, SignalStatus
 from .timestamps import iteration_timestamp
@@ -636,6 +637,8 @@ def apply_workflow_event(
     source_iterations: int,
     iteration: int,
     now: datetime | None = None,
+    *,
+    working_dir: Path | None = None,
 ) -> ProcessedOutcome:
     """Validate fully, then apply an accepted transition to _overview.md on disk.
 
@@ -675,13 +678,34 @@ def apply_workflow_event(
         )
 
     assert result.source_phase is not None and result.target_phase is not None
+    if result.source_phase is Phase.PR_READINESS and result.target_phase is Phase.DONE:
+        if working_dir is None:
+            return ProcessedOutcome.rejected_validation(
+                result.source_phase,
+                result.target_phase,
+                RejectionReason.FINAL_POLISH_INVALID,
+                "Cannot complete an autonomous session without its project working directory",
+            )
+        final_polish = validate_final_polish(session_path, working_dir)
+        if not final_polish.ok:
+            return ProcessedOutcome.rejected_validation(
+                result.source_phase,
+                result.target_phase,
+                RejectionReason.FINAL_POLISH_INVALID,
+                "Final-polish provenance invalid: " + "; ".join(final_polish.errors),
+            )
+
     entry = (
         f"- {iteration_timestamp(iteration, now)} Phase transition: "
         f"{result.source_phase.value} -> {result.target_phase.value}"
     )
     write = apply_overview_transition(
         session_path,
-        OverviewTransition(target_phase=result.target_phase, flow_log_entry=entry),
+        OverviewTransition(
+            target_phase=result.target_phase,
+            flow_log_entry=entry,
+            blocked="no",
+        ),
         expected_source=result.source_phase,
         wait_timeout=WORKER_LOCK_WAIT_SECONDS,
     )

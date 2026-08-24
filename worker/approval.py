@@ -7,6 +7,11 @@ from pathlib import Path
 
 from .config import ProjectConfig, resolve_session_path
 from .phases import ApprovalGate, Phase, get_phase_config
+from .plan_resolver import (
+    PlanResolutionError,
+    select_active_plan,
+    validate_plan_contract,
+)
 from .signals import SIGNAL_FILENAME, Signal, SignalStatus, read_signal_file
 from .timestamps import log_timestamp
 from .workflow_state import (
@@ -36,6 +41,7 @@ class ApprovalRejection(Enum):
     LOCK_IO_FAILED = "lock_io_failed"
     OVERVIEW_WRITE_FAILED = "overview_write_failed"
     OVERVIEW_STATE_CONFLICT = "overview_state_conflict"
+    PLAN_INVALID = "plan_invalid"
 
 
 class ApprovalOutcome(Enum):
@@ -336,6 +342,13 @@ def approve_session(
             source=prelock_overview.state.phase,
         )
     requested_plan = prelock_check.plan
+    plan_error = _active_plan_error(session_path, prelock_overview.state)
+    if plan_error is not None:
+        return _rejected_result(
+            ApprovalRejection.PLAN_INVALID,
+            plan_error,
+            source=prelock_overview.state.phase,
+        )
 
     with session_lock(session_path) as lock:
         if lock.state is LockState.CONTENDED:
@@ -375,7 +388,29 @@ def approve_session(
             return _classify_phase_moved(observed_phase, requested_plan)
 
         authoritative_plan = locked_check.plan
+        plan_error = _active_plan_error(session_path, locked_overview.state)
+        if plan_error is not None:
+            return _rejected_result(
+                ApprovalRejection.PLAN_INVALID,
+                plan_error,
+                source=locked_overview.state.phase,
+            )
         return _apply_approval(session_path, authoritative_plan, now)
+
+
+def _active_plan_error(session_path: Path, state: OverviewState) -> str | None:
+    if state.phase is not Phase.PLANNING:
+        return None
+    try:
+        plan_path = select_active_plan(session_path, state.raw_text)
+        phases = validate_plan_contract(plan_path.read_text())
+        if not phases:
+            raise PlanResolutionError(
+                f"{plan_path} has no implementation phases to approve"
+            )
+    except (OSError, UnicodeDecodeError, PlanResolutionError) as exc:
+        return f"Implementation plan contract invalid: {exc}"
+    return None
 
 
 def _already_advanced(

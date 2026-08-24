@@ -168,11 +168,19 @@ class TestContinue:
         assert not result.accepted
         assert result.rejection_reason is RejectionReason.TRANSITION_NOT_ALLOWED
 
-    def test_implementation_to_quality_accepts(self) -> None:
+    def test_implementation_to_quality_rejects(self) -> None:
         result = validate_workflow_event(
             _event("implementation", SignalStatus.CONTINUE, target="quality")
         )
+        assert not result.accepted
+        assert result.rejection_reason is RejectionReason.TRANSITION_NOT_ALLOWED
+
+    def test_pr_readiness_to_quality_accepts_for_recovery(self) -> None:
+        result = validate_workflow_event(
+            _event("pr-readiness", SignalStatus.CONTINUE, target="quality")
+        )
         assert result.accepted
+        assert result.target_phase is Phase.QUALITY
 
     def test_case_insensitive_target(self) -> None:
         result = validate_workflow_event(

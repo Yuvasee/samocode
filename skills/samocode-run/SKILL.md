@@ -13,8 +13,8 @@ Runs the samocode autonomous orchestrator on a project session and monitors its 
 
 DO NOT:
 - Launch phase agents or Task subagents yourself for investigation/planning/implementation phases
-- Manually read `_overview.md` and decide what phase to run
-- Update `_signal.json` yourself
+- Infer or change the workflow phase yourself; read `_overview.md` only for status/monitoring
+- Edit `_overview.md`, `_signal.json`, or `_signal_history.jsonl` to advance, unblock, rewind, or complete a session
 - Pretend to be the orchestrator
 
 The Python worker (`main.py`) handles ALL of this. Your job is to START the worker and MONITOR its output.
@@ -45,11 +45,13 @@ source/package.
 ## Sessions: Manual vs Autonomous
 
 There's no strict "samocode session" - just sessions. Any session can be worked on:
-- **Manually** by you (the parent agent session) - e.g., investigation, Q&A, planning
+- **Manually** by you (the parent agent session) - e.g., answering Q&A or reviewing a plan
 - **Autonomously** by samocode - e.g., implementation, testing, quality fixes
 - **Mixed** - start manually, hand off to samocode, take back control when blocked
 
-This flexibility is intentional. Use samocode for repetitive/long-running phases, work manually when human judgment is needed.
+Human judgment can supply inputs and approve supported gates. Once the worker owns a
+session lifecycle, only its CLI services may mutate lifecycle state; manual engineering
+work never authorizes hand-editing workflow control files.
 
 ## When to Use
 
@@ -86,15 +88,30 @@ Do NOT assume samocode should run just because a session exists.
      - If no plan file exists or requirements are incomplete, report that implementation cannot start yet and ask the user how to proceed.
    - **If `Phase: done`:**
      - Ask user: "Session is complete. What new work do you want to do?"
-     - Update `_overview.md`:
-       - `Phase: investigation`
-       - `Last Action: Resuming session for: [user's goal]`
-       - `Next: Investigate approach for [user's goal]`
-     - Add to Flow Log: `- [MM-DD HH:MM] Resuming: [user's goal]`
-   - **If `Blocked: yes` or `blocked`:**
+     - Do not reopen the completed lifecycle by editing `_overview.md`; create a new
+       session for new work unless a dedicated worker command supports reopening.
+   - **If `Blocked: workflow_error`:**
+     - Report Last Action and Next, then stop. Do not run a phase agent and do not
+       edit any control file.
+     - For a final-polish provenance error, run the read-only eligibility check:
+       ```bash
+       samocode recover final-polish --config [PATH_TO_.SAMOCODE] --session [SESSION_NAME] --check
+       ```
+     - Show the exact result to the user. Only after explicit user approval, apply:
+       ```bash
+       samocode recover final-polish --config [PATH_TO_.SAMOCODE] --session [SESSION_NAME] --apply
+       ```
+     - A successful recovery creates an immutable `_recovery/` snapshot, preserves
+       `_signal_history.jsonl`, and returns to completed implementation so the worker
+       can honestly replay testing → quality → testing → pr-readiness. Restart the
+       worker normally after the command succeeds.
+     - If the check refuses, investigate/report the mismatch; never broaden or bypass
+       the recovery preconditions.
+   - **If `Blocked: yes`, `blocked`, or `waiting_human`:**
      - Show user the current status (Last Action, Next, reason if available)
      - Ask how to proceed
-     - Update status based on user's direction
+     - Use a documented CLI gate when one exists; otherwise gather the requested
+       human input and let the worker consume it. Do not edit lifecycle fields.
 
 4. **Understand routing before startup:**
    - Global config path: `$XDG_CONFIG_HOME/samocode/config.toml` when
@@ -179,7 +196,7 @@ Do NOT assume samocode should run just because a session exists.
 
    6.6. Check stop condition:
    - `Phase: done` → report final summary, STOP
-   - `Blocked:` contains `yes` or `waiting` → handle accordingly (see Handling Waiting States), STOP
+   - `Blocked:` contains `workflow_error`, `yes`, or `waiting` → handle accordingly, STOP
    - Otherwise → goto step 6.1
 
    **IMPORTANT: On STOP, clean up monitoring.** When samocode finishes (done/blocked/waiting), do NOT leave pending background sleep tasks running. Stop any active monitoring task via `TaskStop` before reporting the final status. This prevents stale notification floods.
@@ -244,7 +261,7 @@ Sessions are stored in SESSIONS dir (from `.samocode` file), NOT nested inside p
 
 ```markdown
 ## Status
-Phase: [investigation|planning|implementation|testing|quality|done]
+Phase: [init|investigation|requirements|planning|implementation|testing|quality|pr-readiness|done]
 Iteration: N
 Blocked: [yes/no]
 Last Action: [what happened]
@@ -262,6 +279,9 @@ Next: [what to do next]
 4. **Missing global config**: Run `samocode install`; legacy mode still runs but cannot use semantic profile routing
 5. **Invalid config/profile**: Fix the reported TOML path/profile. Validation fails before any provider call; do not bypass it with model env vars
 6. **Provider unavailable**: Install the selected CLI or choose a registered provider with `--provider`; a process never falls back to another provider mid-run
+7. **Lifecycle preflight/workflow_error**: Stop before provider execution. Use the
+   read-only `samocode recover final-polish ... --check` only for the reported
+   final-polish provenance class; never repair history or phase fields manually
 
 ## Debugging Samocode Bugs
 
@@ -271,6 +291,8 @@ If samocode exhibits bugs or weird behavior (loops, wrong decisions, missing ste
    - Check worker output logs for errors
    - Read `_overview.md` to see what went wrong
    - Check if workflow.md instructions are unclear
+   - Check whether the parent session loaded a stale installed skill before the
+     current worker version
    - Check if skills have ambiguous or missing guidance
 
 2. **Suggest fixes - DO NOT auto-implement:**

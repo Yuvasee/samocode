@@ -53,10 +53,17 @@ class PlanPhase:
     profile: str | None
     total_tasks: int
     completed_tasks: int
+    tasks: tuple["PlanTask", ...] = ()
 
     @property
     def has_unchecked_task(self) -> bool:
         return self.completed_tasks < self.total_tasks
+
+
+@dataclass(frozen=True)
+class PlanTask:
+    text: str
+    complete: bool
 
 
 @dataclass(frozen=True)
@@ -142,7 +149,46 @@ _IMPL_PHASES_HEADING_RE = re.compile(r"^## Implementation Phases\s*$")
 _PHASE_HEADING_RE = re.compile(r"^### Phase ([0-9A-Za-z]+):\s*(.+?)\s*$")
 _PROFILE_LINE_RE = re.compile(r"^\*\*Profile:\*\*\s*(.*)$")
 _VALID_PROFILE_VALUE_RE = re.compile(r"^`([^`\s][^`]*)`$")
-_TASK_LINE_RE = re.compile(r"^-\s\[([ xX])\]")
+_TASK_LINE_RE = re.compile(r"^-\s\[([ xX])\]\s*(.*)$")
+
+_RESERVED_EXACT_TITLES = frozenset(
+    {
+        "testing",
+        "regression testing",
+        "quality",
+        "quality review",
+        "quality gate",
+        "code clarity",
+        "comment hygiene",
+        "done",
+        "summary",
+        "final summary",
+    }
+)
+_RESERVED_TITLE_PREFIXES = (
+    "pr readiness",
+    "pull request readiness",
+    "approval stop",
+)
+_RESERVED_TASK_PREFIXES = (
+    "enter pr readiness",
+    "enter the pr readiness",
+    "run pr readiness",
+    "run the pr readiness",
+    "execute pr readiness",
+    "transition to testing",
+    "enter testing phase",
+    "run testing phase",
+    "transition to quality",
+    "run quality review",
+    "run code clarity",
+    "run comment hygiene",
+    "transition to done",
+    "signal done",
+    "stop before pr creation",
+    "wait for explicit user approval",
+    "generate the final summary",
+)
 
 
 def parse_implementation_phases(plan_text: str) -> list[PlanPhase]:
@@ -206,11 +252,14 @@ def _split_into_phase_blocks(
 def _parse_one_phase(label: str, title: str, body: list[str]) -> PlanPhase:
     profile = _extract_profile(label, title, body)
     total = completed = 0
+    tasks: list[PlanTask] = []
     for line in body:
         task_match = _TASK_LINE_RE.match(line.strip())
         if task_match:
             total += 1
-            if task_match.group(1).lower() == "x":
+            complete = task_match.group(1).lower() == "x"
+            tasks.append(PlanTask(task_match.group(2).strip(), complete))
+            if complete:
                 completed += 1
     return PlanPhase(
         label=label,
@@ -218,6 +267,42 @@ def _parse_one_phase(label: str, title: str, body: list[str]) -> PlanPhase:
         profile=profile,
         total_tasks=total,
         completed_tasks=completed,
+        tasks=tuple(tasks),
+    )
+
+
+def validate_pending_implementation_scope(phases: list[PlanPhase]) -> None:
+    """Completed legacy phases remain valid so interrupted sessions can recover."""
+    for phase in phases:
+        if not phase.has_unchecked_task:
+            continue
+        title = _normalize_contract_text(phase.title)
+        if title in _RESERVED_EXACT_TITLES or title.startswith(
+            _RESERVED_TITLE_PREFIXES
+        ):
+            raise _lifecycle_scope_error(phase, phase.title)
+        for task in phase.tasks:
+            if task.complete:
+                continue
+            normalized_task = _normalize_contract_text(task.text)
+            if normalized_task.startswith(_RESERVED_TASK_PREFIXES):
+                raise _lifecycle_scope_error(phase, task.text)
+
+
+def validate_plan_contract(plan_text: str) -> list[PlanPhase]:
+    phases = parse_implementation_phases(plan_text)
+    validate_pending_implementation_scope(phases)
+    return phases
+
+
+def _normalize_contract_text(value: str) -> str:
+    return " ".join(value.lower().replace("-", " ").replace("`", "").split())
+
+
+def _lifecycle_scope_error(phase: PlanPhase, value: str) -> PlanResolutionError:
+    return PlanResolutionError(
+        f"Phase {phase.label} ({phase.title!r}) takes over an outer workflow "
+        f"stage via {value!r}; move lifecycle verification to `## Verification Plan`"
     )
 
 
@@ -284,7 +369,7 @@ def resolve_plan_phase(session_dir: Path) -> PlanPhaseSelection:
         raise PlanResolutionError(f"session overview not found: {overview_path}")
 
     plan_path = select_active_plan(session_dir, overview_path.read_text())
-    phases = parse_implementation_phases(plan_path.read_text())
+    phases = validate_plan_contract(plan_path.read_text())
     if not phases:
         raise PlanResolutionError(
             f"{plan_path} has an `## Implementation Phases` section but no "

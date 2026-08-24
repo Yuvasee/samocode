@@ -32,6 +32,129 @@ def test_quality_subagents_inherit_model_and_effort() -> None:
     assert "no effort override" in normalized
 
 
+def test_quality_pipeline_runs_clarity_before_final_comment_hygiene() -> None:
+    agent = (ROOT / "agents" / "quality-agent.md").read_text()
+    headings = [
+        "Step 1 — Cleanup",
+        "Step 2 — Multi-review",
+        "Step 3 — Triage + fix",
+        "Step 4 — Verify fixes",
+        "Step 5 — Clarity review",
+        "Step 6 — Clarity triage + fix",
+        "Step 7 — Clarity verify",
+        "Step 8 — Final Comment Hygiene",
+    ]
+    positions = [agent.index(heading) for heading in headings]
+
+    assert positions == sorted(positions)
+    assert "skills: quality, implementation, code-clarity, comment-hygiene" in agent
+
+    ordinary_triage = agent[positions[2] : positions[3]]
+    ordinary_verify = agent[positions[3] : positions[4]]
+    clarity_pipeline = agent[positions[4] : positions[7]]
+    hygiene = agent[positions[7] :]
+
+    assert "Quality Step: clarity-review" in ordinary_triage
+    assert "Quality Step: clarity-review" in ordinary_verify
+    assert "MUST use `code-clarity`" in clarity_pipeline
+    assert "review-only" in clarity_pipeline
+    assert "implementation" in clarity_pipeline
+    assert "MUST use `comment-hygiene`" in hygiene
+    assert "final operation allowed to mutate" in hygiene
+    assert "executable-code safety check" in hygiene
+
+    testing_signal = '{"status": "continue", "phase": "testing"}'
+    readiness_signal = '{"status": "continue", "phase": "pr-readiness"}'
+    assert testing_signal not in agent[: positions[7]]
+    assert testing_signal in hygiene
+    assert readiness_signal not in agent
+
+
+def test_post_quality_pipeline_preserves_final_hygiene_boundary() -> None:
+    testing_agent = (ROOT / "agents" / "testing-agent.md").read_text()
+    testing_skill = (ROOT / "skills" / "testing" / "SKILL.md").read_text()
+    readiness_agent = (ROOT / "agents" / "pr-readiness-agent.md").read_text()
+    readiness_skill = (ROOT / "skills" / "pr-readiness" / "SKILL.md").read_text()
+
+    for content in (testing_agent, testing_skill):
+        normalized = " ".join(content.split())
+        assert "git status --porcelain" in content
+        assert "post-quality" in content.lower()
+        assert "HEAD" in normalized and "status" in normalized
+        assert "quality" in normalized
+        assert "Result: PASS | FAIL" in content
+        assert "[TIMESTAMP_FILE]-test-report.md" in content
+
+    mutation_signal = testing_agent.index(
+        "Second run changed the project worktree (re-enter quality)"
+    )
+    assert (
+        '{"status": "continue", "phase": "quality"}' in testing_agent[mutation_signal:]
+    )
+    assert "return the workflow to quality" in " ".join(testing_skill.split())
+
+    for content in (readiness_agent, readiness_skill):
+        normalized = " ".join(content.split())
+        assert "Code Clarity" in content
+        assert "Comment Hygiene" in content
+        assert "Reviewed HEAD" in content
+        assert "Input HEAD" in content
+        assert "Output HEAD" in content
+        assert "Tested HEAD" in content
+        assert "Disposition: settled" in content
+        assert "Reviewed HEAD" in normalized and "Input HEAD" in normalized
+        assert "Output HEAD" in normalized and "Tested HEAD" in normalized
+
+    readiness_agent_normalized = " ".join(readiness_agent.split())
+    readiness_skill_normalized = " ".join(readiness_skill.split())
+    assert (
+        "settled Code Clarity report's `Reviewed HEAD` equals Comment Hygiene "
+        "`Input HEAD`" in readiness_agent_normalized
+    )
+    assert (
+        "Comment Hygiene `Output HEAD` equals the regression test's `Tested HEAD` "
+        "and the current project `HEAD`" in readiness_agent_normalized
+    )
+    assert (
+        "settled Code Clarity report's `Reviewed HEAD` to equal Comment Hygiene "
+        "`Input HEAD`" in readiness_skill_normalized
+    )
+    assert (
+        "Comment Hygiene `Output HEAD` to equal both the regression report's "
+        "`Tested HEAD` and current project `HEAD`" in readiness_skill_normalized
+    )
+    assert "provenance is never `NOT APPLICABLE`" in readiness_agent_normalized
+    assert '{"status": "continue", "phase": "quality"}' in readiness_agent
+
+
+def test_planning_assets_keep_outer_lifecycle_outside_implementation() -> None:
+    planning_agent = (ROOT / "agents" / "planning-agent.md").read_text()
+    planning_skill = (ROOT / "skills" / "planning" / "SKILL.md").read_text()
+
+    for content in (planning_agent, planning_skill):
+        assert "## Implementation Phases" in content
+        assert "## Verification Plan" in content
+        normalized = " ".join(content.split())
+        assert "lifecycle" in normalized.lower()
+        assert "orchestrator" in normalized.lower()
+        assert "Code Clarity" in normalized
+        assert "Comment Hygiene" in normalized
+        assert "PR Readiness" in normalized
+
+
+def test_workflow_documents_final_polish_order() -> None:
+    workflow = (ROOT / "workflow.md").read_text()
+    quality_description = next(
+        line for line in workflow.splitlines() if line.startswith("- **quality**:")
+    )
+
+    clarity = quality_description.index("Code Clarity")
+    hygiene = quality_description.index("Comment Hygiene")
+    assert clarity < hygiene
+    assert "final working-tree mutation" in quality_description
+    assert "`code-clarity`" in workflow
+
+
 def test_requirements_lookup_subagents_inherit_model_and_effort() -> None:
     content = (ROOT / "skills" / "task-definition" / "SKILL.md").read_text()
     normalized = " ".join(content.split())
@@ -101,8 +224,22 @@ def test_run_skill_uses_approve_cli_for_plan_approval() -> None:
     assert "samocode approve" in content
     assert "--config" in content
     assert "--session" in content
-    stale = "Phase: implementation\n   - `Blocked: no`\n   - `Last Action: Plan approved"
+    stale = (
+        "Phase: implementation\n   - `Blocked: no`\n   - `Last Action: Plan approved"
+    )
     assert stale not in content
+
+
+def test_run_skill_forbids_manual_lifecycle_repair_and_uses_recovery_cli() -> None:
+    content = (ROOT / "skills" / "samocode-run" / "SKILL.md").read_text()
+    normalized = " ".join(content.split())
+
+    assert "samocode recover final-polish" in content
+    assert "--check" in content and "--apply" in content
+    assert "explicit user approval" in content
+    assert "Edit `_overview.md`, `_signal.json`, or `_signal_history.jsonl`" in content
+    assert "Update `_overview.md`:" not in content
+    assert "Phase: investigation`" not in normalized
 
 
 def test_planning_agent_references_approve_cli() -> None:
@@ -115,6 +252,9 @@ def test_architecture_source_map_covers_new_modules() -> None:
     assert "workflow_event.py" in content
     assert "workflow_state.py" in content
     assert "approval.py" in content
+    assert "lifecycle.py" in content
+    assert "process_lease.py" in content
+    assert "recovery.py" in content
 
 
 def test_readme_documents_approve_cli() -> None:

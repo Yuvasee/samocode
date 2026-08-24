@@ -1,14 +1,19 @@
 """Normalize versioned history and count every outcome by its source phase."""
 
+from __future__ import annotations
+
 import json
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from .phases import Phase
 from .signals import Signal
-from .workflow_state import ProcessedOutcome
+
+if TYPE_CHECKING:
+    from .workflow_state import ProcessedOutcome
 
 HISTORY_FILENAME = "_signal_history.jsonl"
 SCHEMA_VERSION = 2

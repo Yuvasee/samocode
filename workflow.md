@@ -73,7 +73,7 @@ Two separate commits may be needed (they can be different repos):
 ## Phase Flow
 
 ```
-init -> investigation -> requirements -> planning -> implementation -> testing -> quality -> pr-readiness -> done
+init -> investigation -> requirements -> planning -> implementation -> testing -> quality -> testing -> pr-readiness -> done
                                                             \-> quality --/    \--------------/
 ```
 
@@ -83,12 +83,15 @@ init -> investigation -> requirements -> planning -> implementation -> testing -
 - **planning**: Create phased implementation plan → **WAIT for human approval**
 - **implementation**: Execute plan phases iteratively (dop/dop2/do)
 - **testing**: Formal verification by fresh agent (NOT ad-hoc tests during implementation)
-- **quality**: Review, fix blocking issues, and require decisions for important issues — ONE step per iteration (cleanup → review → triage/fix → verify, dispatched via `Quality Step`; max 3 fix iterations). Chaining review fan-outs + fixes in one run blows the context and dies on long-response API errors.
+- **quality**: Settle the ordinary cleanup/review/fix loop, then run a final polish tail — Code Clarity review → clarity triage/fix → clarity verify → Comment Hygiene clean — ONE step per iteration, dispatched via `Quality Step`. Comment Hygiene is the final working-tree mutation before regression testing and PR readiness. The ordinary and clarity fix loops each allow at most 3 fix batches.
 - **pr-readiness**: Final-head gate after fixes, merges, and manual debugging
 - **done**: Generate summary, signal complete
 
 **Skipping testing phase** (implementation → quality): Test projects, research, no test infrastructure.
-**Skipping regression testing** (quality → pr-readiness): No fixes made, or no tests to run. The explicit PR readiness gate still runs before done.
+The two testing runs, quality final polish, and PR readiness are non-skippable.
+Projects without an automated suite still enter testing and produce a report from
+the applicable deterministic checks. PR readiness may return to quality when final
+polish evidence is missing or stale.
 
 ## Status Section Format
 
@@ -98,7 +101,8 @@ Phase: [init|investigation|requirements|planning|implementation|testing|quality|
 Iteration: [number]
 Blocked: [no|waiting_human]
 Quality Iteration: [number, only during quality — counts fix loops]
-Quality Step: [cleanup|review|triage|verify, only during quality — one step per iteration]
+Clarity Iteration: [number, only during clarity fixes — counts fix batches]
+Quality Step: [cleanup|review|triage|verify|clarity-review|clarity-triage|clarity-verify|hygiene, only during quality — one step per iteration]
 Last Action: [what just happened]
 Next: [what should happen next]
 ```
@@ -145,7 +149,7 @@ Use `TIMESTAMP_ITERATION` from Session Context (injected by orchestrator).
 
 - **Missing `_overview.md`**: Initialize new session
 - **Corrupted Status**: Infer from Flow Log, else signal blocked
-- **Iteration > 10 in same phase**: Signal blocked (possible infinite loop)
+- **Iteration exceeds the phase registry limit**: Signal blocked (possible infinite loop)
 
 ## Overview Protection
 
@@ -161,7 +165,8 @@ Never completely rewrite `_overview.md` if it has meaningful content. Backup fir
 | `implementation` (`do`/`dop`/`dop2` actions) | implementation, quality fixes |
 | `testing` | testing |
 | `quality` (`cleanup`/`multi-review` actions) | quality |
-| `comment-hygiene` (`clean`/`review` actions) | implementation, quality |
+| `code-clarity` (review-only) | final quality polish |
+| `comment-hygiene` (`clean`/`review` actions) | implementation guidance, ordinary quality lens, final quality mutation |
 | `pr-readiness` | pr-readiness |
 | `summary` | done |
 

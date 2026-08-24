@@ -11,9 +11,9 @@ This module tests:
 import pytest
 
 from worker.phases import (
+    PHASE_CONFIGS,
     ApprovalGate,
     Phase,
-    PHASE_CONFIGS,
     PhaseConfig,
     PhaseRegistryError,
     get_agent_for_phase,
@@ -68,9 +68,9 @@ class TestPhaseConfigs:
         done_config = PHASE_CONFIGS[Phase.DONE]
         assert len(done_config.allowed_next) == 0
 
-    def test_pr_readiness_transitions_only_to_done(self) -> None:
+    def test_pr_readiness_can_complete_or_recover_to_quality(self) -> None:
         readiness_config = PHASE_CONFIGS[Phase.PR_READINESS]
-        assert readiness_config.allowed_next == frozenset({Phase.DONE})
+        assert readiness_config.allowed_next == frozenset({Phase.DONE, Phase.QUALITY})
         assert readiness_config.approval_gate is None
 
     def test_done_only_allows_done_signal(self) -> None:
@@ -108,6 +108,11 @@ class TestPhaseConfigs:
                 assert config.approval_gate is not None
             else:
                 assert config.approval_gate is None
+
+    def test_quality_budget_covers_bounded_polish_pipeline(self) -> None:
+        assert PHASE_CONFIGS[Phase.QUALITY].max_iterations == 20
+        assert is_iteration_limit_exceeded("quality", 20) == (False, 20)
+        assert is_iteration_limit_exceeded("quality", 21) == (True, 20)
 
 
 class TestRegistryInvariants:
@@ -246,14 +251,16 @@ class TestValidateTransition:
         is_valid, _ = validate_transition("quality", "testing")
         assert is_valid
 
-    def test_implementation_to_quality_valid(self) -> None:
-        """implementation -> quality is valid (skip testing)."""
+    def test_implementation_to_quality_invalid(self) -> None:
         is_valid, _ = validate_transition("implementation", "quality")
-        assert is_valid
+        assert not is_valid
 
-    def test_quality_to_pr_readiness_valid(self) -> None:
-        """quality -> pr-readiness is valid when regression testing is skipped."""
+    def test_quality_to_pr_readiness_invalid(self) -> None:
         is_valid, _ = validate_transition("quality", "pr-readiness")
+        assert not is_valid
+
+    def test_pr_readiness_to_quality_valid_for_recovery(self) -> None:
+        is_valid, _ = validate_transition("pr-readiness", "quality")
         assert is_valid
 
     def test_testing_to_done_invalid(self) -> None:

@@ -88,6 +88,12 @@ Created: [TIMESTAMP_LOG]
 **Profile:** `standard`
 ...
 
+## Verification Plan
+
+- [ ] [Feature behavior or test case for the outer testing agent]
+- [ ] [Browser/API/E2E expectations]
+- [ ] [Post-Quality regression expectations]
+
 ## Notes
 [Additional considerations, risks, dependencies]
 ```
@@ -100,13 +106,19 @@ Created: [TIMESTAMP_LOG]
 - Include verification steps in each phase
 - Consider both "clean" and "minimal" approaches
 - Flag any areas requiring human decision
+- Keep outer lifecycle work out of `## Implementation Phases`. Testing, Quality,
+  Code Clarity, Comment Hygiene, regression testing, PR Readiness, Done, summary
+  generation, and approval stops belong to the orchestrator.
+- Put final behavior, browser/API/E2E, and regression scenarios under a separate
+  `## Verification Plan`; it is non-executable plan data for the testing agent.
 
 ## Semantic Profile Assignment
 
 Every phase in every newly authored plan MUST have exactly one
 `**Profile:** \`light|standard|strong|max\`` line immediately under its heading. The
-line must be the first line after the heading. This includes testing, readiness, and
-any phase added to an existing plan.
+line must be the first line after the heading. This applies only to executable
+implementation phases, including test-authoring work. Verification Plan items and
+orchestrator-owned lifecycle phases do not belong in this section.
 
 Choose the profile only from the character and risk of that phase:
 
@@ -169,3 +181,5 @@ If MCP config was added, mention it in the overview but still wait for plan appr
 - MCP changes require agent process restart to take effect
 - Plan should provide clear direction for implementation agent
 - Include verification criteria for each phase
+- Never tell the implementation agent to invoke lifecycle agents, transition to
+  `done`, generate the final summary, or wait for approval before outer Quality.

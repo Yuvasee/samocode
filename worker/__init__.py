@@ -19,6 +19,11 @@ from .config import (
     parse_samocode_file,
     resolve_session_path,
 )
+from .final_polish import (
+    FinalPolishCheck,
+    validate_final_polish,
+    validate_final_polish_evidence,
+)
 from .global_config import (
     ConfigBootstrapResult,
     ConfigBootstrapStatus,
@@ -36,6 +41,19 @@ from .installer import (
     install,
     uninstall,
 )
+from .lifecycle import (
+    EpochPhaseRunCount,
+    LifecycleCheck,
+    LifecycleIssue,
+    LifecycleIssueCode,
+    RecoveryAnchor,
+    count_epoch_source_phase_runs_including_current,
+    latest_applied_recovery_anchor,
+    recovery_commit_marker,
+    scoped_history,
+    validate_final_polish_lifecycle,
+    validate_phase_provenance,
+)
 from .logging import add_session_handler, setup_logging
 from .notifications import notify_blocked, notify_complete, notify_error, notify_waiting
 from .phases import (
@@ -52,6 +70,21 @@ from .phases import (
     validate_transition,
 )
 from .plan_resolver import PlanResolutionError
+from .process_lease import (
+    ProcessLease,
+    ProcessLeaseState,
+    acquire_process_lease,
+)
+from .recovery import (
+    RecoveryInspection,
+    RecoveryOutcome,
+    RecoveryRejection,
+    RecoveryResult,
+    RecoveryStateFingerprint,
+    inspect_final_polish_recovery,
+    recover_final_polish,
+    recovery_exit_code,
+)
 from .routing import (
     ExecutionResolutionError,
     ProfileSource,
@@ -65,6 +98,7 @@ from .runner import (
     extract_phase,
     extract_total_iterations,
     increment_total_iterations,
+    resolve_working_dir,
     run_ai_with_retry,
     run_claude_with_retry,
     validate_session_structure,
@@ -123,9 +157,9 @@ from .workflow_state import (
     ProcessedOutcome,
     apply_overview_transition,
     apply_overview_transition_locked,
+    apply_workflow_event,
     atomic_write_text,
     parse_overview_state,
-    apply_workflow_event,
     read_overview_state,
     render_overview,
 )
@@ -162,6 +196,34 @@ __all__ = [
     "UninstallResult",
     "install",
     "uninstall",
+    "FinalPolishCheck",
+    "validate_final_polish",
+    "validate_final_polish_evidence",
+    # Lifecycle
+    "EpochPhaseRunCount",
+    "LifecycleCheck",
+    "LifecycleIssue",
+    "LifecycleIssueCode",
+    "RecoveryAnchor",
+    "count_epoch_source_phase_runs_including_current",
+    "latest_applied_recovery_anchor",
+    "scoped_history",
+    "recovery_commit_marker",
+    "validate_final_polish_lifecycle",
+    "validate_phase_provenance",
+    # Process lease
+    "ProcessLease",
+    "ProcessLeaseState",
+    "acquire_process_lease",
+    # Recovery
+    "RecoveryInspection",
+    "RecoveryOutcome",
+    "RecoveryRejection",
+    "RecoveryResult",
+    "RecoveryStateFingerprint",
+    "inspect_final_polish_recovery",
+    "recover_final_polish",
+    "recovery_exit_code",
     # Logging
     "add_session_handler",
     "setup_logging",
@@ -197,6 +259,7 @@ __all__ = [
     "increment_total_iterations",
     "run_ai_with_retry",
     "run_claude_with_retry",
+    "resolve_working_dir",
     "validate_session_structure",
     # Signal history
     "HistoryRecord",

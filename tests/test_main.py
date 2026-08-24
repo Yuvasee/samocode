@@ -1,5 +1,6 @@
 import json
 import logging
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -81,6 +82,66 @@ def _project(tmp_path: Path) -> ProjectConfig:
     return ProjectConfig(
         main_repo=repo, worktrees=worktrees, sessions=tmp_path / "_sessions"
     )
+
+
+def _git_project(tmp_path: Path) -> tuple[Path, str]:
+    project = tmp_path / "working"
+    project.mkdir()
+    subprocess.run(["git", "init", "-q", str(project)], check=True)
+    subprocess.run(
+        ["git", "-C", str(project), "config", "user.email", "test@example.com"],
+        check=True,
+    )
+    subprocess.run(
+        ["git", "-C", str(project), "config", "user.name", "Test"], check=True
+    )
+    (project / "file.txt").write_text("tested\n")
+    subprocess.run(["git", "-C", str(project), "add", "file.txt"], check=True)
+    subprocess.run(["git", "-C", str(project), "commit", "-qm", "initial"], check=True)
+    head = subprocess.run(
+        ["git", "-C", str(project), "rev-parse", "HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    return project, head
+
+
+def _write_final_polish_evidence(session: Path, head: str) -> None:
+    (session / "01-code-clarity.md").write_text(
+        f"Reviewed HEAD: {head}\nResult: clean\nDisposition: settled\n"
+    )
+    (session / "02-comment-hygiene.md").write_text(
+        f"Input HEAD: {head}\nOutput HEAD: {head}\nSafety check: PASS\n"
+    )
+    (session / "03-test-report.md").write_text(
+        f"Run: 2nd (post-quality)\nResult: PASS\nTested HEAD: {head}\n"
+    )
+    transitions = (
+        ("implementation", "testing"),
+        ("testing", "quality"),
+        ("quality", "testing"),
+        ("testing", "pr-readiness"),
+    )
+    rows = []
+    for iteration, (source, target) in enumerate(transitions, 1):
+        rows.append(
+            json.dumps(
+                {
+                    "v": 2,
+                    "timestamp": "2026-08-24 08:00:00",
+                    "iteration": iteration,
+                    "source_phase": source,
+                    "target_phase": target,
+                    "status": "continue",
+                    "accepted": True,
+                    "validation_error": None,
+                    "outcome_kind": "accepted_transition",
+                    "mutated": True,
+                }
+            )
+        )
+    (session / "_signal_history.jsonl").write_text("\n".join(rows) + "\n")
 
 
 class TestProcessSignalBootstrap:
@@ -305,6 +366,10 @@ class TestProcessSignalAccepted:
 
     def test_accepted_transition_mutates_overview(self, tmp_path: Path) -> None:
         session = _session(tmp_path, "init")
+        overview = session / "_overview.md"
+        overview.write_text(
+            overview.read_text().replace("Blocked: no", "Blocked: workflow_error")
+        )
         sig = _sig(SignalStatus.CONTINUE, phase="investigation")
 
         result = main.apply_signal(sig, "init", session, 1, _logger())
@@ -315,6 +380,8 @@ class TestProcessSignalAccepted:
         assert rows[0]["accepted"] is True
         assert rows[0]["mutated"] is True
         assert rows[0]["outcome_kind"] == "accepted_transition"
+        parsed = read_overview_state(session)
+        assert parsed.state is not None and parsed.state.blocked == "no"
 
     def test_waiting_accepted_no_change(self, tmp_path: Path) -> None:
         session = _session(tmp_path, "requirements")
@@ -365,6 +432,24 @@ class TestProcessSignalRejected:
         assert result.status is SignalStatus.BLOCKED
         assert result.needs == "investigation"
         assert _history_rows(session)[0]["rejection_reason"] == "status_not_allowed"
+
+    def test_waiting_cannot_smuggle_done_and_persists_truthful_block(
+        self, tmp_path: Path
+    ) -> None:
+        session = _session(tmp_path, "implementation")
+        sig = _sig(SignalStatus.WAITING, phase="done", for_="human_action")
+
+        result = main.apply_signal(sig, "implementation", session, 1, _logger())
+
+        assert result.status is SignalStatus.BLOCKED
+        assert _overview_phase(session) is Phase.IMPLEMENTATION
+        parsed = read_overview_state(session)
+        assert parsed.state is not None
+        assert parsed.state.blocked == "workflow_error"
+        assert "waiting' cannot change phase" in parsed.state.last_action
+        assert _history_rows(session)[0]["rejection_reason"] == (
+            "waiting_cannot_change_phase"
+        )
 
 
 class TestIterationLimitBoundary:
@@ -445,6 +530,16 @@ class TestPlanningApprovalRestart:
     def test_waiting_then_approve_advances(self, tmp_path: Path) -> None:
         session = _session(tmp_path, "planning")
         project = _project(tmp_path)
+        (session / "plan.md").write_text(
+            "## Implementation Phases\n\n"
+            "### Phase 1: Build feature\n"
+            "**Profile:** `standard`\n"
+            "- [ ] Implement behavior\n"
+        )
+        overview = session / "_overview.md"
+        overview.write_text(
+            overview.read_text() + "\n## Plans\n- plan.md - implementation plan\n"
+        )
 
         waiting = _sig(SignalStatus.WAITING, phase="planning", for_="plan_approval")
         (session / "_signal.json").write_text(
@@ -469,13 +564,47 @@ class TestPlanningApprovalRestart:
 class TestPrReadinessAutoDone:
     def test_pr_readiness_continue_advances_to_done(self, tmp_path: Path) -> None:
         session = _session(tmp_path, "pr-readiness")
+        project, head = _git_project(tmp_path)
+        _write_final_polish_evidence(session, head)
         sig = _sig(SignalStatus.CONTINUE, phase="done")
 
-        result = main.apply_signal(sig, "pr-readiness", session, 1, _logger())
+        result = main.apply_signal(
+            sig,
+            "pr-readiness",
+            session,
+            5,
+            _logger(),
+            working_dir=project,
+        )
 
         assert result.status is SignalStatus.CONTINUE
         assert _overview_phase(session) is Phase.DONE
-        assert _history_rows(session)[0]["outcome_kind"] == "accepted_transition"
+        assert _history_rows(session)[-1]["outcome_kind"] == "accepted_transition"
+
+    def test_missing_final_polish_blocks_and_keeps_truthful_phase(
+        self, tmp_path: Path
+    ) -> None:
+        session = _session(tmp_path, "pr-readiness")
+        project, _ = _git_project(tmp_path)
+
+        result = main.apply_signal(
+            _sig(SignalStatus.CONTINUE, phase="done"),
+            "pr-readiness",
+            session,
+            1,
+            _logger(),
+            working_dir=project,
+        )
+
+        assert result.status is SignalStatus.BLOCKED
+        assert _overview_phase(session) is Phase.PR_READINESS
+        parsed = read_overview_state(session)
+        assert parsed.state is not None
+        assert parsed.state.blocked == "workflow_error"
+        assert "Final-polish provenance invalid" in parsed.state.last_action
+        assert _history_rows(session)[-1]["rejection_reason"] == (
+            "final_polish_invalid"
+        )
 
     def test_done_phase_done_signal_completes(self, tmp_path: Path) -> None:
         session = _session(tmp_path, "done")

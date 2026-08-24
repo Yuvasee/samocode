@@ -30,6 +30,11 @@ Session context is provided via --append-system-prompt by the orchestrator:
    - Find first phase with unchecked `- [ ]` items — this matches the rule `worker.plan_resolver.resolve_plan_phase()` uses (first phase in document order with an unchecked task; a partially-checked phase stays active and keeps its `**Profile:**`)
    - If all complete -> transition to testing
    - **When the runner passes a resolved plan phase in session context** (plan file, phase label/title, profile), execute exactly that phase. Do not re-scan the plan to pick a different one; the runner's selection is authoritative for the model profile already in flight this iteration.
+   - Plan phases may author tests and fixtures, but they never own Testing, Quality,
+     Code Clarity, Comment Hygiene, PR Readiness, Done, summaries, or final approval.
+     Never spawn those lifecycle agents as a substitute for an outer transition.
+   - When the runner says all plan tasks are complete, perform no additional gate or
+     summary work. Signal the outer transition to testing immediately.
 
 3. **Execute phase — choose approach based on phase type:**
 
@@ -120,11 +125,6 @@ Edit `_overview.md`:
 **Transition to testing (default - all phases done):**
 ```json
 {"status": "continue", "phase": "testing"}
-```
-
-**Transition to quality (skip testing):** Only for test projects, research, or no test infrastructure.
-```json
-{"status": "continue", "phase": "quality"}
 ```
 
 ## Important Notes

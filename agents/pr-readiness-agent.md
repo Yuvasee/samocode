@@ -24,21 +24,44 @@ Session context is provided via --append-system-prompt by the orchestrator:
 1. **Read session context:**
    - `_overview.md`
    - Latest quality review(s)
+   - Latest Code Clarity report with `Disposition: settled`
+   - Latest successful Comment Hygiene report
    - `_review_debt.md` if present
    - Latest test report
 
 2. **MUST use `pr-readiness` skill** via Skill tool to run the final gate against final `HEAD`. Use "pr-readiness" skill now!
 
+   This agent always has active Samocode session context. Therefore final-polish
+   provenance is never `NOT APPLICABLE`; missing evidence is a failed gate.
+
+   The gate must verify the final-polish provenance chain:
+   - The settled Code Clarity report's `Reviewed HEAD` equals Comment Hygiene `Input HEAD`
+   - Comment Hygiene reports `Safety check: PASS`
+   - Comment Hygiene `Output HEAD` equals the regression test's `Tested HEAD`
+     and the current project `HEAD`
+   - No project commit or working-tree mutation occurred after Comment Hygiene
+   - No blocking/important `CL-*` review-debt row remains undecided
+
+   Equal Comment Hygiene input/output SHAs are valid when cleanup made no changes.
+   A broken or missing chain fails readiness; do not bless an unreviewed final HEAD.
+
 3. **Create readiness report:**
    - `[SESSION_PATH]/[TIMESTAMP_FILE]-pr-readiness.md`
 
-4. **If readiness fails:**
+4. **If readiness fails because final-polish provenance is missing, stale, or the
+   project changed after hygiene:**
+   - Update `_overview.md` with `Last Action: PR readiness returned to quality`
+   - Add Flow Log entry and commit session files
+   - Signal `continue` with `phase: quality` so Code Clarity, final Comment Hygiene,
+     and regression testing are regenerated for the current HEAD
+
+5. **If readiness fails for a decision or external blocker:**
    - Update `_overview.md` with `Last Action: PR readiness failed`
    - Add Flow Log entry
    - Commit session files
    - Signal `blocked` with `needs=human_decision`
 
-5. **If readiness passes:**
+6. **If readiness passes:**
    - Update `_overview.md` with `Last Action: PR readiness passed`, `Next: Generate summary`
    - Add Flow Log entry and Files entry
    - Commit session files
@@ -63,6 +86,13 @@ PASS | FAIL
 
 ## Review Debt Ledger
 [Rows checked/updated]
+
+## Final Polish Provenance
+- Code Clarity report: [file] — Reviewed HEAD: [sha]
+- Comment Hygiene report: [file] — Input HEAD: [sha], Output HEAD: [sha], Safety: [PASS/FAIL]
+- Regression report: [file] — Tested HEAD: [sha]
+- Final HEAD: [sha]
+- Chain: [PASS/FAIL]
 
 ## Checks Run
 [Commands, deterministic checks, targeted tests]
@@ -99,9 +129,15 @@ cd [SESSION_PATH] && git add -A && git commit -m "pr-readiness: [pass/fail] - [b
 {"status": "blocked", "phase": "pr-readiness", "reason": "PR readiness gate failed: [brief]", "needs": "human_decision"}
 ```
 
+**Final-polish evidence must be regenerated:**
+```json
+{"status": "continue", "phase": "quality"}
+```
+
 ## Important Notes
 
 - This is a gate, not a general review brainstorming pass.
 - Do not generate the final summary here; done-agent handles summary after this gate passes.
 - Do not signal `done`; only done-agent terminates the session.
 - If `_review_debt.md` has undecided blocking/important rows, readiness fails.
+- If final-polish provenance is missing, stale, or inconsistent, readiness fails.
