@@ -73,7 +73,7 @@ Two separate commits may be needed (they can be different repos):
 ## Phase Flow
 
 ```
-init -> investigation -> requirements -> planning -> implementation -> testing -> quality -> pr-readiness -> done
+init -> investigation -> requirements -> planning -> implementation -> testing -> quality -> testing -> pr-readiness -> done
                                                             \-> quality --/    \--------------/
 ```
 
@@ -88,7 +88,10 @@ init -> investigation -> requirements -> planning -> implementation -> testing -
 - **done**: Generate summary, signal complete
 
 **Skipping testing phase** (implementation → quality): Test projects, research, no test infrastructure.
-**Skipping regression testing** (quality → pr-readiness): Only when the project genuinely has no tests. The final Comment Hygiene step still runs first, and the explicit PR readiness gate still runs before done.
+The two testing runs, quality final polish, and PR readiness are non-skippable.
+Projects without an automated suite still enter testing and produce a report from
+the applicable deterministic checks. PR readiness may return to quality when final
+polish evidence is missing or stale.
 
 ## Status Section Format
 

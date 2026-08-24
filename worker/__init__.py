@@ -19,6 +19,7 @@ from .config import (
     parse_samocode_file,
     resolve_session_path,
 )
+from .final_polish import FinalPolishCheck, validate_final_polish
 from .global_config import (
     ConfigBootstrapResult,
     ConfigBootstrapStatus,
@@ -65,6 +66,7 @@ from .runner import (
     extract_phase,
     extract_total_iterations,
     increment_total_iterations,
+    resolve_working_dir,
     run_ai_with_retry,
     run_claude_with_retry,
     validate_session_structure,
@@ -123,9 +125,9 @@ from .workflow_state import (
     ProcessedOutcome,
     apply_overview_transition,
     apply_overview_transition_locked,
+    apply_workflow_event,
     atomic_write_text,
     parse_overview_state,
-    apply_workflow_event,
     read_overview_state,
     render_overview,
 )
@@ -162,6 +164,8 @@ __all__ = [
     "UninstallResult",
     "install",
     "uninstall",
+    "FinalPolishCheck",
+    "validate_final_polish",
     # Logging
     "add_session_handler",
     "setup_logging",
@@ -197,6 +201,7 @@ __all__ = [
     "increment_total_iterations",
     "run_ai_with_retry",
     "run_claude_with_retry",
+    "resolve_working_dir",
     "validate_session_structure",
     # Signal history
     "HistoryRecord",

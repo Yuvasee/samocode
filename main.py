@@ -31,6 +31,7 @@ from worker import (
     SignalStatus,
     add_session_handler,
     apply_overview_transition,
+    apply_workflow_event,
     approve,
     clear_signal_file,
     compose_startup,
@@ -46,10 +47,10 @@ from worker import (
     notify_complete,
     notify_error,
     notify_waiting,
-    apply_workflow_event,
     read_overview_state,
     read_signal_file,
     record_processed_outcome,
+    resolve_working_dir,
     run_ai_with_retry,
     setup_logging,
     supported_providers,
@@ -63,6 +64,8 @@ def apply_signal(
     session_path: Path,
     iteration: int,
     logger: logging.Logger,
+    *,
+    working_dir: Path | None = None,
 ) -> Signal:
     """Use one authority to validate, mutate, audit, and surface truthful rejection."""
     if source_phase is None:
@@ -93,11 +96,45 @@ def apply_signal(
     )
 
     outcome = apply_workflow_event(
-        session_path, signal, source_phase, source_iterations, iteration
+        session_path,
+        signal,
+        source_phase,
+        source_iterations,
+        iteration,
+        working_dir=working_dir,
     )
     record_processed_outcome(session_path, signal, iteration, outcome)
+    if not outcome.accepted:
+        _persist_workflow_rejection(session_path, outcome, logger)
 
     return _signal_for_outcome(signal, outcome, source_phase, logger)
+
+
+def _persist_workflow_rejection(
+    session_path: Path,
+    outcome: ProcessedOutcome,
+    logger: logging.Logger,
+) -> None:
+    if outcome.source_phase is None:
+        return
+    message = (outcome.rejection_message or "Workflow event rejected").replace(
+        "\n", " "
+    )
+    write = apply_overview_transition(
+        session_path,
+        OverviewTransition(
+            target_phase=outcome.source_phase,
+            blocked="workflow_error",
+            last_action=f"Workflow event rejected: {message}",
+            next_action="Repair the workflow state and rerun the current phase",
+        ),
+        expected_source=outcome.source_phase,
+    )
+    if not write.ok:
+        logger.error(
+            "Could not persist workflow rejection in overview: %s",
+            write.message or "unknown overview write failure",
+        )
 
 
 class BootstrapInspectionStatus(Enum):
@@ -568,7 +605,17 @@ def run_orchestrator(args: argparse.Namespace) -> None:
 
             signal = read_signal_file(session_path)
 
-            signal = apply_signal(signal, phase, session_path, iteration, logger)
+            working_dir = resolve_working_dir(
+                config, session_path, phase or Phase.INIT.value
+            )
+            signal = apply_signal(
+                signal,
+                phase,
+                session_path,
+                iteration,
+                logger,
+                working_dir=working_dir,
+            )
 
             # Use phase from signal if available, otherwise use previously extracted phase
             signal_phase = signal.phase or phase

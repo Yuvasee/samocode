@@ -46,7 +46,9 @@ def _overview_text(
         "## Flow Log\n"
         "- [001 @ 08-22 16:40] Session initialized\n\n"
         "## Files\n"
-        "- _overview.md\n"
+        "- _overview.md\n\n"
+        "## Plans\n"
+        "- plan.md - test plan\n"
     )
 
 
@@ -82,6 +84,12 @@ def _make_session(
     session = sessions_dir / name
     session.mkdir(parents=True)
     (session / "_overview.md").write_text(_overview_text(phase=phase))
+    (session / "plan.md").write_text(
+        "## Implementation Phases\n\n"
+        "### Phase 1: Build feature\n"
+        "**Profile:** `standard`\n"
+        "- [ ] Implement behavior\n"
+    )
     _write_signal(session)
     return session
 
@@ -222,6 +230,25 @@ class TestApproveSessionSuccess:
 
 
 class TestApproveSessionRejections:
+    def test_outer_lifecycle_phase_cannot_be_approved(
+        self, sessions_dir: Path, tmp_path: Path
+    ) -> None:
+        session = _make_session(sessions_dir)
+        (session / "plan.md").write_text(
+            "## Implementation Phases\n\n"
+            "### Phase 14: PR readiness and approval stop\n"
+            "**Profile:** `standard`\n"
+            "- [ ] Run the `pr-readiness` gate\n"
+        )
+        before = (session / "_overview.md").read_text()
+
+        result = approve_session(_project(sessions_dir, tmp_path), "task")
+
+        assert result.rejection is ApprovalRejection.PLAN_INVALID
+        assert "outer workflow stage" in (result.message or "")
+        assert (session / "_overview.md").read_text() == before
+        assert json.loads((session / "_signal.json").read_text())["status"] == "waiting"
+
     def test_missing_session_dir(self, sessions_dir: Path, tmp_path: Path) -> None:
         result = approve_session(_project(sessions_dir, tmp_path), "ghost")
         assert result.rejection is ApprovalRejection.SESSION_NOT_FOUND

@@ -84,11 +84,14 @@ Tests the specific feature or bug fix implemented in the current session. NOT fu
 
 7. **Document results:**
 
-   Create `[SESSION_PATH]/[TIMESTAMP_FILE]-test-[feature-slug].md`:
+   Create `[SESSION_PATH]/[TIMESTAMP_FILE]-test-report.md`:
 
    ```markdown
    # Test: [feature name]
    Date: [TIMESTAMP_LOG]
+   Run: [1st (post-implementation) | 2nd (post-quality)]
+   Result: PASS | FAIL
+   Tested HEAD: [full SHA, required for the 2nd run]
 
    ## What Was Tested
    [Brief description of implemented feature]
@@ -125,6 +128,8 @@ Tests the specific feature or bug fix implemented in the current session. NOT fu
     - Post-quality run changed project HEAD/status -> signal `continue` to quality,
       not PR readiness
     - **Do NOT signal `continue` if mandatory browser E2E was skipped.** If the app could not be brought up after two retries, or if both playwright-cli and Puppeteer are unavailable, signal `blocked` with `needs: "human_decision"` — never defer silently.
+    - A project without an automated suite still produces this report and completes
+      applicable deterministic checks; lack of a suite never skips the phase.
 
 ## Browser Tool Setup
 

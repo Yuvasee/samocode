@@ -19,6 +19,7 @@ class RejectionReason(Enum):
     TRANSITION_NOT_ALLOWED = "transition_not_allowed"
     TRANSITION_REQUIRES_APPROVAL = "transition_requires_approval"
     DONE_ONLY_IN_TERMINAL = "done_only_in_terminal"
+    FINAL_POLISH_INVALID = "final_polish_invalid"
 
 
 @dataclass(frozen=True)

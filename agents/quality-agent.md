@@ -174,8 +174,9 @@ all Code Clarity fix cycles because those fixes may introduce redundant comments
    `Output HEAD`, scope, removed/reworded/kept/stale counts, and
    `Safety check: PASS`.
 6. Remove `Quality Step`, `Quality Iteration`, and `Clarity Iteration`. Transition
-   to regression testing. Only a project with genuinely no tests may transition
-   directly to pr-readiness. No later quality step may mutate the project worktree.
+   to regression testing. The testing phase still runs when no automated test suite
+   exists: it records that fact and performs the applicable deterministic checks.
+   No later quality step may mutate the project worktree.
 
 ## Context discipline (applies to every step)
 
@@ -263,14 +264,9 @@ Edit `_overview.md`:
 {"status": "continue", "phase": "quality"}
 ```
 
-**Transition to testing (only after final Comment Hygiene; default):**
+**Transition to testing (only after final Comment Hygiene):**
 ```json
 {"status": "continue", "phase": "testing"}
-```
-
-**Transition to PR readiness (skip regression):** Only after final Comment Hygiene and only if the project genuinely has no tests.
-```json
-{"status": "continue", "phase": "pr-readiness"}
 ```
 
 **Blocked (max iterations reached):**

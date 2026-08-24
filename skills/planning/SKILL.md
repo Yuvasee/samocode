@@ -33,7 +33,8 @@ Creates detailed implementation plans with phases, stored within the session fol
    - Split by logical boundary: one file/module/concern per phase when possible
    - Prefer more small phases over fewer large ones
    - Include explicit edge-case acceptance checks when the feature touches validators, queues, DB writes, background fan-out, uploads, auth/API-key users, or shared package boundaries
-   - **Do NOT label any phase "Manual browser verification" or similar.** Samocode's testing-agent runs browser E2E autonomously (container restart, data seeding, screenshots included). Carving it out as a "manual" phase gives the testing-agent permission to defer. Put browser verification criteria in the standard Testing phase or as acceptance checks on the UI-touching phases.
+   - `## Implementation Phases` contains implementation and test-authoring work only. The outer `testing -> quality -> testing -> pr-readiness -> done` lifecycle is owned by the orchestrator and must never appear as plan phases.
+   - Put final browser/API/E2E and regression criteria in a separate `## Verification Plan`. The testing agent consumes those criteria after implementation; the implementation agent does not execute that section.
 
    **Semantic profile assignment (required for every phase in a new plan):**
 
@@ -49,7 +50,8 @@ Creates detailed implementation plans with phases, stored within the session fol
 
    Immediately under every `### Phase N: [Name]` heading, write exactly one
    `**Profile:** \`light|standard|strong|max\`` line. It must be the first line after
-   the heading. This applies to implementation, testing, and readiness phases alike.
+   the heading. This applies to every executable implementation phase. Verification
+   Plan items and orchestrator-owned lifecycle phases do not carry plan profiles.
 
    Profiles are semantic routing labels, not model specifications. Do **not** inspect
    provider configuration, `config.toml`, model catalogs, effort levels, token usage,
@@ -90,20 +92,20 @@ Creates detailed implementation plans with phases, stored within the session fol
    - [ ] [Step]
    - [ ] Run pyright/ruff or tsc - fix errors
 
-   ### Phase 3: Testing
-   **Profile:** `standard`
-   - [ ] [Test case]
-   - [ ] Edge cases: all/partial/no validators, queue succeeds/DB fails, DB succeeds/queue fails, concurrent same-KI revalidation, large uploads, API-key user missing email/name where applicable
-   - [ ] Final checks
+   ## Verification Plan
 
-   ### Phase 4: PR Readiness
-   **Profile:** `standard`
-   - [ ] Enter the `pr-readiness` phase after all fixes/merges/manual debugging
-   - [ ] Resolve `_review_debt.md` rows: fix, defer with ticket/reason, or reject with evidence
+   - [ ] [Feature behavior or test case for the outer testing agent]
+   - [ ] Edge cases: all/partial/no validators, queue succeeds/DB fails, DB succeeds/queue fails, concurrent same-KI revalidation, large uploads, API-key user missing email/name where applicable
+   - [ ] Browser/API/E2E and post-Quality regression expectations
 
    ## Notes
    [Important context from task definition]
    ```
+
+   Never create implementation phases for Testing, Quality, Code Clarity, Comment
+   Hygiene, regression gates, PR Readiness, Done, summary generation, or approval
+   stops. Never instruct the implementation agent to spawn those lifecycle agents or
+   to wait for final approval instead of handing control back to the orchestrator.
 
 3. **Update session:**
    - Edit `[SESSION_PATH]/_overview.md`:

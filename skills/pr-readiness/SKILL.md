@@ -51,6 +51,9 @@ Review final `HEAD` after implementation, fix loops, merges, and manual debuggin
    - In an autonomous Samocode session, missing or inconsistent provenance fails the
      gate. For a standalone invocation without session context, mark this check not
      applicable and continue the other final-HEAD checks.
+   - `NOT APPLICABLE` is permitted only for a direct standalone skill invocation
+     that has neither Session Context nor an `_overview.md`. A phase agent can never
+     use the standalone exception.
 
 4. **Inspect final HEAD for high-risk surfaces:**
    Focus on changed files that are shared, public, background, or cross-boundary:
@@ -113,6 +116,12 @@ Review final `HEAD` after implementation, fix loops, merges, and manual debuggin
    ## Residual Risk
    - [known accepted risks with ticket/evidence]
    ```
+
+8. **Route autonomous failures:**
+   - Missing/stale provenance or a project mutation after hygiene returns the active
+     workflow to `quality`; this regenerates Code Clarity, Comment Hygiene, and the
+     post-quality regression report.
+   - A decision or external blocker remains blocked for human action.
 
 #### Pass/Fail Rules
 

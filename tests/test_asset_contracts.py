@@ -63,10 +63,11 @@ def test_quality_pipeline_runs_clarity_before_final_comment_hygiene() -> None:
     assert "final operation allowed to mutate" in hygiene
     assert "executable-code safety check" in hygiene
 
-    for phase in ("testing", "pr-readiness"):
-        signal = f'{{"status": "continue", "phase": "{phase}"}}'
-        assert signal not in agent[: positions[7]]
-        assert signal in hygiene
+    testing_signal = '{"status": "continue", "phase": "testing"}'
+    readiness_signal = '{"status": "continue", "phase": "pr-readiness"}'
+    assert testing_signal not in agent[: positions[7]]
+    assert testing_signal in hygiene
+    assert readiness_signal not in agent
 
 
 def test_post_quality_pipeline_preserves_final_hygiene_boundary() -> None:
@@ -81,13 +82,14 @@ def test_post_quality_pipeline_preserves_final_hygiene_boundary() -> None:
         assert "post-quality" in content.lower()
         assert "HEAD" in normalized and "status" in normalized
         assert "quality" in normalized
+        assert "Result: PASS | FAIL" in content
+        assert "[TIMESTAMP_FILE]-test-report.md" in content
 
     mutation_signal = testing_agent.index(
         "Second run changed the project worktree (re-enter quality)"
     )
     assert (
-        '{"status": "continue", "phase": "quality"}'
-        in testing_agent[mutation_signal:]
+        '{"status": "continue", "phase": "quality"}' in testing_agent[mutation_signal:]
     )
     assert "return the workflow to quality" in " ".join(testing_skill.split())
 
@@ -121,6 +123,23 @@ def test_post_quality_pipeline_preserves_final_hygiene_boundary() -> None:
         "Comment Hygiene `Output HEAD` to equal both the regression report's "
         "`Tested HEAD` and current project `HEAD`" in readiness_skill_normalized
     )
+    assert "provenance is never `NOT APPLICABLE`" in readiness_agent_normalized
+    assert '{"status": "continue", "phase": "quality"}' in readiness_agent
+
+
+def test_planning_assets_keep_outer_lifecycle_outside_implementation() -> None:
+    planning_agent = (ROOT / "agents" / "planning-agent.md").read_text()
+    planning_skill = (ROOT / "skills" / "planning" / "SKILL.md").read_text()
+
+    for content in (planning_agent, planning_skill):
+        assert "## Implementation Phases" in content
+        assert "## Verification Plan" in content
+        normalized = " ".join(content.split())
+        assert "lifecycle" in normalized.lower()
+        assert "orchestrator" in normalized.lower()
+        assert "Code Clarity" in normalized
+        assert "Comment Hygiene" in normalized
+        assert "PR Readiness" in normalized
 
 
 def test_workflow_documents_final_polish_order() -> None:
@@ -205,7 +224,9 @@ def test_run_skill_uses_approve_cli_for_plan_approval() -> None:
     assert "samocode approve" in content
     assert "--config" in content
     assert "--session" in content
-    stale = "Phase: implementation\n   - `Blocked: no`\n   - `Last Action: Plan approved"
+    stale = (
+        "Phase: implementation\n   - `Blocked: no`\n   - `Last Action: Plan approved"
+    )
     assert stale not in content
 
 

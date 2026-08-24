@@ -52,6 +52,9 @@ belong under `SESSION_PATH`.
    - Core functionality paths
    - Edge cases mentioned in requirements
    - Smoke test (app starts, no crashes)
+   - If no automated suite exists, record that explicitly and run every applicable
+     deterministic, syntax, import, or manual check. The phase and report are never
+     skipped merely because the project has no tests.
 
 4. **Create test report:**
    - `[SESSION_PATH]/[TIMESTAMP_FILE]-test-report.md`
@@ -71,6 +74,7 @@ belong under `SESSION_PATH`.
 Date: [TIMESTAMP_LOG]
 Session: [session-name]
 Run: [1st (post-implementation) | 2nd (post-quality)]
+Result: PASS | FAIL
 Tested HEAD: [sha, required for the 2nd run]
 
 ## Summary

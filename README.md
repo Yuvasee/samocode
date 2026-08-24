@@ -124,7 +124,7 @@ that action.
 
 Phases:
 ```
-init → investigation → requirements → planning → implementation → testing → quality → pr-readiness → done
+init → investigation → requirements → planning → implementation → testing → quality → testing → pr-readiness → done
                             ↑              ↑
                        human gate     human gate
                        (answer Q&A)   (approve plan)

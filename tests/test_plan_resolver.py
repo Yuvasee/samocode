@@ -17,11 +17,14 @@ from worker.plan_resolver import (
     PlanPhase,
     PlanProfileSource,
     PlanResolutionError,
+    PlanTask,
     parse_implementation_phases,
     parse_plan_entries,
     resolve_plan_phase,
     select_active_phase,
     select_active_plan,
+    validate_pending_implementation_scope,
+    validate_plan_contract,
 )
 
 
@@ -72,7 +75,14 @@ class TestPhaseParsing:
             "- [ ] Do the thing\n"
         )
         assert parse_implementation_phases(text) == [
-            PlanPhase("1", "Foundation", "strong", 1, 0)
+            PlanPhase(
+                "1",
+                "Foundation",
+                "strong",
+                1,
+                0,
+                (PlanTask("Do the thing", False),),
+            )
         ]
 
     def test_legacy_omitted_profile(self) -> None:
@@ -120,7 +130,9 @@ class TestPhaseParsing:
             parse_implementation_phases(text)
 
     def test_malformed_profile_empty_rejected(self) -> None:
-        text = "## Implementation Phases\n\n### Phase 1: X\n**Profile:** ``\n- [ ] one\n"
+        text = (
+            "## Implementation Phases\n\n### Phase 1: X\n**Profile:** ``\n- [ ] one\n"
+        )
         with pytest.raises(PlanResolutionError, match="malformed"):
             parse_implementation_phases(text)
 
@@ -175,6 +187,83 @@ class TestActivePhaseSelection:
 
     def test_all_complete_returns_none(self) -> None:
         phases = [PlanPhase("1", "A", None, 1, 1), PlanPhase("2", "B", "max", 1, 1)]
+        assert select_active_phase(phases) is None
+
+
+class TestLifecycleScopeValidation:
+    @pytest.mark.parametrize(
+        "title",
+        [
+            "Testing",
+            "Quality review",
+            "Code Clarity",
+            "Comment Hygiene",
+            "PR readiness and approval stop",
+            "Done",
+            "Final summary",
+        ],
+    )
+    def test_rejects_pending_outer_lifecycle_phase(self, title: str) -> None:
+        text = (
+            "## Implementation Phases\n\n"
+            f"### Phase 9: {title}\n**Profile:** `standard`\n- [ ] Run gate\n"
+        )
+        with pytest.raises(PlanResolutionError, match="outer workflow stage"):
+            validate_plan_contract(text)
+
+    def test_rejects_neutral_phase_with_explicit_approval_stop(self) -> None:
+        phases = [
+            PlanPhase(
+                "4",
+                "Final checks",
+                "standard",
+                1,
+                0,
+                (PlanTask("Wait for explicit user approval", False),),
+            )
+        ]
+        with pytest.raises(PlanResolutionError, match="outer workflow stage"):
+            validate_pending_implementation_scope(phases)
+
+    @pytest.mark.parametrize(
+        "task",
+        [
+            "Transition to testing",
+            "Run the `pr-readiness` gate",
+            "Run Code Clarity against the final diff",
+            "Run Comment Hygiene",
+            "Signal done",
+        ],
+    )
+    def test_rejects_lifecycle_task_hidden_in_neutral_phase(self, task: str) -> None:
+        text = (
+            "## Implementation Phases\n\n"
+            "### Phase 4: Final checks\n"
+            "**Profile:** `standard`\n"
+            f"- [ ] {task}\n"
+        )
+        with pytest.raises(PlanResolutionError, match="outer workflow stage"):
+            validate_plan_contract(text)
+
+    def test_allows_test_authoring_as_implementation_work(self) -> None:
+        text = (
+            "## Implementation Phases\n\n"
+            "### Phase 2: Integration test coverage\n"
+            "**Profile:** `strong`\n"
+            "- [ ] Author unit and integration tests\n"
+            "- [ ] Add fixtures for queue failure paths\n"
+            "\n## Verification Plan\n- Run the full regression suite\n"
+        )
+        phases = validate_plan_contract(text)
+        assert phases[0].title == "Integration test coverage"
+
+    def test_allows_completed_legacy_lifecycle_phase_to_recover(self) -> None:
+        text = (
+            "## Implementation Phases\n\n"
+            "### Phase 14: PR readiness and approval stop\n"
+            "**Profile:** `standard`\n- [x] Run gate\n"
+        )
+        phases = validate_plan_contract(text)
         assert select_active_phase(phases) is None
 
 

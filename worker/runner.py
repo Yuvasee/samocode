@@ -164,7 +164,7 @@ def resolve_iteration_plan(
             "  1. Pass --repo /path to the orchestrator, or\n"
             "  2. Set MAIN_REPO in .samocode file"
         )
-    working_dir = _resolve_working_dir(config, session_path, phase)
+    working_dir = resolve_working_dir(config, session_path, phase)
     logger.info(f"Working Dir: {working_dir}")
     logger.info(f"Using agent: {agent_name} (phase: {phase})")
 
@@ -338,7 +338,7 @@ def _retry_exhausted(last: ExecutionResult | None, max_retries: int) -> Executio
     )
 
 
-def _resolve_working_dir(
+def resolve_working_dir(
     config: SamocodeConfig, session_path: Path, phase: str | None
 ) -> Path:
     """Worktree if it exists (and not init), else the main repo."""
