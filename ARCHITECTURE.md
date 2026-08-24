@@ -72,15 +72,17 @@ every retry reuses the same object and command.
 ## Iteration lifecycle
 
 1. Startup composes project/runtime/global configuration and fixes the provider.
-2. The worker reads `_overview.md` and selects the workflow phase agent.
-3. During implementation, the plan resolver finds the last plan referenced under
+2. Before changing iteration/signal state or invoking a provider, the worker checks
+   that every late overview phase is backed by accepted lifecycle history.
+3. The worker reads `_overview.md` and selects the workflow phase agent.
+4. During implementation, the plan resolver finds the last plan referenced under
    `## Plans` and the first implementation phase with an unchecked task.
-4. Routing resolves one profile and immutable execution target.
-5. The adapter builds provider-native arguments from that target.
-6. The runner injects authoritative routing and plan context into the child prompt.
-7. The child performs one action, commits changes, updates session state, and writes
+5. Routing resolves one profile and immutable execution target.
+6. The adapter builds provider-native arguments from that target.
+7. The runner injects authoritative routing and plan context into the child prompt.
+8. The child performs one action, commits changes, updates session state, and writes
    `_signal.json`.
-8. The worker validates the signal and either continues, waits, blocks, or stops.
+9. The worker validates the signal and either continues, waits, blocks, or stops.
 
 Malformed config, invalid profile references, stale plan references, unknown phases,
 and unsupported selected providers fail before a model is invoked.
@@ -141,5 +143,8 @@ valid in both legacy and routed modes, while newly authored phases require it.
 | Pure workflow event validation | `worker/workflow_event.py` |
 | Overview state parse + atomic transition + event processor | `worker/workflow_state.py` |
 | Approval service and `samocode approve` CLI | `worker/approval.py` |
+| Late-phase provenance and recovery anchors | `worker/lifecycle.py` |
+| Session process lease | `worker/process_lease.py` |
+| Audited `samocode recover final-polish` service | `worker/recovery.py` |
 | Autonomous child contract | `workflow.md` |
 | User model-routing reference | `docs/model-routing.md` |

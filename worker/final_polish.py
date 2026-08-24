@@ -5,18 +5,10 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-from .signal_history import HistoryRecord, read_history
+from .lifecycle import validate_final_polish_lifecycle
 
 _FULL_SHA = re.compile(r"^[0-9a-fA-F]{40}$")
 _DEBT_ID = re.compile(r"^(?:CL|Q)-\d+$", re.IGNORECASE)
-_REQUIRED_TRANSITIONS = (
-    ("implementation", "testing"),
-    ("testing", "quality"),
-    ("quality", "testing"),
-    ("testing", "pr-readiness"),
-)
-
-
 @dataclass(frozen=True)
 class FinalPolishCheck:
     errors: tuple[str, ...]
@@ -27,6 +19,15 @@ class FinalPolishCheck:
 
 
 def validate_final_polish(session_path: Path, working_dir: Path) -> FinalPolishCheck:
+    evidence = validate_final_polish_evidence(session_path, working_dir)
+    lifecycle = validate_final_polish_lifecycle(session_path)
+    return FinalPolishCheck((*evidence.errors, *lifecycle.errors))
+
+
+def validate_final_polish_evidence(
+    session_path: Path, working_dir: Path
+) -> FinalPolishCheck:
+    """Validate final artifacts and repository state without lifecycle history."""
     errors: list[str] = []
     clarity = _latest_metadata(
         session_path,
@@ -84,7 +85,6 @@ def validate_final_polish(session_path: Path, working_dir: Path) -> FinalPolishC
     _require_equal(
         hygiene_output, current_head, "Hygiene output != current HEAD", errors
     )
-    _validate_transition_history(read_history(session_path), errors)
     _validate_review_debt(session_path, errors)
     return FinalPolishCheck(tuple(errors))
 
@@ -162,29 +162,6 @@ def _require_equal(
 ) -> None:
     if left is not None and right is not None and left != right:
         errors.append(message)
-
-
-def _validate_transition_history(
-    history: list[HistoryRecord], errors: list[str]
-) -> None:
-    transitions = [
-        (record.source_phase, record.target_phase)
-        for record in history
-        if record.accepted is True and record.mutated is True
-    ]
-    required_index = 0
-    for transition in transitions:
-        if transition == _REQUIRED_TRANSITIONS[required_index]:
-            required_index += 1
-            if required_index == len(_REQUIRED_TRANSITIONS):
-                break
-    if required_index != len(_REQUIRED_TRANSITIONS):
-        expected = " -> ".join(target for _, target in _REQUIRED_TRANSITIONS)
-        errors.append(
-            f"Signal history lacks the ordered final-polish lifecycle: {expected}"
-        )
-    if not transitions or transitions[-1] != _REQUIRED_TRANSITIONS[-1]:
-        errors.append("Latest accepted phase transition is not testing -> pr-readiness")
 
 
 def _validate_review_debt(session_path: Path, errors: list[str]) -> None:

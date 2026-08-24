@@ -19,7 +19,11 @@ from .config import (
     parse_samocode_file,
     resolve_session_path,
 )
-from .final_polish import FinalPolishCheck, validate_final_polish
+from .final_polish import (
+    FinalPolishCheck,
+    validate_final_polish,
+    validate_final_polish_evidence,
+)
 from .global_config import (
     ConfigBootstrapResult,
     ConfigBootstrapStatus,
@@ -37,6 +41,17 @@ from .installer import (
     install,
     uninstall,
 )
+from .lifecycle import (
+    LifecycleCheck,
+    LifecycleIssue,
+    LifecycleIssueCode,
+    RecoveryAnchor,
+    latest_applied_recovery_anchor,
+    recovery_commit_marker,
+    scoped_history,
+    validate_final_polish_lifecycle,
+    validate_phase_provenance,
+)
 from .logging import add_session_handler, setup_logging
 from .notifications import notify_blocked, notify_complete, notify_error, notify_waiting
 from .phases import (
@@ -53,6 +68,21 @@ from .phases import (
     validate_transition,
 )
 from .plan_resolver import PlanResolutionError
+from .process_lease import (
+    ProcessLease,
+    ProcessLeaseState,
+    acquire_process_lease,
+)
+from .recovery import (
+    RecoveryInspection,
+    RecoveryOutcome,
+    RecoveryRejection,
+    RecoveryResult,
+    RecoveryStateFingerprint,
+    inspect_final_polish_recovery,
+    recover_final_polish,
+    recovery_exit_code,
+)
 from .routing import (
     ExecutionResolutionError,
     ProfileSource,
@@ -166,6 +196,30 @@ __all__ = [
     "uninstall",
     "FinalPolishCheck",
     "validate_final_polish",
+    "validate_final_polish_evidence",
+    # Lifecycle
+    "LifecycleCheck",
+    "LifecycleIssue",
+    "LifecycleIssueCode",
+    "RecoveryAnchor",
+    "latest_applied_recovery_anchor",
+    "scoped_history",
+    "recovery_commit_marker",
+    "validate_final_polish_lifecycle",
+    "validate_phase_provenance",
+    # Process lease
+    "ProcessLease",
+    "ProcessLeaseState",
+    "acquire_process_lease",
+    # Recovery
+    "RecoveryInspection",
+    "RecoveryOutcome",
+    "RecoveryRejection",
+    "RecoveryResult",
+    "RecoveryStateFingerprint",
+    "inspect_final_polish_recovery",
+    "recover_final_polish",
+    "recovery_exit_code",
     # Logging
     "add_session_handler",
     "setup_logging",

@@ -26,9 +26,12 @@ from worker import (
     Phase,
     PlanResolutionError,
     ProcessedOutcome,
+    ProcessLeaseState,
+    RecoveryOutcome,
     RejectionReason,
     Signal,
     SignalStatus,
+    acquire_process_lease,
     add_session_handler,
     apply_overview_transition,
     apply_workflow_event,
@@ -42,6 +45,7 @@ from worker import (
     get_phase_config,
     global_config_path,
     increment_total_iterations,
+    inspect_final_polish_recovery,
     install,
     notify_blocked,
     notify_complete,
@@ -50,11 +54,14 @@ from worker import (
     read_overview_state,
     read_signal_file,
     record_processed_outcome,
+    recover_final_polish,
+    recovery_exit_code,
     resolve_working_dir,
     run_ai_with_retry,
     setup_logging,
     supported_providers,
     uninstall,
+    validate_phase_provenance,
 )
 
 
@@ -326,9 +333,40 @@ def _signal_for_outcome(
     )
 
 
+def enforce_lifecycle_preflight(session_path: Path) -> str | None:
+    """Persist and return a late-phase provenance error before any iteration work."""
+    phase_value = extract_phase(session_path)
+    if not phase_value:
+        return None
+    try:
+        phase = Phase(phase_value)
+    except ValueError:
+        return f"Overview declares unknown phase '{phase_value}'"
+    provenance = validate_phase_provenance(session_path, phase)
+    if provenance.ok:
+        return None
+
+    reason = "; ".join(provenance.errors)
+    write = apply_overview_transition(
+        session_path,
+        OverviewTransition(
+            target_phase=phase,
+            blocked="workflow_error",
+            last_action=f"Lifecycle preflight rejected state: {reason}",
+            next_action=(
+                "Inspect supported recovery; do not edit workflow control files manually"
+            ),
+        ),
+        expected_source=phase,
+    )
+    if not write.ok:
+        return f"{reason}; could not persist lifecycle block: {write.message}"
+    return reason
+
+
 # === CLI ===
 
-SUBCOMMANDS = ("run", "install", "uninstall", "approve")
+SUBCOMMANDS = ("run", "install", "uninstall", "approve", "recover")
 
 
 def add_run_arguments(parser: argparse.ArgumentParser) -> None:
@@ -444,6 +482,35 @@ Examples:
         help="Session name, not path (e.g., 'my-task' or '26-01-21-my-task')",
     )
 
+    recover_parser = subparsers.add_parser(
+        "recover",
+        help="Run a narrow, audited workflow recovery",
+    )
+    recover_subparsers = recover_parser.add_subparsers(
+        dest="recovery_kind", required=True
+    )
+    final_polish_parser = recover_subparsers.add_parser(
+        "final-polish",
+        help="Recover a legacy final-polish lifecycle provenance gap",
+    )
+    final_polish_parser.add_argument(
+        "--config",
+        required=True,
+        help="Path to .samocode config file",
+    )
+    final_polish_parser.add_argument(
+        "--session",
+        required=True,
+        help="Session name, not path",
+    )
+    recovery_mode = final_polish_parser.add_mutually_exclusive_group(required=True)
+    recovery_mode.add_argument(
+        "--check", action="store_true", help="Validate eligibility without mutation"
+    )
+    recovery_mode.add_argument(
+        "--apply", action="store_true", help="Apply the validated recovery"
+    )
+
     return parser
 
 
@@ -491,6 +558,11 @@ def run_orchestrator(args: argparse.Namespace) -> None:
 
     logger = setup_logging(log_dir)
 
+    process_lease = acquire_process_lease(session_path)
+    if process_lease.state is not ProcessLeaseState.ACQUIRED:
+        logger.error(process_lease.message or "Could not acquire session process lease")
+        sys.exit(3 if process_lease.state is ProcessLeaseState.CONTENDED else 1)
+
     for warning in composition.warnings:
         logger.warning(warning)
 
@@ -530,6 +602,17 @@ def run_orchestrator(args: argparse.Namespace) -> None:
 
     try:
         while True:
+            preflight_error = enforce_lifecycle_preflight(session_path)
+            if preflight_error:
+                logger.error(f"Lifecycle preflight failed: {preflight_error}")
+                notify_blocked(
+                    preflight_error,
+                    session_display_name,
+                    "investigation",
+                    config.telegram_bot_token,
+                    config.telegram_chat_id,
+                )
+                break
             iteration += 1
             # Track cumulative iterations in _overview.md (persists across restarts)
             if session_path.exists() and (session_path / OVERVIEW_FILENAME).exists():
@@ -692,6 +775,8 @@ def run_orchestrator(args: argparse.Namespace) -> None:
             # Network/system errors during notification are non-critical
             pass
         sys.exit(1)
+    finally:
+        process_lease.release()
 
 
 def cmd_install(args: argparse.Namespace) -> None:
@@ -723,6 +808,23 @@ def cmd_approve(args: argparse.Namespace) -> None:
     sys.exit(exit_code_for(result))
 
 
+def cmd_recover(args: argparse.Namespace) -> None:
+    if args.recovery_kind != "final-polish":
+        build_parser().print_help()
+        sys.exit(2)
+    config_path = Path(args.config).expanduser().resolve()
+    if args.check:
+        result = inspect_final_polish_recovery(config_path, args.session)
+    else:
+        result = recover_final_polish(config_path, args.session)
+    succeeded = result.outcome is not RecoveryOutcome.REJECTED
+    stream = sys.stdout if succeeded else sys.stderr
+    print(result.message, file=stream)
+    if result.receipt_path is not None:
+        print(f"Receipt: {result.receipt_path}", file=stream)
+    sys.exit(recovery_exit_code(result))
+
+
 def cmd_uninstall(_args: argparse.Namespace) -> None:
     """Remove samocode-owned assets from provider directories."""
     uninstall()
@@ -737,6 +839,7 @@ def main() -> None:
         "install": cmd_install,
         "uninstall": cmd_uninstall,
         "approve": cmd_approve,
+        "recover": cmd_recover,
     }
     # parse_args() guarantees a command (defaults to "run"); the get() guard
     # keeps the dispatcher total and future-proof.

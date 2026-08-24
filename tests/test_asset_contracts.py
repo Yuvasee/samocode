@@ -230,6 +230,18 @@ def test_run_skill_uses_approve_cli_for_plan_approval() -> None:
     assert stale not in content
 
 
+def test_run_skill_forbids_manual_lifecycle_repair_and_uses_recovery_cli() -> None:
+    content = (ROOT / "skills" / "samocode-run" / "SKILL.md").read_text()
+    normalized = " ".join(content.split())
+
+    assert "samocode recover final-polish" in content
+    assert "--check" in content and "--apply" in content
+    assert "explicit user approval" in content
+    assert "Edit `_overview.md`, `_signal.json`, or `_signal_history.jsonl`" in content
+    assert "Update `_overview.md`:" not in content
+    assert "Phase: investigation`" not in normalized
+
+
 def test_planning_agent_references_approve_cli() -> None:
     content = (ROOT / "agents" / "planning-agent.md").read_text()
     assert "samocode approve" in content
@@ -240,6 +252,9 @@ def test_architecture_source_map_covers_new_modules() -> None:
     assert "workflow_event.py" in content
     assert "workflow_state.py" in content
     assert "approval.py" in content
+    assert "lifecycle.py" in content
+    assert "process_lease.py" in content
+    assert "recovery.py" in content
 
 
 def test_readme_documents_approve_cli() -> None:
