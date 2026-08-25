@@ -5,10 +5,11 @@ Autonomous session orchestrator for Claude Code or OpenAI Codex. Python spawns t
 ## Project Structure
 
 ```
-main.py              # Orchestrator entry point - main loop
+main.py              # Checkout entry point (shim) -> worker/cli.py
 workflow.md          # Master prompt template for provider iterations
 ARCHITECTURE.md      # Runtime/configuration/routing design
 worker/              # Core package
+  cli.py             # CLI: orchestrator loop, install/approve/recover commands
   config.py          # Project paths + legacy/runtime env settings
   global_config.py   # User-global TOML, defaults, validation, bootstrap
   startup.py         # Load-once composition + process-wide provider selection
@@ -121,6 +122,7 @@ See `docs/model-routing.md` for the schema and canonical profile table.
 
 ## Key Files
 
+- `worker/cli.py` - argparse CLI, orchestrator loop, bootstrap quarantine, lifecycle preflight
 - `worker/global_config.py` - TOML schema, canonical defaults, bootstrap/load
 - `worker/startup.py` - startup composition and provider precedence
 - `worker/phases.py` - Phase enum, PhaseConfig/profile registry, transition validation
@@ -141,4 +143,5 @@ See `docs/model-routing.md` for the schema and canonical profile table.
 - After `filter-repo` finishes it removes the `origin` remote by design; re-add it, then `git fetch origin` to rebuild remote-tracking refs before any `--force-with-lease` push
 - Pin repo-local git identity (`git config --local user.email …`) when the repo's intended author differs from your global config — worktrees inherit local config automatically
 - Never accept secrets pasted into a chat as a working approach — Claude transcripts persist; treat any pasted token as compromised and rotate it immediately, then guide the user to env vars or a credentials file for future runs
+- The CLI must live inside `worker/` (`worker/cli.py`): hatch `force-include` copies top-level files into site-packages even for editable installs, so a top-level `main.py` entry point silently goes stale after every pull — assets resolve through `resolve_asset_source_dir()` for the same reason
 - When a session uses a worktree, start the orchestrator from the worktree path (or pass the worktree as working dir) — otherwise commits land on the main-repo branch instead of the session branch and the PR ends up split between two locations

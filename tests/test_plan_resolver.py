@@ -65,6 +65,24 @@ class TestActivePlanSelection:
         entries = parse_plan_entries("## Plans\n- plan-a.md - the description\n")
         assert entries == [PlanEntry("plan-a.md", "the description")]
 
+    def test_markdown_link_entry_parsed(self) -> None:
+        overview = "## Plans\n- [plan-a.md](./plan-a.md) - linked description\n"
+        assert parse_plan_entries(overview) == [
+            PlanEntry("plan-a.md", "linked description")
+        ]
+
+    def test_dash_variants_separate_description(self) -> None:
+        overview = "## Plans\n- plan-a.md \u2014 em dash\n- plan-b.md \u2013 en dash\n"
+        assert parse_plan_entries(overview) == [
+            PlanEntry("plan-a.md", "em dash"),
+            PlanEntry("plan-b.md", "en dash"),
+        ]
+
+    def test_linked_entry_selects_existing_file(self, tmp_path: Path) -> None:
+        (tmp_path / "plan-a.md").write_text("# plan")
+        overview = "## Plans\n- [plan-a.md](./plan-a.md) - linked\n"
+        assert select_active_plan(tmp_path, overview) == tmp_path / "plan-a.md"
+
 
 class TestPhaseParsing:
     def test_valid_explicit_profile(self) -> None:

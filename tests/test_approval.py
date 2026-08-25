@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-import main
+from worker import cli as main
 from worker import approval
 from worker.approval import (
     ApprovalOutcome,

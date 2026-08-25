@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-import main
+from worker import cli as main
 from worker import workflow_state
 from worker.approval import ApprovalOutcome, approve_session
 from worker.config import ProjectConfig

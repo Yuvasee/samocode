@@ -128,6 +128,15 @@ Create a new work session.
    (none yet)
    ```
 
+   `Phase` is a closed enum owned by the Samocode worker:
+   `init | investigation | requirements | planning | implementation | testing | quality | pr-readiness | done`.
+   Never invent other values (`deferred`, `planned`, `deployed`, ...): the worker and
+   `samocode approve` refuse an overview with an unknown phase. In an interactive
+   session `Phase` names the next worker step; under the worker never touch it — the
+   worker moves it from signals. Entries under `## Files` and `## Plans` are plain
+   `- filename.md - description` lines, no markdown links: the worker parses
+   `## Plans` to select the active plan.
+
 6. **Commit (if sessions dir is a git repo):**
    - `cd [SESSIONS_DIR] && git add . && git commit -m "Start session: [session-name]"`
 

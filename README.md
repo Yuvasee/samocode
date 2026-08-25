@@ -64,8 +64,12 @@ samocode creates a worktree, spawns the AI CLI, walks the task through phases, a
 To hack on samocode itself, clone the repo instead:
 ```bash
 git clone https://github.com/Yuvasee/samocode ~/samocode
-cd ~/samocode && pip install -r requirements.txt && samocode install
+cd ~/samocode && pip install -e . && samocode install
 ```
+
+The editable install runs the checkout's code and assets directly (`worker/cli.py`
+is the entry point), so pulling updates needs no reinstall; re-run `pip install -e .`
+only after `pyproject.toml` changes.
 
 `samocode install` creates the user-global model config when absent, prints its path and
 profile table, and installs skills into both `~/.claude/skills` and

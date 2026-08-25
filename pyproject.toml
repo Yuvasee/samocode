@@ -36,7 +36,7 @@ Repository = "https://github.com/Yuvasee/samocode"
 Issues = "https://github.com/Yuvasee/samocode/issues"
 
 [project.scripts]
-samocode = "main:main"
+samocode = "worker.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["worker"]

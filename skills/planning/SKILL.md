@@ -109,9 +109,20 @@ Creates detailed implementation plans with phases, stored within the session fol
 
 3. **Update session:**
    - Edit `[SESSION_PATH]/_overview.md`:
+     - Status: `Phase: planning`, `Blocked: waiting_human`, `Last Action: Plan created`,
+       `Next: Await plan approval (samocode approve)`. In an interactive session set
+       `Phase: planning` yourself; under the Samocode worker it already is — never
+       write any other phase value (`planned` is not a phase).
      - Add to Flow Log: `- [TIMESTAMP_ITERATION] Plan created -> [filename].md`
-     - Add to Plans: `- [filename].md - [brief description]`
+     - Add to Plans: `- [filename].md - [brief description]` — plain filename, no
+       markdown link: the worker parses this line to select the active plan
      - Add to Files: `- [filename].md - Plan: [brief description]`
+   - Write `[SESSION_PATH]/_signal.json`:
+     `{"status": "waiting", "phase": "planning", "for": "plan_approval"}`
+     This is the pending plan-approval gate. `samocode approve` validates the plan,
+     consumes the signal, and advances the session to implementation; never advance
+     `Phase` yourself.
    - Commit (if git repo): `cd [SESSION_DIR] && git add . && git commit -m "Plan: [title]"`
 
-4. **Report back:** Plan summary and file location
+4. **Report back:** Plan summary, file location, and the handoff: after review, run
+   `/samocode-implement` (it runs `samocode approve` and starts the worker).

@@ -133,6 +133,7 @@ valid in both legacy and routed modes, while newly authored phases require it.
 
 | Concern | Source of truth |
 |---------|-----------------|
+| CLI entry point, orchestrator loop, bootstrap quarantine, preflight | `worker/cli.py` |
 | Global TOML/defaults/bootstrap | `worker/global_config.py` |
 | Startup composition/provider selection | `worker/startup.py` |
 | Workflow phase/profile defaults | `worker/phases.py` |
