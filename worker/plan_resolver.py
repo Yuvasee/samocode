@@ -87,7 +87,11 @@ class PlanPhaseSelection:
 
 _PLANS_HEADING_RE = re.compile(r"^## Plans\s*$")
 _LEVEL2_HEADING_RE = re.compile(r"^## ")
-_PLAN_ENTRY_RE = re.compile(r"^- (\S+\.md)(?:\s*-\s*(.*))?$")
+# Interactive agents tend to write `- [file.md](./file.md) — desc`; accept it too.
+_PLAN_ENTRY_RE = re.compile(
+    r"^- (?:\[(?P<linked>[^\]\s]+\.md)\]\([^)]*\)|(?P<plain>\S+\.md))"
+    r"(?:\s*[-\u2013\u2014]\s*(?P<description>.*))?$"
+)
 
 
 def parse_plan_entries(overview_text: str) -> list[PlanEntry]:
@@ -110,8 +114,8 @@ def parse_plan_entries(overview_text: str) -> list[PlanEntry]:
         if match:
             entries.append(
                 PlanEntry(
-                    filename=match.group(1),
-                    description=(match.group(2) or "").strip(),
+                    filename=match.group("linked") or match.group("plain"),
+                    description=(match.group("description") or "").strip(),
                 )
             )
     return entries

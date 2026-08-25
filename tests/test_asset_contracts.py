@@ -290,3 +290,35 @@ def test_planning_contract_keeps_profile_selection_semantic() -> None:
     normalized = " ".join(f"{skill}\n{agent}".lower().split())
     for phrase in stale_guidance:
         assert phrase not in normalized
+
+
+def test_interactive_planning_skill_writes_the_approval_handoff_state() -> None:
+    content = (ROOT / "skills" / "planning" / "SKILL.md").read_text()
+    assert "Phase: planning" in content
+    assert "Blocked: waiting_human" in content
+    assert '"for": "plan_approval"' in content
+    assert "no\n       markdown link" in content
+
+
+def test_interactive_task_skill_hands_off_to_planning() -> None:
+    content = (ROOT / "skills" / "task-definition" / "SKILL.md").read_text()
+    assert "Phase: planning" in content
+    assert "task-defined" in content
+
+
+def test_session_skill_documents_the_closed_phase_enum() -> None:
+    content = (ROOT / "skills" / "session-management" / "SKILL.md").read_text()
+    assert (
+        "init | investigation | requirements | planning | implementation | testing | quality | pr-readiness | done"
+        in content
+    )
+
+
+def test_run_skill_stops_on_unknown_phase_without_editing() -> None:
+    content = (ROOT / "skills" / "samocode-run" / "SKILL.md").read_text()
+    assert "If `Phase` is not one of" in content
+
+
+def test_cli_entry_point_lives_inside_the_package() -> None:
+    assert 'samocode = "worker.cli:main"' in (ROOT / "pyproject.toml").read_text()
+    assert "from worker.cli import main" in (ROOT / "main.py").read_text()

@@ -90,8 +90,12 @@ Date: [TIMESTAMP_LOG]
 ### 4. Update session
 
 - Edit `[SESSION_PATH]/_overview.md`:
+  - Status: `Phase: planning` (the task is defined, so the next worker step is
+    planning), `Last Action: Task defined: [title]`, `Next: Create implementation plan`.
+    `Phase` is a closed enum — never write values like `task-defined`. Interactive
+    sessions only: under the Samocode worker never touch `Phase`.
   - Add to Flow Log: `- [TIMESTAMP_ITERATION] Task defined: [title] -> [filename].md`
-  - Add to Files: `- [filename].md - Task: [title]`
+  - Add to Files: `- [filename].md - Task: [title]` (plain filename, no markdown link)
 - Commit (if git repo): `cd [SESSION_DIR] && git add . && git commit -m "Task: [title]"`
 
 ### 5. Suggest next steps

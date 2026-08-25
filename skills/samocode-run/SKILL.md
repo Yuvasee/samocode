@@ -77,6 +77,9 @@ Do NOT assume samocode should run just because a session exists.
 
 3. **Check session state (if exists):**
    - Read `_overview.md` Status section
+   - **If `Phase` is not one of `init|investigation|requirements|planning|implementation|testing|quality|pr-readiness|done`:**
+     report the exact value and stop. Do not edit `_overview.md`; the worker refuses
+     unknown phases at preflight, and only the human repairs the field.
    - **If user asked to "implement the plan" or invoked the `/samocode-implement` equivalent:**
      - This is an implementation handoff, not a generic continue.
      - If `Phase: planning` and the session is waiting for plan approval (`Blocked: waiting_human`, `Next: Await plan approval`, or `_signal.json` has `"for": "plan_approval"`), approve the gate before starting samocode:

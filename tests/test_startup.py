@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-import main
+from worker import cli as main
 from worker.global_config import (
     GlobalConfig,
     default_config_toml,

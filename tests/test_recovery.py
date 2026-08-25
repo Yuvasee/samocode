@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-import main
+from worker import cli as main
 from worker.config import ProjectConfig, RuntimeConfig, SamocodeConfig
 from worker.final_polish import validate_final_polish
 from worker.lifecycle import (
