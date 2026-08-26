@@ -140,6 +140,7 @@ from .signals import (
     SignalStatus,
     clear_signal_file,
     read_signal_file,
+    sanitize_overview_reason,
 )
 from .startup import (
     LEGACY_DEFAULT_PROVIDER,
@@ -166,6 +167,7 @@ from .workflow_event import (
 )
 from .worktree_guard import (
     WorktreeSnapshot,
+    changed_tracked_paths,
     describe_worktree_mutation,
     snapshot_worktree,
 )
@@ -315,6 +317,7 @@ __all__ = [
     "SignalStatus",
     "clear_signal_file",
     "read_signal_file",
+    "sanitize_overview_reason",
     # Workflow events
     "RejectionReason",
     "WorkflowEvent",
@@ -322,6 +325,7 @@ __all__ = [
     "validate_workflow_event",
     # Worktree guard
     "WorktreeSnapshot",
+    "changed_tracked_paths",
     "describe_worktree_mutation",
     "snapshot_worktree",
     # Workflow state

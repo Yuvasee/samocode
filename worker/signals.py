@@ -19,6 +19,30 @@ BLOCKED_NEEDS = ("human_decision", "clarification", "error_resolution", "environ
 WORKER_NEEDS = ("investigation", "human_decision")
 
 
+_MAX_OVERVIEW_REASON = 200
+
+
+def sanitize_overview_reason(
+    reason: str | None, *, max_length: int = _MAX_OVERVIEW_REASON
+) -> str:
+    """Flatten a provider-supplied reason into one bounded line safe for _overview.md.
+
+    A reason lands verbatim in the persisted flow log; without this a newline could
+    forge a second `Phase:` field or a `## Flow Log` heading and corrupt the control
+    file. Collapse whitespace/control chars to single spaces, defang a leading
+    Markdown-structural token, and cap the length.
+    """
+    if not reason:
+        return ""
+    collapsed = " ".join(
+        "".join(ch if ch.isprintable() else " " for ch in reason).split()
+    )
+    collapsed = collapsed.lstrip("#>").strip()
+    if len(collapsed) > max_length:
+        collapsed = collapsed[: max_length - 1].rstrip() + "…"
+    return collapsed
+
+
 class SignalStatus(Enum):
     """Valid signal statuses for orchestrator control."""
 

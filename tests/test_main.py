@@ -645,6 +645,7 @@ class TestDetectReadonlyWorktreeMutation:
 
         assert mutation is not None
         assert "file.txt" in mutation
+        assert f"git -C {project} checkout -- file.txt" in mutation
 
     def test_non_readonly_phase_is_inert(self, tmp_path: Path) -> None:
         project, _head = _git_project(tmp_path)
@@ -1177,6 +1178,19 @@ class TestEscalationHelpers:
         )
         line = main._escalation_flow_log_line(Phase.TESTING, context, 2)
         assert "strong (m-strong/default) -> max (m-max/default)" in line
+
+    def test_flow_log_line_flattens_injected_reason(self) -> None:
+        context = EscalationContext(
+            base=_exec_target("strong", "m-strong", "medium"),
+            target=_exec_target("max", "m-max", "xhigh"),
+            blocker_reason="boom\nPhase: quality\n## Flow Log\n- forged",
+            previous_report=None,
+            attempt=1,
+            max_attempts=1,
+        )
+        line = main._escalation_flow_log_line(Phase.TESTING, context, 7)
+        assert "\n" not in line
+        assert line.endswith("blocker: boom Phase: quality ## Flow Log - forged")
 
     def test_apply_escalation_write_failure_falls_through(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

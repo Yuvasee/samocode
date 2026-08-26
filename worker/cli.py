@@ -7,6 +7,7 @@ assets; a top-level module would be copied into site-packages and go stale.
 import argparse
 import logging
 import os
+import shlex
 import sys
 from dataclasses import dataclass
 from enum import Enum
@@ -39,6 +40,7 @@ from . import (
     apply_overview_transition,
     apply_workflow_event,
     approve,
+    changed_tracked_paths,
     clear_signal_file,
     compose_startup,
     count_epoch_source_phase_runs_including_current,
@@ -66,6 +68,7 @@ from . import (
     recovery_exit_code,
     resolve_working_dir,
     run_ai_with_retry,
+    sanitize_overview_reason,
     setup_logging,
     snapshot_worktree,
     supported_providers,
@@ -108,7 +111,19 @@ def _detect_readonly_worktree_mutation(
             "post-run git snapshot failed, so the read-only guard cannot verify "
             "the working directory is unchanged"
         )
-    return describe_worktree_mutation(worktree_before, after)
+    mutation = describe_worktree_mutation(worktree_before, after)
+    if mutation is None:
+        return None
+    restore = _restore_command(working_dir, changed_tracked_paths(worktree_before, after))
+    return f"{mutation}; {restore}" if restore else mutation
+
+
+def _restore_command(working_dir: Path, paths: list[str]) -> str | None:
+    """The exact git checkout that reverts the guard-tripping tracked edits."""
+    if not paths:
+        return None
+    args = " ".join(shlex.quote(path) for path in paths)
+    return f"restore with: git -C {shlex.quote(str(working_dir))} checkout -- {args}"
 
 
 def apply_signal(
@@ -638,7 +653,7 @@ def _escalation_flow_log_line(
         f"- {iteration_timestamp(iteration)} Escalation: {phase.value} "
         f"{base.profile} ({base.model}/{_effort_label(base.effort)}) -> "
         f"{escalated.profile} ({escalated.model}/{_effort_label(escalated.effort)}); "
-        f"blocker: {context.blocker_reason}"
+        f"blocker: {sanitize_overview_reason(context.blocker_reason)}"
     )
 
 

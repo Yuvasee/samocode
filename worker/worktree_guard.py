@@ -41,6 +41,19 @@ def snapshot_worktree(working_dir: Path) -> WorktreeSnapshot | None:
     )
 
 
+def changed_tracked_paths(
+    before: WorktreeSnapshot, after: WorktreeSnapshot
+) -> list[str]:
+    """Tracked paths whose status differs between the two snapshots."""
+    before_paths = {
+        line[3:] for line in before.tracked_status.splitlines() if len(line) > 3
+    }
+    after_paths = {
+        line[3:] for line in after.tracked_status.splitlines() if len(line) > 3
+    }
+    return sorted((before_paths | after_paths) - (before_paths & after_paths))
+
+
 def describe_worktree_mutation(
     before: WorktreeSnapshot, after: WorktreeSnapshot
 ) -> str | None:
@@ -50,13 +63,7 @@ def describe_worktree_mutation(
     if before.head != after.head:
         parts.append(f"HEAD {before.head[:12]}→{after.head[:12]}")
     if before.tracked_status != after.tracked_status:
-        before_paths = {
-            line[3:] for line in before.tracked_status.splitlines() if len(line) > 3
-        }
-        after_paths = {
-            line[3:] for line in after.tracked_status.splitlines() if len(line) > 3
-        }
-        changed = sorted((before_paths | after_paths) - (before_paths & after_paths))
+        changed = changed_tracked_paths(before, after)
         parts.append(
             f"tracked: {', '.join(changed)}" if changed else "tracked files changed"
         )
