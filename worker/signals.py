@@ -34,9 +34,8 @@ def sanitize_overview_reason(
     """
     if not reason:
         return ""
-    collapsed = " ".join(
-        "".join(ch if ch.isprintable() else " " for ch in reason).split()
-    )
+    printable = "".join(ch if ch.isprintable() else " " for ch in reason)
+    collapsed = " ".join(printable.split())
     collapsed = collapsed.lstrip("#>").strip()
     if len(collapsed) > max_length:
         collapsed = collapsed[: max_length - 1].rstrip() + "…"
