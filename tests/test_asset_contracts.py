@@ -425,6 +425,21 @@ def test_workflow_does_not_run_final_polish_before_transition_lands() -> None:
     )
 
 
+def test_quality_assets_enumerate_accepted_closed_fix_now_statuses() -> None:
+    """Authoring agents must see the accepted closed statuses so a `fix now` row never
+    lands a late gate rejection for writing `done`/`complete`."""
+    quality_agent = (ROOT / "agents" / "quality-agent.md").read_text()
+    quality_skill = (ROOT / "skills" / "quality" / "SKILL.md").read_text()
+
+    for content, label in [
+        (quality_agent, "agents/quality-agent.md"),
+        (quality_skill, "skills/quality/SKILL.md"),
+    ]:
+        for status in ("fixed", "closed", "resolved", "verified"):
+            assert f"`{status}`" in content, f"{label} must enumerate `{status}`"
+        assert "| fix now |" in content, f"{label} needs a closed fix-now example row"
+
+
 def test_quality_assets_defer_gate_to_pr_readiness() -> None:
     """The full gate cannot pass mid-quality; quality assets must instruct NOT to run
     it (deferring to pr-readiness), never present it as an executable quality step."""

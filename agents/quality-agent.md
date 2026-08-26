@@ -84,7 +84,8 @@ Dispatch on the `Quality Step` field in the Status section of `_overview.md`
 1. Re-run the `quality` skill (multi-review action) via Skill tool, scoped to
    the fix commits (review the diff of the fixes, not the whole branch again).
 2. Keep the review report and `_review_debt.md` on the closed-vocabulary templates
-   (bare decision tokens; a `fix now` row carries an explicit closed status). Do NOT
+   (bare decision tokens; a `fix now` row carries an explicit closed status — one of
+   `fixed`, `closed`, `resolved`, or `verified`, never `done`/`complete`/`open`). Do NOT
    run `samocode check final-polish` here: it is the pr-readiness/done gate and
    structurally cannot pass mid-quality (the 2nd regression run, Comment Hygiene, and
    Code Clarity artifacts do not exist yet), so a non-zero result is expected, not
@@ -226,6 +227,7 @@ Iteration: [N]
 | ID | Severity | Finding | Recommended fix | Decision | Evidence / Ticket | Status |
 |---|---|---|---|---|---|---|
 | Q-001 | important | ... | ... | undecided |  | open |
+| Q-002 | blocking | ... | ... | fix now |  | resolved |
 
 ## Non-Blocking Suggestions
 - [Suggestion 1]

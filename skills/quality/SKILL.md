@@ -22,7 +22,8 @@ Do not mark quality work done while blocking or important findings remain undeci
 ## Requirements
 
 - Keep every final-polish report and the ledger on the closed-vocabulary templates
-  (bare decision tokens; a `fix now` row carries an explicit closed status). Do NOT run
+  (bare decision tokens; a `fix now` row carries an explicit closed status — one of
+  `fixed`, `closed`, `resolved`, or `verified`, never `done`/`complete`/`open`). Do NOT run
   `samocode check final-polish` during quality: it is the pr-readiness/done gate and
   structurally cannot pass mid-quality (the second post-quality regression run, Comment
   Hygiene, and Code Clarity artifacts do not exist yet, and the `testing -> pr-readiness`
@@ -92,6 +93,7 @@ Analyze changed code for quality issues and technical debt.
    | ID | Priority | Issue | Recommendation | Decision | Evidence / Ticket | Status |
    |----|----------|-------|----------------|----------|-------------------|--------|
    | C-001 | High | ... | ... | undecided |  | open |
+   | C-002 | High | ... | ... | fix now |  | resolved |
 
    ## Implementation Phases
 
@@ -684,12 +686,17 @@ Create a **Required Decisions** table for every blocking or important finding:
 | ID | Severity | Finding | Recommended fix | Decision | Evidence / Ticket | Status |
 |---|---|---|---|---|---|---|
 | Q-001 | important | [title] | [concrete action] | undecided |  | open |
+| Q-002 | blocking | [title] | [concrete action] | fix now |  | resolved |
 
 Decision values are only:
 - fix now
 - defer
 - reject
 - undecided
+
+A `fix now` row is closed only when its Status is one of `fixed`, `closed`, `resolved`,
+or `verified` — `done`, `complete`, `open`, or a blank Status leave it unresolved and
+the final-polish gate rejects it.
 
 Rules:
 - Default every blocking/important finding to `undecided` unless the human has already provided an explicit decision.
