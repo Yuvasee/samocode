@@ -662,6 +662,10 @@ def _apply_escalation(
     the run; an unknown/absent phase is not escalatable and falls through. Never
     raises: plan_escalation is pure, and a failed overview write degrades to a
     logged fall-through.
+
+    The overview transition is persisted first; the budget-counted audit row and
+    the notification follow only once the write commits, so a failed write never
+    spends the one-shot escalation budget.
     """
     try:
         phase_enum = Phase((phase or "").lower())
@@ -678,15 +682,6 @@ def _apply_escalation(
     base = context.base
     escalated = context.target
     flow_log_line = _escalation_flow_log_line(phase_enum, context, iteration)
-
-    record_escalation(
-        session_path,
-        phase_enum,
-        iteration,
-        base,
-        escalated,
-        context.blocker_reason,
-    )
 
     write = apply_overview_transition(
         session_path,
@@ -711,6 +706,14 @@ def _apply_escalation(
         )
         return None
 
+    record_escalation(
+        session_path,
+        phase_enum,
+        iteration,
+        base,
+        escalated,
+        context.blocker_reason,
+    )
     logger.info(flow_log_line)
     notify_escalation(
         session_display_name,

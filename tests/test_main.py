@@ -1204,7 +1204,7 @@ class TestEscalationHelpers:
         )
 
         assert result is None
-        assert any(r["status"] == "escalation" for r in _history_rows(session))
+        assert not any(r["status"] == "escalation" for r in _history_rows(session))
 
     def test_apply_escalation_skips_unknown_phase(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
