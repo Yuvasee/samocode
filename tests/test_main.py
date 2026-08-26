@@ -12,7 +12,11 @@ from worker.approval import ApprovalOutcome, approve_session
 from worker.config import ProjectConfig, RuntimeConfig, SamocodeConfig
 from worker.phases import Phase
 from worker.global_config import default_config
-from worker.routing import ExecutionProfileSource, ExecutionTarget
+from worker.routing import (
+    ExecutionProfileSource,
+    ExecutionResolutionError,
+    ExecutionTarget,
+)
 from worker.runner import EscalationContext, ExecutionResult, ExecutionStatus
 from worker.signals import Signal, SignalStatus
 from worker.startup import StartupComposition
@@ -1221,6 +1225,31 @@ class TestEscalationHelpers:
             config,
             _logger(),
             once=False,
+        )
+
+        assert result is None
+        assert not any(r["status"] == "escalation" for r in _history_rows(session))
+
+    def test_apply_escalation_swallows_resolution_error(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        session = _session(tmp_path, "testing")
+        _seed_testing_provenance(session)
+        config, _ = _escalation_config(tmp_path, session)
+
+        def boom(*_a: object, **_k: object) -> object:
+            raise ExecutionResolutionError("no provider target")
+
+        monkeypatch.setattr(main, "plan_escalation", boom)
+        monkeypatch.setattr(
+            main,
+            "notify_escalation",
+            lambda *_a, **_k: pytest.fail("must not notify on a resolution error"),
+        )
+
+        signal = Signal(status=SignalStatus.BLOCKED, needs="environment", reason="boom")
+        result = main._apply_escalation(
+            "testing", signal, session, "task", 3, config, _logger(), once=False
         )
 
         assert result is None

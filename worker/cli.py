@@ -680,8 +680,9 @@ def _apply_escalation(
 
     The Phase to escalate is derived from `phase`, the source phase captured before
     the run; an unknown/absent phase is not escalatable and falls through. Never
-    raises: plan_escalation is pure, and a failed overview write degrades to a
-    logged fall-through.
+    raises: it runs in the loop's BLOCKED branch outside run_ai_with_retry's guard,
+    so a resolution error from plan_escalation is caught and degraded to a logged
+    fall-through, and a failed overview write degrades the same way.
 
     The overview transition is persisted first; the budget-counted audit row and
     the notification follow only once the write commits, so a failed write never
@@ -693,7 +694,11 @@ def _apply_escalation(
         logger.info("Escalation skipped: no known phase to escalate from")
         return None
 
-    decision = plan_escalation(session_path, phase_enum, signal, config, once=once)
+    try:
+        decision = plan_escalation(session_path, phase_enum, signal, config, once=once)
+    except (ExecutionResolutionError, GlobalConfigError) as exc:
+        logger.error(f"Escalation skipped: could not resolve escalation target: {exc}")
+        return None
     if isinstance(decision, EscalationSkip):
         logger.info(f"Escalation skipped: {decision.reason}")
         return None
