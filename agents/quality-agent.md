@@ -83,13 +83,18 @@ Dispatch on the `Quality Step` field in the Status section of `_overview.md`
 
 1. Re-run the `quality` skill (multi-review action) via Skill tool, scoped to
    the fix commits (review the diff of the fixes, not the whole branch again).
-2. **If clean** (no blocking issues, no undecided important issues): set
+2. Validate that the updated review and ledger pass the machine gate:
+   ```bash
+   samocode check final-polish --config [CONFIG_PATH] --session [SESSION_NAME]
+   ```
+   Non-zero = vocabulary drift in reports/ledger; fix the drift before routing.
+3. **If clean** (no blocking issues, no undecided important issues): set
    `Quality Step: clarity-review` and signal
    `{"status": "continue", "phase": "quality"}`.
-3. **If blocking issues remain:** increment `Quality Iteration` in Status.
+4. **If blocking issues remain:** increment `Quality Iteration` in Status.
    - **If Quality Iteration > 3:** signal `blocked` with "Quality issues remain after 3 iterations"
    - **Else:** set `Quality Step: triage` and signal `{"status": "continue", "phase": "quality"}`
-4. **If important issues remain undecided:** signal `blocked` with "Quality decisions required"
+5. **If important issues remain undecided:** signal `blocked` with "Quality decisions required"
 
 ### Step 5 — Clarity review (`Quality Step: clarity-review`)
 
@@ -145,7 +150,12 @@ Dispatch on the `Quality Step` field in the Status section of `_overview.md`
 2. Reconcile repeated findings with existing `CL-*` rows instead of duplicating
    them. Reopen a deferred/rejected row only when its evidence is invalid at the
    current `HEAD`.
-3. Route on the result:
+3. Validate reports and ledger:
+   ```bash
+   samocode check final-polish --config [CONFIG_PATH] --session [SESSION_NAME]
+   ```
+   Non-zero = vocabulary drift introduced by clarity fixes; fix before routing.
+4. Route on the result:
    - **High/medium-impact findings are undecided:** keep `Disposition: pending` and
      signal blocked with "Code Clarity decisions required".
    - **No new or open high/medium-impact findings:** mark the report
@@ -173,7 +183,12 @@ all Code Clarity fix cycles because those fixes may introduce redundant comments
 5. Write `[SESSION_PATH]/[TIMESTAMP_FILE]-comment-hygiene.md` with `Input HEAD`,
    `Output HEAD`, scope, removed/reworded/kept/stale counts, and
    `Safety check: PASS`.
-6. Remove `Quality Step`, `Quality Iteration`, and `Clarity Iteration`. Transition
+6. Validate that all final-polish artifacts pass the machine gate:
+   ```bash
+   samocode check final-polish --config [CONFIG_PATH] --session [SESSION_NAME]
+   ```
+   Non-zero = vocabulary drift introduced during hygiene; fix before transitioning.
+7. Remove `Quality Step`, `Quality Iteration`, and `Clarity Iteration`. Transition
    to regression testing. The testing phase still runs when no automated test suite
    exists: it records that fact and performs the applicable deterministic checks.
    No later quality step may mutate the project worktree.

@@ -363,6 +363,32 @@ def test_generic_assets_contain_no_repository_specific_identifiers() -> None:
             assert token not in lowered, f"{path}: contains forbidden token {token!r}"
 
 
+def test_agents_and_skills_run_final_polish_check() -> None:
+    """All final-polish-adjacent assets must reference samocode check final-polish."""
+    pr_agent = (ROOT / "agents" / "pr-readiness-agent.md").read_text()
+    pr_skill = (ROOT / "skills" / "pr-readiness" / "SKILL.md").read_text()
+    quality_agent = (ROOT / "agents" / "quality-agent.md").read_text()
+    quality_skill = (ROOT / "skills" / "quality" / "SKILL.md").read_text()
+    run_skill = (ROOT / "skills" / "samocode-run" / "SKILL.md").read_text()
+
+    cmd = "samocode check final-polish"
+    for content, label in [
+        (pr_agent, "agents/pr-readiness-agent.md"),
+        (pr_skill, "skills/pr-readiness/SKILL.md"),
+        (quality_agent, "agents/quality-agent.md"),
+        (quality_skill, "skills/quality/SKILL.md"),
+        (run_skill, "skills/samocode-run/SKILL.md"),
+    ]:
+        assert cmd in content, f"{label} must reference {cmd!r}"
+
+    # PR-readiness must explicitly forbid signaling done on non-zero
+    pr_agent_lower = " ".join(pr_agent.lower().split())
+    assert "never signal `done` on non-zero" in pr_agent_lower
+
+    # Quality agent must run the check after verify, clarity-verify, and hygiene
+    assert quality_agent.count(cmd) >= 3
+
+
 def test_cli_entry_point_lives_inside_the_package() -> None:
     assert 'samocode = "worker.cli:main"' in (ROOT / "pyproject.toml").read_text()
     assert "from worker.cli import main" in (ROOT / "main.py").read_text()

@@ -117,6 +117,15 @@ Review final `HEAD` after implementation, fix loops, merges, and manual debuggin
    - [known accepted risks with ticket/evidence]
    ```
 
+7b. **Validate via machine gate before producing the final result:**
+    ```bash
+    samocode check final-polish --config <config> --session <session>
+    ```
+    This runs the same `validate_final_polish` the worker enforces at
+    `pr-readiness -> done`. Non-zero = vocabulary drift or missing evidence in
+    reports/ledger; fix and re-run before emitting the gate result. **Never
+    complete this gate when the check returns non-zero.**
+
 8. **Route autonomous failures:**
    - Missing/stale provenance or a project mutation after hygiene returns the active
      workflow to `quality`; this regenerates Code Clarity, Comment Hygiene, and the

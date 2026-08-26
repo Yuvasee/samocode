@@ -21,7 +21,10 @@ Do not mark quality work done while blocking or important findings remain undeci
 
 ## Requirements
 
-- None (both actions work independently)
+- After steps that write a final-polish report or the ledger (verify, clarity-verify,
+  hygiene), the agent runs `samocode check final-polish --config <path> --session <name>`
+  and fixes any vocabulary drift before routing.
+- None of the actions depend on each other; both work independently.
 
 ## Actions
 

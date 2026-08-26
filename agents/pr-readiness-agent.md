@@ -45,23 +45,35 @@ Session context is provided via --append-system-prompt by the orchestrator:
    Equal Comment Hygiene input/output SHAs are valid when cleanup made no changes.
    A broken or missing chain fails readiness; do not bless an unreviewed final HEAD.
 
-3. **Create readiness report:**
+3. **Run the machine gate before signaling:**
+   ```bash
+   samocode check final-polish --config [CONFIG_PATH] --session [SESSION_NAME]
+   ```
+   Resolve config and session from Session Context. The gate runs the same
+   `validate_final_polish` the worker enforces at `pr-readiness -> done`.
+   - **Non-zero exit**: vocabulary drift or missing evidence in own reports/ledger —
+     fix the drift (normalize tokens per the error messages), then re-run the check.
+     If still non-zero, route back to quality:
+     `{"status": "continue", "phase": "quality"}`.
+   - **Never signal `done` on non-zero from this check.**
+
+4. **Create readiness report:**
    - `[SESSION_PATH]/[TIMESTAMP_FILE]-pr-readiness.md`
 
-4. **If readiness fails because final-polish provenance is missing, stale, or the
+5. **If readiness fails because final-polish provenance is missing, stale, or the
    project changed after hygiene:**
    - Update `_overview.md` with `Last Action: PR readiness returned to quality`
    - Add Flow Log entry and commit session files
    - Signal `continue` with `phase: quality` so Code Clarity, final Comment Hygiene,
      and regression testing are regenerated for the current HEAD
 
-5. **If readiness fails for a decision or external blocker:**
+6. **If readiness fails for a decision or external blocker:**
    - Update `_overview.md` with `Last Action: PR readiness failed`
    - Add Flow Log entry
    - Commit session files
    - Signal `blocked` with `needs=human_decision`
 
-6. **If readiness passes:**
+7. **If readiness passes:**
    - Update `_overview.md` with `Last Action: PR readiness passed`, `Next: Generate summary`
    - Add Flow Log entry and Files entry
    - Commit session files

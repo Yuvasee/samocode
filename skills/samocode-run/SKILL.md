@@ -240,6 +240,21 @@ When samocode signals `waiting`:
 4. Update `_qa.md` with answers
 5. Then restart samocode
 
+## Read-Only Gate Check
+
+To verify the final-polish gate state without running the orchestrator:
+```bash
+samocode check final-polish --config [PATH_TO_.SAMOCODE] --session [SESSION_NAME]
+```
+- Exit 0: clean — the `pr-readiness -> done` gate would pass
+- Exit 1: errors printed to stderr, one per line, each naming the expected value
+- No lock, no writes, no `Phase`/`Blocked` precondition — safe mid-session
+
+Quality and pr-readiness agents run this command as a self-check after writing
+reports or the ledger and fix vocabulary drift before routing. If you see a
+quality or pr-readiness agent loop unexpectedly, use this command to inspect
+the current gate state without waiting for the next iteration.
+
 ## Monitoring Testing Escalation
 
 Testing can auto-escalate one profile rung on an `environment` block. This is a normal
