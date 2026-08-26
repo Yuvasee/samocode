@@ -337,6 +337,22 @@ _DOC_AUTHORING_VERB_FORMS = frozenset(
         "updates",
         "updating",
         "updated",
+        "create",
+        "creates",
+        "creating",
+        "created",
+        "edit",
+        "edits",
+        "editing",
+        "edited",
+        "add",
+        "adds",
+        "adding",
+        "added",
+        "publish",
+        "publishes",
+        "publishing",
+        "published",
     }
 )
 _DOC_READ_ONLY_VERB_FORMS = frozenset(
@@ -397,7 +413,8 @@ _READ_ONLY_VERB_RE = re.compile(
 # "documentation" alone is too generic to anchor on: it also names *policy about*
 # docs (e.g. a phase whose task is "add a rule that documentation-authoring work
 # is isolated"). It counts as an object only when an authoring verb governs it
-# within a couple of words.
+# within two words — wide enough for "create API documentation" / "edit user-facing
+# documentation" yet still short of the 3-word "add a rule that documentation" span.
 _AUTHORING_VERB_GOVERNS_DOCUMENTATION_RE = re.compile(
     rf"\b(?:{_word_alternation(_DOC_AUTHORING_VERB_FORMS)})\b"
     rf"(?:\s+\S+){{0,2}}\s+documentation\b",

@@ -372,6 +372,24 @@ class TestDocumentationProfileScope:
         phases = validate_plan_contract(text)
         assert phases[0].profile == "standard"
 
+    @pytest.mark.parametrize(
+        "task",
+        [
+            "Create API documentation for the new endpoints",
+            "Edit user-facing documentation for the export flag",
+            "Add documentation covering the check command",
+            "Publish migration documentation for operators",
+            "Create comprehensive API documentation",
+        ],
+    )
+    def test_direct_authoring_of_documentation_requires_max(self, task: str) -> None:
+        text = (
+            "## Implementation Phases\n\n"
+            f"### Phase 1: Ship\n**Profile:** `standard`\n- [ ] {task}\n"
+        )
+        with pytest.raises(PlanResolutionError, match="authors documentation"):
+            validate_plan_contract(text)
+
     def test_meta_reference_to_documentation_policy_is_not_authoring(self) -> None:
         """A phase *about* the doc-profile classifier itself (this plan's own
         Phase 8) must not be swept in by the phrase "documentation-authoring"
