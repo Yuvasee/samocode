@@ -21,8 +21,11 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .config import SamocodeConfig
-from .lifecycle import count_escalations_since_phase_entry
-from .phases import Phase, get_phase_config
+from .lifecycle import (
+    count_epoch_source_phase_runs_including_current,
+    count_escalations_since_phase_entry,
+)
+from .phases import Phase, get_phase_config, is_iteration_limit_exceeded
 from .routing import escalate_execution_target, resolve_execution_target
 from .runner import EscalationContext, latest_test_report
 from .signals import Signal, SignalStatus
@@ -98,6 +101,25 @@ def plan_escalation(
         return EscalationSkip(
             f"escalation budget exhausted for phase '{phase.value}': "
             f"{budget.count} of {policy.max_attempts} attempt(s) already used"
+        )
+
+    # The replay is charged as the next phase run; scheduling it when no run
+    # capacity remains would only get it rejected before its signal can advance
+    # the phase, silently failing the feature at its boundary.
+    replay_run = count_epoch_source_phase_runs_including_current(
+        session_path, phase.value
+    )
+    if not replay_run.ok:
+        return EscalationSkip(
+            "cannot count phase runs for this escalation: "
+            + "; ".join(replay_run.errors)
+        )
+    assert replay_run.count is not None
+    exceeded, max_runs = is_iteration_limit_exceeded(phase.value, replay_run.count)
+    if exceeded:
+        return EscalationSkip(
+            f"no phase-run capacity for an escalated replay of '{phase.value}': "
+            f"the replay would be run {replay_run.count} past the {max_runs}-run limit"
         )
 
     base = resolve_execution_target(

@@ -1,5 +1,6 @@
 """Tests for worker/escalation.py - the pure escalation decision service."""
 
+import json
 import tomllib
 from collections.abc import Mapping
 from pathlib import Path
@@ -11,7 +12,7 @@ from worker.escalation import (
     plan_escalation,
 )
 from worker.global_config import GlobalConfig, default_config, default_config_toml
-from worker.phases import Phase
+from worker.phases import PHASE_CONFIGS, Phase
 from worker.routing import ExecutionProfileSource, ExecutionTarget
 from worker.signal_history import record_escalation
 from worker.signals import Signal, SignalStatus
@@ -58,6 +59,18 @@ def _target(profile: str, model: str) -> ExecutionTarget:
         plan_phase=None,
         source=ExecutionProfileSource.PHASE_DEFAULT,
     )
+
+
+def _seed_source_phase_runs(session: Path, phase: Phase, count: int) -> None:
+    """Append `count` recorded runs charged to `phase` as their source phase."""
+    with (session / "_signal_history.jsonl").open("a", encoding="utf-8") as handle:
+        for _ in range(count):
+            handle.write(
+                json.dumps(
+                    {"v": 2, "source_phase": phase.value, "status": "continue"}
+                )
+                + "\n"
+            )
 
 
 def _record_one_escalation(session: Path, phase: Phase) -> None:
@@ -149,6 +162,17 @@ class TestPlanEscalationSkips:
         )
         assert isinstance(result, EscalationSkip)
         assert "cannot count escalations" in result.reason
+
+    def test_skip_when_no_phase_run_capacity(self, tmp_path: Path) -> None:
+        session = _session(tmp_path)
+        limit = PHASE_CONFIGS[Phase.TESTING].max_iterations
+        # `limit` recorded runs leave the replay as run limit+1, past the cap.
+        _seed_source_phase_runs(session, Phase.TESTING, limit)
+        result = plan_escalation(
+            session, Phase.TESTING, _blocked(), _config(session), once=False
+        )
+        assert isinstance(result, EscalationSkip)
+        assert "no phase-run capacity" in result.reason
 
     def test_skip_when_no_next_rung(self, tmp_path: Path) -> None:
         session = _session(tmp_path)
