@@ -732,11 +732,12 @@ def _apply_escalation(
     the spent attempt uncounted, letting a later `environment` block in the same
     phase entry re-escalate. This is bounded — it re-escalates to the same rung and
     is still capped by the phase-run limit — and strictly better than the prior
-    behavior (an uncaught raise here crashed the loop after the overview committed).
+    behavior, where an uncaught raise after the overview committed crashed the loop.
     A dropped-row-proof budget needs the audit row and overview transition to be one
-    durable unit, which is the persist+recover pending-escalation redesign deferred
-    with Q-006; do not reorder the two writes piecemeal (audit-first re-opens the
-    Q-001 failure where a failed overview write burns the budget without replaying).
+    durable unit; that is a persist+recover pending-escalation redesign (a follow-up
+    hardening, not yet done). Do not reorder the two writes to audit-first: audit-first
+    re-opens the failure where a failed overview write burns the one-shot budget
+    without ever replaying the iteration.
     """
     try:
         phase_enum = Phase((phase or "").lower())
