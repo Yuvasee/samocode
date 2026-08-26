@@ -25,8 +25,8 @@ selection source.
 - Do not change provider, profile, model, or effort inside the iteration.
 - On implementation iterations, `Active Implementation Plan Phase` is also
   authoritative. Execute that exact phase instead of re-scanning the plan.
-- On testing iterations, the worker injects `**Testing run:** first (post-implementation)`
-  or `second (post-quality)` into Session Context, derived from the latest accepted
+- On testing iterations, the worker injects `**Testing run:** 1st (post-implementation)`
+  or `2nd (post-quality)` into Session Context, derived from the latest accepted
   transition into testing. Use that label; never infer the run from files or the Flow Log.
 - Normal Claude sub-agents use `model: inherit` and inherit session effort. Explicit
   second-opinion skills may cross providers; normal workflow work may not.

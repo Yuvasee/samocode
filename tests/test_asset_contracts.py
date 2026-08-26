@@ -402,6 +402,16 @@ def test_pr_readiness_assets_run_final_polish_check() -> None:
     assert "never signal `done` on non-zero" in pr_agent_lower
 
 
+def test_workflow_testing_run_label_matches_injected_vocabulary() -> None:
+    """The worker injects `1st`/`2nd`; workflow.md must not document the stale forms."""
+    workflow = (ROOT / "workflow.md").read_text()
+
+    assert "1st (post-implementation)" in workflow
+    assert "2nd (post-quality)" in workflow
+    assert "first (post-implementation)" not in workflow
+    assert "second (post-quality)" not in workflow
+
+
 def test_workflow_does_not_run_final_polish_before_transition_lands() -> None:
     """The gate requires `testing -> pr-readiness` to be the latest accepted transition,
     so workflow.md must not instruct running it before that transition lands."""
