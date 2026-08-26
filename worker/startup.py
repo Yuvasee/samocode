@@ -63,9 +63,9 @@ def select_provider(
 # === Global config loading (load-if-present, never create) ===
 
 
-def load_global_config() -> (
-    tuple[GlobalConfig | None, tuple[str, ...], tuple[str, ...]]
-):
+def load_global_config() -> tuple[
+    GlobalConfig | None, tuple[str, ...], tuple[str, ...]
+]:
     """Load the global config if present; legacy mode (None) if absent.
 
     Creation belongs to `samocode install`; `run` only loads. Returns
@@ -145,9 +145,7 @@ def compose_startup(
     return StartupComposition(config, tuple(warnings), tuple(errors))
 
 
-def _validate_provider(
-    provider: str, global_config: GlobalConfig | None
-) -> list[str]:
+def _validate_provider(provider: str, global_config: GlobalConfig | None) -> list[str]:
     """Registry-aware provider validation.
 
     - Selected provider must have a registered adapter (replaces hard-coded

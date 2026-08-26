@@ -232,12 +232,12 @@ class TestProviderValidation:
     def test_missing_provider_section_errors(self, project: _Project) -> None:
         # Config with only codex; default_provider=codex is valid, but select claude.
         text = (
-            'version = 1\n'
+            "version = 1\n"
             'default_provider = "codex"\n'
             'default_profile = "standard"\n'
-            '[providers.codex]\n'
+            "[providers.codex]\n"
             'executable = "codex"\n'
-            '[providers.codex.profiles.standard]\n'
+            "[providers.codex.profiles.standard]\n"
             'model = "gpt-5.6-terra"\n'
         )
         project.write_config(text)
@@ -338,7 +338,8 @@ def test_provider_choices_from_registry() -> None:
 
     parser = main.build_parser()
     run_action = next(
-        a for a in parser._subparsers._group_actions[0].choices["run"]._actions  # type: ignore[attr-defined]
+        a
+        for a in parser._subparsers._group_actions[0].choices["run"]._actions  # type: ignore[attr-defined]
         if getattr(a, "dest", "") == "provider"
     )
     assert set(run_action.choices) == set(supported_providers())

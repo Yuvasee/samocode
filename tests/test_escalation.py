@@ -66,9 +66,7 @@ def _seed_source_phase_runs(session: Path, phase: Phase, count: int) -> None:
     with (session / "_signal_history.jsonl").open("a", encoding="utf-8") as handle:
         for _ in range(count):
             handle.write(
-                json.dumps(
-                    {"v": 2, "source_phase": phase.value, "status": "continue"}
-                )
+                json.dumps({"v": 2, "source_phase": phase.value, "status": "continue"})
                 + "\n"
             )
 

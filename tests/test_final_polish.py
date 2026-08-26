@@ -311,3 +311,35 @@ def test_missing_evidence_column_names_required_header(tmp_path: Path) -> None:
     assert any(
         "header contains `Evidence` or `Ticket`" in error for error in check.errors
     )
+
+
+def test_skill_bare_tokens_pass_validator(tmp_path: Path) -> None:
+    """Bare tokens documented in skills/agents pass the validator without modification."""
+    project, head = _project(tmp_path)
+    session = tmp_path / "session"
+    session.mkdir()
+    # Code clarity: Result=clean, Disposition=settled (from quality-agent.md template)
+    (session / "01-code-clarity.md").write_text(
+        f"Reviewed HEAD: {head}\nResult: clean\nDisposition: settled\n"
+    )
+    # Comment hygiene: Safety check=PASS (from quality-agent.md template)
+    (session / "02-comment-hygiene.md").write_text(
+        f"Input HEAD: {head}\nOutput HEAD: {head}\nSafety check: PASS\n"
+    )
+    # Test report: Run=2nd (post-quality), Result=PASS (from testing skill/agent templates)
+    (session / "03-test-report.md").write_text(
+        f"Run: 2nd (post-quality)\nResult: PASS\nTested HEAD: {head}\n"
+    )
+    # Review debt: settled fix-now row with Evidence / Ticket header (from quality SKILL.md)
+    (session / "_review_debt.md").write_text(
+        "| ID | Severity | Decision | Evidence / Ticket | Status |\n"
+        "|---|---|---|---|---|\n"
+        "| Q-001 | important | fix now | n/a | Closed |\n"
+        "| CL-001 | important | defer | owned by platform team | open |\n"
+        "| Q-002 | important | reject | finding does not apply to this codebase | open |\n"
+    )
+    _history(session)
+
+    check = validate_final_polish(session, project)
+
+    assert check.ok, check.errors

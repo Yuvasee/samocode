@@ -13,9 +13,9 @@ Any **blocking** or **important** finding is not complete when it is merely docu
 
 | Decision | Required evidence |
 |---|---|
-| **Fix now** | Link or describe the code/test change that will resolve it |
-| **Defer** | Ticket/link or concrete follow-up owner/reason |
-| **Reject** | Evidence that the finding is false, inapplicable, or intentionally accepted |
+| fix now | Link or describe the code/test change that will resolve it |
+| defer | Ticket/link or concrete follow-up owner/reason |
+| reject | Evidence that the finding is false, inapplicable, or intentionally accepted |
 
 Do not mark quality work done while blocking or important findings remain undecided.
 
@@ -680,10 +680,10 @@ Create a **Required Decisions** table for every blocking or important finding:
 | Q-001 | important | [title] | [concrete action] | undecided |  | open |
 
 Decision values are only:
-- `fix now`
-- `defer`
-- `reject`
-- `undecided`
+- fix now
+- defer
+- reject
+- undecided
 
 Rules:
 - Default every blocking/important finding to `undecided` unless the human has already provided an explicit decision.
