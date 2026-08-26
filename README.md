@@ -215,7 +215,7 @@ Claude. Requires **Python 3.11+**.
 | requirements | Q&A with you via `_qa.md` (human gate) |
 | planning | Create phased plan, wait for approval (human gate) |
 | implementation | Execute plan phases iteratively |
-| testing | Verify by fresh agent (not ad-hoc tests) |
+| testing | Verify by fresh agent (not ad-hoc tests); read-only worktree, auto-escalates one profile rung on an environment block |
 | quality | Ordinary review/fixes, then a Code Clarity fix loop and final Comment Hygiene cleanup (max 3 fix batches per loop) |
 | pr-readiness | Final-head gate after regression tests; validates review debt and the clarity → hygiene provenance chain |
 | done | Generate summary, signal complete |
@@ -249,6 +249,26 @@ This atomically advances the session to the implementation phase and consumes th
 | 6 | Already advanced: another approval reached the gate target; this call made no change |
 
 (argparse reserves exit code 2 for CLI usage errors.)
+
+### Testing escalation & worktree guard
+
+The `testing` phase has two automatic safeguards, both fully audited:
+
+- **Environment escalation.** If testing blocks on the environment
+  (`{"status": "blocked", "needs": "environment"}` — e.g. a missing browser binary or an
+  unreachable dev service), the worker reruns testing **once** on the next-stronger
+  profile (default `strong` → `max`) with an explicit recovery contract, instead of
+  stopping. The provider never changes, it is one attempt per phase entry, and there is no
+  escalation from `max`. Product/test failures and `human_decision`/`error_resolution`
+  blocks stay terminal. Each escalation writes a Flow Log line, a routing log line
+  (`source=escalation`), a signal-history row (`status=escalation`), and one Telegram
+  notification.
+- **Read-only worktree.** Testing may not mutate tracked files. The worker snapshots HEAD
+  and tracked status around every testing iteration; a tracked-file edit, format, or
+  commit is rejected as `Blocked: workflow_error` (`worktree_mutated`) with a diff summary
+  logged. The testing agent may only touch untracked/temporary/user-level files; restore
+  any tracked file a build touched (`git checkout -- <path>`) before signaling. A non-git
+  working directory skips the guard with a notice.
 
 ### Supported final-polish recovery
 

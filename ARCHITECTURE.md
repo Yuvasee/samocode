@@ -141,6 +141,8 @@ valid in both legacy and routed modes, while newly authored phases require it.
 | Neutral execution target | `worker/routing.py` |
 | Provider CLI translation | `worker/adapters.py` |
 | Context injection/retries/process execution | `worker/runner.py` |
+| Testing environment-block escalation planner + notification | `worker/escalation.py` |
+| Read-only worktree snapshot + mutation guard | `worker/worktree_guard.py` |
 | Pure workflow event validation | `worker/workflow_event.py` |
 | Overview state parse + atomic transition + event processor | `worker/workflow_state.py` |
 | Approval service and `samocode approve` CLI | `worker/approval.py` |

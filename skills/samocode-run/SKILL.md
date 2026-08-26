@@ -96,6 +96,12 @@ Do NOT assume samocode should run just because a session exists.
    - **If `Blocked: workflow_error`:**
      - Report Last Action and Next, then stop. Do not run a phase agent and do not
        edit any control file.
+     - **If it is a `worktree_mutated` guard rejection** (testing mutated tracked files;
+       Last Action names the phase and a HEAD/tracked-path delta): report the delta, then
+       have the human inspect and restore the working dir themselves —
+       `git -C [WORKING_DIR] status` to see the change, `git -C [WORKING_DIR] checkout --
+       <path>` (or reset the stray commit) to undo it — and restart the worker. Do NOT run
+       `recover final-polish` for this class and never edit `_overview.md`/`_signal.json`.
      - For a final-polish provenance error, run the read-only eligibility check:
        ```bash
        samocode recover final-polish --config [PATH_TO_.SAMOCODE] --session [SESSION_NAME] --check
@@ -227,6 +233,24 @@ When samocode signals `waiting`:
 3. Otherwise: Wait for user to provide/confirm answers
 4. Update `_qa.md` with answers
 5. Then restart samocode
+
+## Monitoring Testing Escalation
+
+Testing can auto-escalate one profile rung on an `environment` block. This is a normal
+`continue`, not a stop condition — the next iteration reruns testing on the stronger
+profile. Recognize it in the Flow Log so you report it as progress, not a failure:
+
+```
+- [NNN @ MM-DD HH:MM] Escalation: testing strong (model/effort) -> max (model/effort); blocker: <reason>
+```
+
+- `Blocked` stays `no`, `Last Action` reads "Testing blocked on environment; escalating
+  strong -> max", `Next` reads "Escalated testing attempt N/M".
+- The per-iteration routing log line for the rerun carries `source=escalation` and
+  `escalated_from=<profile>`; `_signal_history.jsonl` gains a `status=escalation` row.
+- One attempt per phase entry. If the escalated attempt blocks again on the environment,
+  the session stops as a normal block — handle it like any `blocked` state, do not
+  restart hoping for another escalation.
 
 ## Required `.samocode` File
 
