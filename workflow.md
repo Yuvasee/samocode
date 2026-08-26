@@ -93,6 +93,13 @@ Projects without an automated suite still enter testing and produce a report fro
 the applicable deterministic checks. PR readiness may return to quality when final
 polish evidence is missing or stale.
 
+**Escalation** (testing only): when testing signals `blocked` with `needs: "environment"`,
+the worker automatically re-runs the phase once on the next semantic profile — bounded to
+one attempt per phase entry — injecting a recovery contract into the escalated iteration's
+context. The provider never changes and every gate stays intact; a second environment
+block ends the run for a human. The worktree guard snapshots project `HEAD` + tracked
+status around every testing iteration and rejects a mutated run as `workflow_error`.
+
 ## Status Section Format
 
 ```markdown
@@ -121,7 +128,7 @@ Write `_signal.json` before exiting. The `phase` field controls transitions:
 **Phase field**: Set to the NEXT phase you want to run. Orchestrator auto-updates `_overview.md` Phase.
 **Do NOT manually update Phase in `_overview.md`** - only update Last Action, Next, Blocked, Flow Log.
 
-**`needs` values**: `human_decision`, `clarification`, `error_resolution`
+**`needs` values**: `human_decision`, `clarification`, `error_resolution`, `environment` (testing blocked by a missing or broken test environment rather than a product defect; triggers one automatic escalation before reaching a human)
 **`for` values**: `qa_answers`, `plan_approval`, `file_update`, `human_action`
 
 **`plan_approval` gate**: the orchestrator worker pauses and waits for the human to run `samocode approve --config ... --session ...`. That command validates the pending gate, atomically advances the overview, and consumes the signal. The child must never manually advance Phase or clear a `plan_approval` signal.

@@ -85,13 +85,12 @@ def test_post_quality_pipeline_preserves_final_hygiene_boundary() -> None:
         assert "Result: PASS | FAIL" in content
         assert "[TIMESTAMP_FILE]-test-report.md" in content
 
-    mutation_signal = testing_agent.index(
-        "Second run changed the project worktree (re-enter quality)"
-    )
-    assert (
-        '{"status": "continue", "phase": "quality"}' in testing_agent[mutation_signal:]
-    )
-    assert "return the workflow to quality" in " ".join(testing_skill.split())
+    # A worktree mutation is a guard violation (`workflow_error`), never a route to
+    # quality — the old "re-enter quality on mutation" clause must be gone.
+    for content in (testing_agent, testing_skill):
+        assert "workflow_error" in content
+        assert "re-enter quality" not in content
+    assert "return the workflow to quality" not in " ".join(testing_skill.split())
 
     for content in (readiness_agent, readiness_skill):
         normalized = " ".join(content.split())
@@ -317,6 +316,52 @@ def test_session_skill_documents_the_closed_phase_enum() -> None:
 def test_run_skill_stops_on_unknown_phase_without_editing() -> None:
     content = (ROOT / "skills" / "samocode-run" / "SKILL.md").read_text()
     assert "If `Phase` is not one of" in content
+
+
+def test_testing_assets_document_environment_escalation_and_guard() -> None:
+    agent = (ROOT / "agents" / "testing-agent.md").read_text()
+    skill = (ROOT / "skills" / "testing" / "SKILL.md").read_text()
+    workflow = (ROOT / "workflow.md").read_text()
+
+    assert '"needs": "environment"' in agent
+    assert "## Escalated Testing Attempt" in agent
+
+    for content in (agent, skill):
+        assert "environment" in content
+        assert "workflow_error" in content
+        assert "git checkout -- " in content
+        assert "reproducible command" in content.lower()
+
+    # The old mutation-as-route clause is gone everywhere.
+    assert "re-enter quality" not in agent
+    assert "return the workflow to quality" not in skill
+
+    needs_line = next(
+        line for line in workflow.splitlines() if line.startswith("**`needs` values**")
+    )
+    assert "`environment`" in needs_line
+
+    assert "**Escalation**" in workflow
+    normalized_workflow = " ".join(workflow.split())
+    assert "next semantic profile" in normalized_workflow
+    assert "one attempt per phase entry" in normalized_workflow
+
+
+def test_generic_assets_contain_no_repository_specific_identifiers() -> None:
+    forbidden = ("avonai", "avon-ai", "haver", "conversations-monitoring")
+    text_suffixes = {".py", ".md", ".toml", ".json", ".txt"}
+    scanned: list[Path] = [ROOT / "workflow.md"]
+    for base in ("worker", "agents", "skills", "docs"):
+        scanned.extend(
+            path
+            for path in (ROOT / base).rglob("*")
+            if path.is_file() and path.suffix in text_suffixes
+        )
+
+    for path in scanned:
+        lowered = path.read_text().lower()
+        for token in forbidden:
+            assert token not in lowered, f"{path}: contains forbidden token {token!r}"
 
 
 def test_cli_entry_point_lives_inside_the_package() -> None:
