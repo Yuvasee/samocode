@@ -210,11 +210,15 @@ def _validate_review_debt(session_path: Path, errors: list[str]) -> None:
                 if name in {"id", "decision", "status"} or _is_evidence_header(name)
             }
             continue
-        if not cells or not _DEBT_ID.fullmatch(cells[0]):
+        row_id = _strip_emphasis(cells[0]) if cells else ""
+        if not _DEBT_ID.fullmatch(row_id):
             continue
         if columns is None:
-            if "undecided" in normalized_cells or "open" in normalized_cells:
-                errors.append(f"Review debt row {cells[0]} is still open or undecided")
+            errors.append(
+                f"Review debt row {row_id} appears before a recognized table header; "
+                "the ledger must present a well-formed table with `ID` and `Decision` "
+                "columns so every row's decision and status are checked"
+            )
             continue
 
         decision_raw = _debt_cell(cells, columns.get("decision"))
@@ -227,11 +231,11 @@ def _validate_review_debt(session_path: Path, errors: list[str]) -> None:
         )
         evidence = _debt_cell(cells, evidence_index)
         if decision in {"", "undecided"}:
-            errors.append(f"Review debt row {cells[0]} has no explicit decision")
+            errors.append(f"Review debt row {row_id} has no explicit decision")
         elif decision == "fix now" and status not in _DEBT_FIXED_STATUSES:
             errors.append(
                 _mismatch(
-                    f"Review debt row {cells[0]} selected fix now but its status is "
+                    f"Review debt row {row_id} selected fix now but its status is "
                     f"not one of {_quoted(_DEBT_FIXED_STATUSES)}",
                     status_raw,
                 )
@@ -243,22 +247,27 @@ def _validate_review_debt(session_path: Path, errors: list[str]) -> None:
                 )
             else:
                 errors.append(
-                    f"Review debt row {cells[0]} decision `{decision}` lacks evidence"
+                    f"Review debt row {row_id} decision `{decision}` lacks evidence"
                 )
         elif decision not in _DEBT_DECISIONS:
             errors.append(
                 _mismatch(
-                    f"Review debt row {cells[0]} decision must be one of "
+                    f"Review debt row {row_id} decision must be one of "
                     f"{_quoted(_DEBT_DECISIONS)}",
                     decision_raw,
                 )
             )
 
 
+def _strip_emphasis(value: str) -> str:
+    # Case-preserving so row IDs render as authored; `**Q-006**` -> `Q-006`.
+    return value.strip().strip(_EMPHASIS_CHARS).strip()
+
+
 def _normalize_token(value: str) -> str:
     # Strips surrounding emphasis/backticks/whitespace only, never parenthetical
     # suffixes, so `reject (not promoted)` stays outside the closed vocabulary.
-    return value.strip().strip(_EMPHASIS_CHARS).strip().casefold()
+    return _strip_emphasis(value).casefold()
 
 
 def _quoted(tokens: tuple[str, ...]) -> str:

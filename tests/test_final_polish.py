@@ -280,6 +280,42 @@ def test_accepts_fix_now_with_closed_status(tmp_path: Path, status: str) -> None
     assert validate_final_polish(session, project).ok
 
 
+def test_rejects_emphasized_id_with_unresolved_fix_now(tmp_path: Path) -> None:
+    project, head = _project(tmp_path)
+    session = tmp_path / "session"
+    _evidence(session, reviewed=head, output=head)
+    (session / "_review_debt.md").write_text(
+        "| ID | Decision | Evidence / Ticket | Status |\n"
+        "|---|---|---|---|\n"
+        "| **Q-006** | fix now | n/a | in progress |\n"
+    )
+
+    check = validate_final_polish(session, project)
+
+    assert not check.ok
+    assert any(
+        "Q-006 selected fix now but its status is not one of" in error
+        for error in check.errors
+    )
+
+
+def test_rejects_headerless_ledger_with_unresolved_fix_now(tmp_path: Path) -> None:
+    project, head = _project(tmp_path)
+    session = tmp_path / "session"
+    _evidence(session, reviewed=head, output=head)
+    (session / "_review_debt.md").write_text(
+        "| Q-006 | fix now | n/a | in progress |\n"
+    )
+
+    check = validate_final_polish(session, project)
+
+    assert not check.ok
+    assert any(
+        "Q-006 appears before a recognized table header" in error
+        for error in check.errors
+    )
+
+
 def test_rejects_parenthetical_result_naming_expected(tmp_path: Path) -> None:
     project, head = _project(tmp_path)
     session = tmp_path / "session"
