@@ -78,8 +78,6 @@ from . import (
 from .installer import resolve_asset_source_dir
 
 
-# Read-only phases (worktree_readonly) must not touch tracked files or move HEAD;
-# the {mutation} delta comes from describe_worktree_mutation and names no project.
 _WORKTREE_READONLY_REJECTION = (
     "Phase '{phase}' is read-only but the working directory changed during the "
     "iteration ({mutation}); read-only phases must not modify tracked files or "
@@ -87,8 +85,7 @@ _WORKTREE_READONLY_REJECTION = (
 )
 
 
-# A post-run snapshot that could not run mutated nothing; the guard just cannot
-# prove the dir is unchanged, so the remediation is to repair git, not to revert.
+# A failed snapshot proves nothing was mutated; the remedy is to repair git, not revert.
 _WORKTREE_UNVERIFIABLE_REJECTION = (
     "Phase '{phase}' is read-only, but the post-run git snapshot failed, so the "
     "read-only guard cannot verify the working directory is unchanged. Nothing was "
@@ -99,15 +96,8 @@ _WORKTREE_UNVERIFIABLE_REJECTION = (
 
 @dataclass(frozen=True)
 class ReadonlyRejection:
-    """A read-only guard rejection paired with the reason to audit it under.
-
-    A real detected tracked-worktree change audits as WORKTREE_MUTATED; a post-run
-    snapshot that could not run (git broke on a dir that was a valid repo) mutated
-    nothing but left the guard unable to verify, so it audits as WORKTREE_UNVERIFIABLE
-    — distinct so history filtered by reason never misattributes an unverifiable run
-    as a mutation. Both block with the same human_decision routing, but each surfaces
-    its own remediation text: revert the tracked change vs. repair git and rerun.
-    """
+    """Guard rejection with its audit reason: WORKTREE_MUTATED for a detected
+    tracked change, WORKTREE_UNVERIFIABLE when the post-run snapshot failed."""
 
     reason: RejectionReason
     message: str
@@ -118,15 +108,9 @@ def _detect_readonly_worktree_mutation(
     worktree_before: WorktreeSnapshot | None,
     working_dir: Path | None,
 ) -> ReadonlyRejection | None:
-    """Reject a read-only phase that mutated, or could not be verified as unchanged.
-
-    Returns None (guard inert) when the phase is not read-only or no baseline was
-    captured — a missing baseline means the working dir was never a git repo, so
-    there is nothing to guard. A valid baseline proves the dir was a repo, so a
-    failed post-run snapshot is a guard failure (git broke), not "no mutation": it
-    is rejected as WORKTREE_UNVERIFIABLE rather than allowed to advance unguarded. A
-    detected tracked change is rejected as WORKTREE_MUTATED.
-    """
+    """None when the phase is not read-only or no baseline exists (not a git repo).
+    A baseline proves the dir was a repo, so a failed post-run snapshot rejects as
+    unverifiable instead of advancing unguarded."""
     if worktree_before is None or working_dir is None:
         return None
     config = get_phase_config(source_phase)
@@ -193,8 +177,7 @@ def apply_signal(
                 needs="investigation",
             )
 
-    # A read-only phase that mutated tracked worktree state is rejected before the
-    # workflow event runs, so an otherwise-valid transition never advances _overview.
+    # Guard runs before the workflow event so a mutated read-only phase never advances.
     rejection = _detect_readonly_worktree_mutation(
         source_phase, worktree_before, working_dir
     )
@@ -650,11 +633,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def _snapshot_readonly_worktree(
     phase: str | None, working_dir: Path, logger: logging.Logger
 ) -> WorktreeSnapshot | None:
-    """Baseline a read-only phase's worktree before the provider runs.
-
-    None for non-read-only phases (guard inert) and for non-git working dirs; the
-    latter logs a notice so an unguardable read-only run is visible in the log.
-    """
+    """None for non-read-only phases and non-git dirs; the latter is logged."""
     config = get_phase_config(phase)
     if config is None or not config.worktree_readonly:
         return None
@@ -667,20 +646,13 @@ def _snapshot_readonly_worktree(
 
 
 def _effort_label(effort: str | None) -> str:
-    """Render a profile's optional reasoning effort for a one-line log entry."""
     return effort or "default"
 
 
 def _escalation_flow_log_line(
     phase: Phase, context: EscalationContext, iteration: int
 ) -> str:
-    """Render the single flow-log line recording a profile-ladder escalation.
-
-    Shaped like apply_workflow_event's transition line: "- <iteration_timestamp>
-    Escalation: <phase> <base rung> -> <escalated rung>; blocker: <reason>", where
-    a rung is "profile (model/effort)". Built once and reused for both the log call
-    and the OverviewTransition flow_log_entry so the two can never drift.
-    """
+    """Built once for both the log call and the overview entry so they never drift."""
     base = context.base
     escalated = context.target
     return (
@@ -702,42 +674,16 @@ def _apply_escalation(
     *,
     once: bool,
 ) -> EscalationContext | None:
-    """Escalate a blocked phase one profile rung, or return None to fall through.
+    """Escalate a blocked phase one rung; return the context to replay, or None to
+    fall through to normal blocked handling. Never raises (runs outside
+    run_ai_with_retry's guard).
 
-    Owns every escalation side effect - audit row, overview transition, log line,
-    notification - so the loop's BLOCKED branch stays linear, mirroring
-    _persist_workflow_rejection and _signal_for_outcome. Returns the ready-to-run
-    EscalationContext when the iteration was escalated (the caller stashes it as
-    pending_escalation and continues), or None when escalation was skipped or its
-    overview write failed (the caller falls through to the existing blocked
-    handling).
-
-    The Phase to escalate is derived from `phase`, the source phase captured before
-    the run; an unknown/absent phase is not escalatable and falls through. Never
-    raises: it runs in the loop's BLOCKED branch outside run_ai_with_retry's guard,
-    so a resolution error from plan_escalation is caught and degraded to a logged
-    fall-through, and a failed overview write degrades the same way (both return None
-    so the caller runs the normal blocked handling).
-
-    The overview transition is persisted first; the budget-counted audit row and
-    the notification follow only once the write commits, so a failed write never
-    spends the one-shot escalation budget. Once the write commits the escalation is
-    in effect, so a failure in those post-commit side effects (audit row, log line,
-    notification) is caught, logged loudly, and `context` is still returned — the
-    committed escalation must proceed even if its audit row or notification go
-    missing; returning None there would desync the run from the committed overview.
-
-    Known accepted weakening: the one-shot budget is counted from the audit rows
-    (count_escalations_since_phase_entry), so a dropped post-commit audit row leaves
-    the spent attempt uncounted, letting a later `environment` block in the same
-    phase entry re-escalate. This is bounded — it re-escalates to the same rung and
-    is still capped by the phase-run limit — and strictly better than the prior
-    behavior, where an uncaught raise after the overview committed crashed the loop.
-    A dropped-row-proof budget needs the audit row and overview transition to be one
-    durable unit; that is a persist+recover pending-escalation redesign (a follow-up
-    hardening, not yet done). Do not reorder the two writes to audit-first: audit-first
-    re-opens the failure where a failed overview write burns the one-shot budget
-    without ever replaying the iteration.
+    Overview transition first, audit row and notification after: a failed overview
+    write must not spend the one-shot budget, and once it commits the escalation
+    stands even if a post-commit side effect fails. Known weakening: the budget is
+    counted from audit rows, so a dropped row lets the same phase entry re-escalate
+    (bounded by the phase-run limit). Do not reorder to audit-first — that burns the
+    budget without replaying when the overview write fails.
     """
     try:
         phase_enum = Phase((phase or "").lower())
@@ -804,9 +750,7 @@ def _apply_escalation(
             config.telegram_chat_id,
         )
     except Exception:
-        # The overview transition already committed, so the escalation is in
-        # effect; a missing audit row / notification is acceptable but must not
-        # crash the loop or desync the run from the committed overview.
+        # Overview already committed: the escalation stands without its audit row.
         logger.exception(
             "Escalation committed but a post-commit side effect failed; "
             "proceeding with the escalated run"
@@ -887,8 +831,7 @@ def run_orchestrator(args: argparse.Namespace) -> None:
 
     try:
         while True:
-            # Consume the previous iteration's planned escalation for exactly this
-            # run and clear it, so a normal iteration never inherits a stale one.
+            # Consumed once; a normal iteration never inherits a stale escalation.
             escalation = pending_escalation
             pending_escalation = None
 
@@ -932,8 +875,6 @@ def run_orchestrator(args: argparse.Namespace) -> None:
                 logger.info(f"Previous signal: {previous_signal}")
             logger.info("Cleared signal file")
 
-            # Resolve the working dir once: reused for the read-only baseline
-            # snapshot below and for apply_signal (final-polish) after the run.
             working_dir = resolve_working_dir(
                 config, session_path, phase or Phase.INIT.value
             )

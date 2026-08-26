@@ -137,10 +137,8 @@ class ExecutionProfileSource(Enum):
     through to a ProfileSource-backed member) into one closed vocabulary a single
     log line or session-context field can switch on.
 
-    ESCALATION is the one member with no resolution-time counterpart: it is
-    stamped after the fact by escalate_execution_target when an iteration is
-    replayed one rung up the canonical ladder, and so is deliberately absent from
-    _WORKFLOW_SOURCE_MAP.
+    ESCALATION is stamped after resolution by escalate_execution_target, hence
+    absent from _WORKFLOW_SOURCE_MAP.
     """
 
     PLAN_PHASE_EXPLICIT = "plan_phase_explicit"
@@ -280,13 +278,8 @@ def _resolve_path_and_timeout(
 
 
 def next_profile(name: str) -> str | None:
-    """Return the next rung up the canonical profile ladder, or None.
-
-    The ladder is CANONICAL_PROFILES (light -> standard -> strong -> max).
-    Returns None at the top rung (`max`) and for any name outside the ladder
-    (e.g. a custom profile), so a caller treats "already strongest" and "not a
-    ladder rung" identically: there is nowhere further to escalate.
-    """
+    """Next rung of CANONICAL_PROFILES; None at `max` or for a non-ladder name
+    (nowhere to escalate either way)."""
     try:
         index = CANONICAL_PROFILES.index(name)
     except ValueError:
@@ -299,19 +292,9 @@ def next_profile(name: str) -> str | None:
 def escalate_execution_target(
     target: ExecutionTarget, config: GlobalConfig
 ) -> ExecutionTarget | None:
-    """Return `target` bumped one rung up the canonical ladder, or None.
-
-    Escalation replays the same iteration on a stronger profile after a failure.
-    The next rung comes from next_profile(target.profile); its model/effort come
-    from the same provider's table. Every other field - provider, executable,
-    timeout, workflow_phase, plan_phase - is carried over verbatim, so the retry
-    differs only in model/effort. `source` becomes ESCALATION and `escalated_from`
-    records the rung stepped up from.
-
-    Returns None (never raises) when there is no next rung - `target` is already
-    at `max` or on a non-canonical profile - or when the selected provider does
-    not define the next rung. The original `target` is left unchanged (frozen).
-    """
+    """`target` one rung up: only profile/model/effort change, everything else is
+    carried over. None (never raises) when there is no next rung or the provider
+    lacks it."""
     next_name = next_profile(target.profile)
     if next_name is None:
         return None

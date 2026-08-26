@@ -213,13 +213,8 @@ def count_epoch_source_phase_runs_including_current(
 def count_escalations_since_phase_entry(
     session_path: Path, phase: Phase
 ) -> EpochPhaseRunCount:
-    """Escalations recorded since the last accepted entry into `phase`.
-
-    The window opens at the last accepted+mutated transition whose target is
-    `phase` (the most recent entry into it), or at the start of scoped history when
-    there is no such transition. Recovery-anchor errors propagate as issues,
-    matching count_epoch_source_phase_runs_including_current.
-    """
+    """Escalations since the last accepted transition into `phase` (or the start of
+    scoped history); anchor errors propagate as issues."""
     history, anchor_errors = scoped_history(session_path)
     if anchor_errors:
         return EpochPhaseRunCount(
@@ -241,11 +236,7 @@ def count_escalations_since_phase_entry(
 
 
 def _last_phase_entry_index(history: list[HistoryRecord], target_phase: str) -> int:
-    """Index of the last accepted transition into `target_phase`, or -1 if none.
-
-    -1 makes the caller's `history[entry_index + 1:]` slice span the whole scoped
-    history — the "no entry transition" case.
-    """
+    """-1 when none, so `history[index + 1:]` spans the whole scoped history."""
     for index in range(len(history) - 1, -1, -1):
         record = history[index]
         if _is_accepted_transition(record) and record.target_phase == target_phase:
@@ -264,7 +255,6 @@ def accepted_transitions(
 
 
 def _is_accepted_transition(record: HistoryRecord) -> bool:
-    """The single definition of an accepted phase transition: accepted and mutated."""
     return record.accepted is True and record.mutated is True
 
 

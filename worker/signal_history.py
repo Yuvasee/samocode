@@ -109,9 +109,8 @@ class HistoryRecord:
             "needs": self.needs,
             "for": self.waiting_for,
         }
-        # Emit escalation keys only when set, so legacy and non-escalation rows
-        # keep byte-identical JSON (the recovery-anchor SHA/byte accounting relies
-        # on unchanged serialization of pre-existing rows).
+        # Only when set: pre-existing rows must stay byte-identical for the
+        # recovery-anchor SHA accounting.
         for key, value in (
             ("escalated_from_profile", self.escalated_from_profile),
             ("escalated_to_profile", self.escalated_to_profile),
@@ -160,13 +159,8 @@ def record_escalation(
     escalated: ExecutionTarget,
     reason: str,
 ) -> HistoryRecord:
-    """Record one profile-ladder escalation of `phase`'s current iteration.
-
-    Audit-only: `source_phase=None` keeps it out of source-phase counting and
-    `accepted=None`/`mutated=False` keep it out of accepted_transitions, so it is
-    visible only to `count_escalations_since_phase_entry`. The profile/model delta
-    comes straight from the base and escalated targets.
-    """
+    """Audit-only row: `source_phase=None` keeps it out of run counting and
+    `accepted=None`/`mutated=False` out of accepted_transitions."""
     record = HistoryRecord(
         timestamp=_now(),
         iteration=iteration,

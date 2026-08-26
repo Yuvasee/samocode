@@ -85,8 +85,7 @@ def test_post_quality_pipeline_preserves_final_hygiene_boundary() -> None:
         assert "Result: PASS | FAIL" in content
         assert "[TIMESTAMP_FILE]-test-report.md" in content
 
-    # A worktree mutation is a guard violation (`workflow_error`), never a route to
-    # quality — the old "re-enter quality on mutation" clause must be gone.
+    # Mutation is a guard violation, never a route back to quality.
     for content in (testing_agent, testing_skill):
         assert "workflow_error" in content
         assert "re-enter quality" not in content

@@ -121,16 +121,9 @@ class IterationPlan:
 
 @dataclass(frozen=True)
 class EscalationContext:
-    """One escalated replay of a testing iteration that just failed.
-
-    The orchestrator builds this after a `blocked` testing signal when the attempt
-    budget still allows another try on a stronger profile. `base` is the target
-    that failed; `target` is that target bumped one rung up the canonical ladder
-    (`escalate_execution_target`). The runner routes the iteration through `target`
-    and injects the recovery contract into session context, so the promoted child
-    sees why it was escalated and what a valid recovery looks like. The runner is a
-    pure consumer: budget and next-rung decisions belong to the orchestrator.
-    """
+    """One escalated replay of a failed testing iteration: `base` failed, `target`
+    is one rung up. The orchestrator decides budget and rung; the runner only
+    routes and injects the recovery contract."""
 
     base: ExecutionTarget
     target: ExecutionTarget
@@ -155,9 +148,8 @@ def resolve_iteration_plan(
     legacy target), the frozen session context, and the full provider argv built
     through the adapter registry.
 
-    When `escalation` is provided, the iteration replays a failed testing attempt
-    on a stronger profile: `escalation.target` is used verbatim instead of
-    re-resolving, and its recovery contract is injected into session context.
+    With `escalation`, `escalation.target` is used verbatim and its recovery
+    contract is injected into session context.
 
     Raises:
         SessionStructureError: deprecated nested _samocode structure.
@@ -244,9 +236,8 @@ def run_ai_with_retry(
     """Execute configured AI CLI with retry logic for transient failures.
 
     Resolves the iteration plan ONCE, then replays the same plan on every attempt
-    so a retry never re-resolves the provider, model, or plan phase. When
-    `escalation` is provided the resolved plan is pinned to the escalated target,
-    so every retry within this iteration also runs on the promoted profile.
+    so a retry never re-resolves the provider, model, or plan phase; an
+    `escalation` pins every retry to the escalated target.
     """
     plan = resolve_iteration_plan(
         workflow_prompt_path,
@@ -495,12 +486,8 @@ def extract_total_iterations(session_path: Path) -> int:
 
 
 def latest_test_report(session_path: Path) -> Path | None:
-    """Return the newest `*-test-report.md` in the session dir, or None.
-
-    Report files are named `[TIMESTAMP_FILE]-test-report.md`, where TIMESTAMP_FILE
-    is `MM-DD-HH:MM`. That prefix sorts chronologically as text within a run, so a
-    descending name sort surfaces the most recent report without reading mtimes.
-    """
+    """Newest `*-test-report.md`; names start with `MM-DD-HH:MM`, so a descending
+    name sort is chronological."""
     reports = sorted(
         session_path.glob("*-test-report.md"), key=lambda p: p.name, reverse=True
     )
@@ -562,9 +549,8 @@ def build_session_context(
 
     Includes workflow.md (common context for all phases), the immutable execution
     target, and session-specific details. When `target` carries a plan phase, that
-    active plan selection is injected as an additional implementation contract.
-    When `escalation` is set, an `## Escalated Testing Attempt` section states the
-    promotion and the recovery contract.
+    active plan selection is injected as an additional implementation contract;
+    an `escalation` adds the `## Escalated Testing Attempt` section.
     """
     # Start with workflow.md - common context for all phases
     lines = [workflow_prompt_path.read_text().strip()]
@@ -683,12 +669,6 @@ _RECOVERY_CONTRACT: tuple[str, ...] = (
 
 
 def _build_escalation_section(escalation: EscalationContext) -> list[str]:
-    """Escalated-attempt context: why this iteration was promoted, and how to recover.
-
-    Injected only when the orchestrator replays a failed testing iteration one rung
-    up the profile ladder. Reports the base vs escalated target so the stronger
-    child sees the promotion, then states the generic recovery contract.
-    """
     base = escalation.base
     target = escalation.target
     lines = [

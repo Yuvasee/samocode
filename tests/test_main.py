@@ -673,9 +673,7 @@ class TestDetectReadonlyWorktreeMutation:
         assert main._detect_readonly_worktree_mutation("testing", None, project) is None
 
     def test_postrun_snapshot_failure_is_unverifiable(self, tmp_path: Path) -> None:
-        # A valid baseline proves the dir was a git repo; a post-run snapshot that
-        # fails (git broke / repo gone) verified nothing, so it audits as
-        # unverifiable rather than as a mutation it never detected.
+        # A valid baseline plus a failed post-run snapshot is unverifiable, not a mutation.
         plain = tmp_path / "plain"
         plain.mkdir()
         before = WorktreeSnapshot(head="deadbeef", tracked_status="")
@@ -685,8 +683,6 @@ class TestDetectReadonlyWorktreeMutation:
         assert rejection is not None
         assert rejection.reason is RejectionReason.WORKTREE_UNVERIFIABLE
         assert "post-run git snapshot failed" in rejection.message
-        # An unverifiable run mutated nothing; remediation is to repair git, not
-        # to revert a change the guard never actually detected.
         assert "healthy git checkout" in rejection.message
         assert "changed during" not in rejection.message
         assert "Revert the change" not in rejection.message
@@ -777,9 +773,7 @@ class TestWorktreeGuardOrchestrator:
         session = sessions / "task"
         session.mkdir()
         (session / "_overview.md").write_text(_overview_text("testing"))
-        # Preflight requires accepted implementation->testing provenance as the
-        # latest accepted transition for the testing phase; seed exactly that so
-        # the loop reaches the provider stub.
+        # Preflight needs implementation->testing as the latest accepted transition.
         (session / "_signal_history.jsonl").write_text(
             json.dumps(
                 {
@@ -1262,8 +1256,7 @@ class TestEscalationHelpers:
             "testing", signal, session, "task", 3, config, _logger(), once=False
         )
 
-        # The overview transition already committed, so the escalation is in effect:
-        # a post-commit audit failure must not propagate and must still return context.
+        # Overview already committed: a post-commit audit failure still returns context.
         assert isinstance(result, EscalationContext)
         assert _overview_phase(session) is Phase.TESTING
 

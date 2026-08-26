@@ -12,9 +12,8 @@ SIGNAL_FILENAME = "_signal.json"
 OVERVIEW_FILENAME = "_overview.md"
 
 
-# `needs` vocabularies for escalation policies. A trigger need must be in
-# BLOCKED_NEEDS and absent from WORKER_NEEDS; the intentional overlap on
-# "human_decision" makes it non-escalating (the worker can synthesize it itself).
+# Escalation triggers must be in BLOCKED_NEEDS and not in WORKER_NEEDS;
+# "human_decision" is in both on purpose, so it never escalates.
 BLOCKED_NEEDS = ("human_decision", "clarification", "error_resolution", "environment")
 WORKER_NEEDS = ("investigation", "human_decision")
 
@@ -25,13 +24,8 @@ _MAX_OVERVIEW_REASON = 200
 def sanitize_overview_reason(
     reason: str | None, *, max_length: int = _MAX_OVERVIEW_REASON
 ) -> str:
-    """Flatten a provider-supplied reason into one bounded line safe for _overview.md.
-
-    A reason lands verbatim in the persisted flow log; without this a newline could
-    forge a second `Phase:` field or a `## Flow Log` heading and corrupt the control
-    file. Collapse whitespace/control chars to single spaces, defang a leading
-    Markdown-structural token, and cap the length.
-    """
+    """One bounded line for the flow log: a raw newline could forge a second
+    `Phase:` field or heading, and a leading `#`/`>` could forge structure."""
     if not reason:
         return ""
     printable = "".join(ch if ch.isprintable() else " " for ch in reason)

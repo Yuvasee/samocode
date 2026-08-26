@@ -40,11 +40,8 @@ class ApprovalGate:
 
 @dataclass(frozen=True)
 class EscalationPolicy:
-    """Escalate a blocked phase to the next profile rung after a trigger need.
-
-    `trigger_needs` are the `Signal.needs` values that arm the escalation; each
-    must be a human-facing BLOCKED_NEEDS value that is not worker-resolvable.
-    """
+    """Escalate a blocked phase one rung when `Signal.needs` is in `trigger_needs`
+    (BLOCKED_NEEDS values the worker cannot resolve itself)."""
 
     trigger_needs: frozenset[str]
     max_attempts: int

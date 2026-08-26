@@ -1,18 +1,6 @@
-"""Pure escalation decision service for a just-processed phase signal.
-
-Answers one question with no side effects: should the orchestrator replay this
-iteration one rung up the profile ladder, and with what context? The loop in
-worker/cli.py owns the effects (record_escalation, notify_escalation, and the
-escalated re-run); this module only decides.
-
-Composition over three earlier primitives:
-- count_escalations_since_phase_entry -> attempt budget for this phase entry
-- resolve_execution_target            -> the base target the iteration just ran
-- escalate_execution_target           -> that target bumped one rung, or None
-
-Skip checks run cheap-first: the pure policy/status/needs/once/legacy gates (no
-IO) precede the budget history read, which precedes base resolution and the
-next-rung lookup. The first failing gate wins and names itself in the reason.
+"""Pure escalation decision: replay this iteration one rung up, and with what
+context? Side effects live in worker/cli.py. Gates run cheap-first (no-IO checks,
+then history, then target resolution); the first failing gate names itself.
 """
 
 from __future__ import annotations
@@ -57,17 +45,9 @@ def plan_escalation(
     *,
     once: bool,
 ) -> EscalationDecision | EscalationSkip:
-    """Decide whether the current `phase` iteration should be escalated.
-
-    Pure: reads session history and the global config, writes nothing. Returns
-    an EscalationDecision carrying a ready-to-run EscalationContext, or an
-    EscalationSkip whose reason names the first gate that stopped escalation.
-
-    Base resolution re-runs resolve_execution_target for `phase`; it is
-    deterministic (the iteration that just ran already resolved this exact
-    target), so a genuine misconfiguration still raises rather than skips - only
-    a `None` next rung is treated as "nowhere to escalate".
-    """
+    """EscalationDecision with a ready context, or EscalationSkip naming the first
+    failing gate. Base re-resolution is deterministic, so a misconfiguration raises
+    rather than skips; only a missing next rung skips."""
     phase_config = get_phase_config(phase.value)
     policy = phase_config.escalation if phase_config is not None else None
     if policy is None:
@@ -96,16 +76,15 @@ def plan_escalation(
         return EscalationSkip(
             "cannot count escalations for this phase entry: " + "; ".join(budget.errors)
         )
-    assert budget.count is not None  # budget.ok guarantees this
+    assert budget.count is not None
     if budget.count >= policy.max_attempts:
         return EscalationSkip(
             f"escalation budget exhausted for phase '{phase.value}': "
             f"{budget.count} of {policy.max_attempts} attempt(s) already used"
         )
 
-    # The replay is charged as the next phase run; scheduling it when no run
-    # capacity remains would only get it rejected before its signal can advance
-    # the phase, silently failing the feature at its boundary.
+    # The replay is the next phase run; without capacity it would be rejected before
+    # its signal could advance the phase.
     replay_run = count_epoch_source_phase_runs_including_current(
         session_path, phase.value
     )
