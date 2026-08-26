@@ -9,6 +9,14 @@ from .lifecycle import validate_final_polish_lifecycle
 
 _FULL_SHA = re.compile(r"^[0-9a-fA-F]{40}$")
 _DEBT_ID = re.compile(r"^(?:CL|Q)-\d+$", re.IGNORECASE)
+
+# Closed vocabularies. Membership tests and the "(got ...)" messages both read
+# from these tuples, so accepted tokens live in exactly one place.
+_CLARITY_RESULTS: tuple[str, ...] = ("clean", "findings")
+_DEBT_DECISIONS: tuple[str, ...] = ("fix now", "defer", "reject")
+_EMPHASIS_CHARS = "*_`"
+
+
 @dataclass(frozen=True)
 class FinalPolishCheck:
     errors: tuple[str, ...]
@@ -66,17 +74,32 @@ def validate_final_polish_evidence(
     tested = _sha(regression, "Tested HEAD", "regression", errors)
 
     if clarity:
-        if clarity["Disposition"].lower() != "settled":
-            errors.append("Latest Code Clarity report is not settled")
-        if clarity["Result"].lower() not in {"clean", "findings"}:
-            errors.append("Latest Code Clarity report has an invalid Result")
-    if hygiene and hygiene["Safety check"].upper() != "PASS":
-        errors.append("Latest Comment Hygiene safety check did not pass")
+        result_raw = clarity["Result"]
+        if _normalize_token(result_raw) not in _CLARITY_RESULTS:
+            errors.append(
+                _mismatch(
+                    f"Result must be exactly {_quoted(_CLARITY_RESULTS)}", result_raw
+                )
+            )
+        disposition_raw = clarity["Disposition"]
+        if _normalize_token(disposition_raw) != "settled":
+            errors.append(_mismatch("Disposition must be `settled`", disposition_raw))
+    if hygiene:
+        safety_raw = hygiene["Safety check"]
+        if _normalize_token(safety_raw) != "pass":
+            errors.append(_mismatch("Safety check must be `pass`", safety_raw))
     if regression:
-        if regression["Run"] != "2nd (post-quality)":
-            errors.append("Latest test report is not the post-quality regression run")
-        if regression["Result"].upper() != "PASS":
-            errors.append("Latest post-quality regression did not pass")
+        run_raw = regression["Run"]
+        if _normalize_token(run_raw) != "2nd (post-quality)":
+            errors.append(_mismatch("Run must be `2nd (post-quality)`", run_raw))
+        regression_result_raw = regression["Result"]
+        if _normalize_token(regression_result_raw) != "pass":
+            errors.append(
+                _mismatch(
+                    "post-quality regression Result must be `pass`",
+                    regression_result_raw,
+                )
+            )
 
     _require_equal(
         reviewed, hygiene_input, "Code Clarity HEAD != Hygiene input", errors
@@ -176,14 +199,12 @@ def _validate_review_debt(session_path: Path, errors: list[str]) -> None:
     columns: dict[str, int] | None = None
     for line in lines:
         cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
-        normalized_cells = [cell.lower() for cell in cells]
+        normalized_cells = [_normalize_token(cell) for cell in cells]
         if "id" in normalized_cells and "decision" in normalized_cells:
             columns = {
                 name: index
                 for index, name in enumerate(normalized_cells)
-                if name in {"id", "decision", "status"}
-                or name.startswith("evidence")
-                or name.startswith("ticket")
+                if name in {"id", "decision", "status"} or _is_evidence_header(name)
             }
             continue
         if not cells or not _DEBT_ID.fullmatch(cells[0]):
@@ -193,14 +214,11 @@ def _validate_review_debt(session_path: Path, errors: list[str]) -> None:
                 errors.append(f"Review debt row {cells[0]} is still open or undecided")
             continue
 
-        decision = _debt_cell(cells, columns.get("decision")).lower()
-        status = _debt_cell(cells, columns.get("status")).lower()
+        decision_raw = _debt_cell(cells, columns.get("decision"))
+        decision = _normalize_token(decision_raw)
+        status = _normalize_token(_debt_cell(cells, columns.get("status")))
         evidence_index = next(
-            (
-                index
-                for name, index in columns.items()
-                if name.startswith("evidence") or name.startswith("ticket")
-            ),
+            (index for name, index in columns.items() if _is_evidence_header(name)),
             None,
         )
         evidence = _debt_cell(cells, evidence_index)
@@ -211,13 +229,43 @@ def _validate_review_debt(session_path: Path, errors: list[str]) -> None:
                 f"Review debt row {cells[0]} selected fix now but is not closed"
             )
         elif decision in {"defer", "reject"} and not evidence:
+            if evidence_index is None:
+                errors.append(
+                    "ledger needs a column whose header contains `Evidence` or `Ticket`"
+                )
+            else:
+                errors.append(
+                    f"Review debt row {cells[0]} decision `{decision}` lacks evidence"
+                )
+        elif decision not in _DEBT_DECISIONS:
             errors.append(
-                f"Review debt row {cells[0]} decision '{decision}' lacks evidence"
+                _mismatch(
+                    f"Review debt row {cells[0]} decision must be one of "
+                    f"{_quoted(_DEBT_DECISIONS)}",
+                    decision_raw,
+                )
             )
-        elif decision not in {"fix now", "defer", "reject"}:
-            errors.append(
-                f"Review debt row {cells[0]} has invalid decision '{decision}'"
-            )
+
+
+def _normalize_token(value: str) -> str:
+    # Strips surrounding emphasis/backticks/whitespace only, never parenthetical
+    # suffixes, so `reject (not promoted)` stays outside the closed vocabulary.
+    return value.strip().strip(_EMPHASIS_CHARS).strip().casefold()
+
+
+def _quoted(tokens: tuple[str, ...]) -> str:
+    quoted = [f"`{token}`" for token in tokens]
+    if len(quoted) < 2:
+        return "".join(quoted)
+    return f"{', '.join(quoted[:-1])} or {quoted[-1]}"
+
+
+def _mismatch(expectation: str, raw: str) -> str:
+    return f"{expectation} (got `{raw}`)"
+
+
+def _is_evidence_header(header: str) -> bool:
+    return "evidence" in header or "ticket" in header
 
 
 def _debt_cell(cells: list[str], index: int | None) -> str:

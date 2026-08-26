@@ -144,9 +144,9 @@ def test_rejects_dirty_project_worktree(tmp_path: Path) -> None:
 @pytest.mark.parametrize(
     ("field", "value", "expected"),
     [
-        ("disposition", "pending", "not settled"),
-        ("safety", "FAIL", "safety check did not pass"),
-        ("regression_result", "FAIL", "regression did not pass"),
+        ("disposition", "pending", "Disposition must be `settled`"),
+        ("safety", "FAIL", "Safety check must be `pass`"),
+        ("regression_result", "FAIL", "regression Result must be `pass`"),
     ],
 )
 def test_rejects_failed_polish_result(
@@ -213,3 +213,101 @@ def test_latest_artifact_must_be_well_formed(tmp_path: Path) -> None:
     check = validate_final_polish(session, project)
 
     assert any("exactly one" in error for error in check.errors)
+
+
+def test_accepts_emphasis_and_case_drift_in_metadata(tmp_path: Path) -> None:
+    project, head = _project(tmp_path)
+    session = tmp_path / "session"
+    _evidence(session, reviewed=head, output=head)
+    (session / "01-code-clarity.md").write_text(
+        f"Reviewed HEAD: {head}\nResult: CLEAN\nDisposition: **settled**\n"
+    )
+    (session / "02-comment-hygiene.md").write_text(
+        f"Input HEAD: {head}\nOutput HEAD: {head}\nSafety check: `pass`\n"
+    )
+    (session / "03-test-report.md").write_text(
+        f"Run: **2nd (post-quality)**\nResult: _Pass_\nTested HEAD: {head}\n"
+    )
+
+    assert validate_final_polish(session, project).ok
+
+
+def test_accepts_emphasis_and_case_drift_in_debt(tmp_path: Path) -> None:
+    project, head = _project(tmp_path)
+    session = tmp_path / "session"
+    _evidence(session, reviewed=head, output=head)
+    (session / "_review_debt.md").write_text(
+        "| ID | Decision | Evidence / Ticket | Status |\n"
+        "|---|---|---|---|\n"
+        "| CL-001 | **Fix now** | n/a | Closed |\n"
+        "| Q-002 | Reject | out of scope, superseded | open |\n"
+    )
+
+    assert validate_final_polish(session, project).ok
+
+
+def test_rejects_parenthetical_result_naming_expected(tmp_path: Path) -> None:
+    project, head = _project(tmp_path)
+    session = tmp_path / "session"
+    _evidence(session, reviewed=head, output=head)
+    (session / "01-code-clarity.md").write_text(
+        f"Reviewed HEAD: {head}\n"
+        "Result: findings (1 new, low impact)\nDisposition: settled\n"
+    )
+
+    check = validate_final_polish(session, project)
+
+    assert not check.ok
+    assert any(
+        "Result must be exactly" in error and "findings (1 new, low impact)" in error
+        for error in check.errors
+    )
+
+
+def test_rejects_parenthetical_decision_naming_expected(tmp_path: Path) -> None:
+    project, head = _project(tmp_path)
+    session = tmp_path / "session"
+    _evidence(session, reviewed=head, output=head)
+    (session / "_review_debt.md").write_text(
+        "| ID | Decision | Evidence / Ticket | Status |\n"
+        "|---|---|---|---|\n"
+        "| CL-003 | reject (not promoted) | some evidence | closed |\n"
+    )
+
+    check = validate_final_polish(session, project)
+
+    assert not check.ok
+    assert any(
+        "decision must be one of" in error and "reject (not promoted)" in error
+        for error in check.errors
+    )
+
+
+@pytest.mark.parametrize("header", ["Evidence / Ticket", "Rationale / Evidence"])
+def test_evidence_column_matches_header_variants(tmp_path: Path, header: str) -> None:
+    project, head = _project(tmp_path)
+    session = tmp_path / "session"
+    _evidence(session, reviewed=head, output=head)
+    (session / "_review_debt.md").write_text(
+        f"| ID | Decision | {header} | Status |\n"
+        "|---|---|---|---|\n"
+        "| Q-004 | defer | owned by platform team | open |\n"
+    )
+
+    assert validate_final_polish(session, project).ok
+
+
+def test_missing_evidence_column_names_required_header(tmp_path: Path) -> None:
+    project, head = _project(tmp_path)
+    session = tmp_path / "session"
+    _evidence(session, reviewed=head, output=head)
+    (session / "_review_debt.md").write_text(
+        "| ID | Decision | Status |\n|---|---|---|\n| Q-005 | defer | open |\n"
+    )
+
+    check = validate_final_polish(session, project)
+
+    assert not check.ok
+    assert any(
+        "header contains `Evidence` or `Ticket`" in error for error in check.errors
+    )
