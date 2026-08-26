@@ -188,6 +188,16 @@ Planning assigns the canonical profiles only from the work and risk of the phase
 | `strong` | Architecture, persistence/schema/data changes, concurrency, retries/idempotency, security/auth, public contracts, recovery, or other cross-cutting work. |
 | `max` | Rare work where high uncertainty, large blast radius, and difficult or costly recovery all coincide. If only one or two apply, use `strong`; split an oversized phase first. |
 
+**Documentation authoring is `max`-only.** A phase that authors or substantively
+rewrites documentation content — README, `ARCHITECTURE.md`, `workflow.md`, `CLAUDE.md`,
+`CONTRIBUTING.md`, `CHANGELOG`, or files under `docs/` — must be split into its own phase
+carrying `**Profile:** \`max\``, even when the edit looks mechanical. This is a fixed
+override of the "max is rare" guidance, not a risk judgement. It does not apply to
+reading documentation for context, or to source comments and docstrings, which keep
+whatever profile their surrounding work warrants. `worker/plan_resolver.py` enforces this
+in the plan contract and rejects a pending documentation-authoring phase whose profile is
+absent or not `max` before any model is invoked.
+
 The planner must not inspect global/provider configuration, model catalogs, effort
 levels, token usage, or prices to make this choice, and must not put a concrete
 provider/model/effort into the plan. Runtime routing translates the semantic label for

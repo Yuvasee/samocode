@@ -270,6 +270,25 @@ The `testing` phase has two automatic safeguards, both fully audited:
   any tracked file a build touched (`git checkout -- <path>`) before signaling. A non-git
   working directory skips the guard with a notice.
 
+### Check the final-polish gate
+
+Any agent or human can re-run the exact `pr-readiness -> done` final-polish gate as a
+read-only diagnostic, without touching workflow state:
+
+```bash
+samocode check final-polish \
+  --config ~/project/.samocode \
+  --session my-task
+```
+
+It resolves the project + session, re-runs the same `validate_final_polish` the gate
+uses, prints every error one per line to stderr, and exits `0` when the gate would pass
+or `1` otherwise. It takes no lock, writes nothing, and has no Phase/Blocked
+precondition, so it is safe to run mid-session. Unlike `recover final-polish --check`
+(which inspects recoverability under the session lock), this only reports gate
+pass/fail; the quality and pr-readiness agents run it after every report/ledger write so
+vocabulary or provenance drift surfaces early instead of at the final gate.
+
 ### Supported final-polish recovery
 
 If deterministic lifecycle validation blocks a legacy session with

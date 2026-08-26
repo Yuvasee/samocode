@@ -110,6 +110,13 @@ provider configuration, models, effort, or prices. Implementation consumes the
 injected active phase and must not re-resolve provider/model/effort. Claude
 implementation sub-agents also use `model: inherit` and inherit session effort.
 
+Documentation authoring is the one fixed exception to risk-derived profile selection:
+any phase that authors or substantively rewrites documentation (README, this file,
+`workflow.md`, `CLAUDE.md`, files under `docs/`, and similar) must be isolated in its own
+`max` phase, even when the edit looks mechanical. `worker/plan_resolver.py` enforces this
+and rejects a pending documentation-authoring phase whose profile is absent or not `max`;
+reading documentation for context and touching source comments/docstrings are excluded.
+
 ## Installation
 
 `samocode install` performs two independent operations:
@@ -144,9 +151,11 @@ valid in both legacy and routed modes, while newly authored phases require it.
 | Testing environment-block escalation planner + notification | `worker/escalation.py` |
 | Read-only worktree snapshot + mutation guard | `worker/worktree_guard.py` |
 | Pure workflow event validation | `worker/workflow_event.py` |
-| Overview state parse + atomic transition + event processor | `worker/workflow_state.py` |
+| Overview state parse + atomic transition + event processor + testing prerequisite gate | `worker/workflow_state.py` |
 | Approval service and `samocode approve` CLI | `worker/approval.py` |
-| Late-phase provenance and recovery anchors | `worker/lifecycle.py` |
+| Late-phase provenance, shared final-polish prerequisite predicate, testing-run derivation, recovery anchors | `worker/lifecycle.py` |
+| Final-polish gate (evidence + lifecycle) | `worker/final_polish.py` |
+| Read-only `samocode check final-polish` gate re-run | `worker/check.py` |
 | Session process lease | `worker/process_lease.py` |
 | Audited `samocode recover final-polish` service | `worker/recovery.py` |
 | Autonomous child contract | `workflow.md` |

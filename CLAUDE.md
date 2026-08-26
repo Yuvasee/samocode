@@ -9,7 +9,7 @@ main.py              # Checkout entry point (shim) -> worker/cli.py
 workflow.md          # Master prompt template for provider iterations
 ARCHITECTURE.md      # Runtime/configuration/routing design
 worker/              # Core package
-  cli.py             # CLI: orchestrator loop, install/approve/recover commands
+  cli.py             # CLI: orchestrator loop, install/approve/recover/check commands
   config.py          # Project paths + legacy/runtime env settings
   global_config.py   # User-global TOML, defaults, validation, bootstrap
   startup.py         # Load-once composition + process-wide provider selection
@@ -83,7 +83,17 @@ as `Blocked: workflow_error` (`worktree_mutated`).
 **Immutable routing per iteration** - Startup selects one provider for the process.
 Before each iteration, the runner resolves the workflow/plan phase and semantic profile
 into a concrete model/effort target. Retries reuse that exact target. The child receives
-the target in Session Context and must not resolve or override it.
+the target in Session Context and must not resolve or override it. Documentation-authoring
+plan phases are the one fixed exception: they must be isolated on `max`, and the plan
+contract rejects any other profile before a model call.
+
+**Final-polish self-check** - `samocode check final-polish --config <path> --session
+<name>` re-runs the `pr-readiness -> done` gate read-only (no lock, no writes, no
+Phase/Blocked precondition); the quality and pr-readiness agents run it after each
+report/ledger write. One shared `has_final_polish_prerequisites` predicate
+(`worker/lifecycle.py`) backs both the `testing -> pr-readiness` transition gate and
+pr-readiness preflight, so they cannot disagree. The worker injects `**Testing run:**`
+(first/second) into testing Session Context so the testing agent never infers its run.
 
 ## Testing
 
@@ -134,7 +144,8 @@ See `docs/model-routing.md` for the schema and canonical profile table.
 - `worker/global_config.py` - TOML schema, canonical defaults, bootstrap/load
 - `worker/startup.py` - startup composition and provider precedence
 - `worker/phases.py` - Phase enum, PhaseConfig/profile registry, transition validation
-- `worker/plan_resolver.py` - deterministic active plan/phase selection
+- `worker/plan_resolver.py` - deterministic active plan/phase selection + documentation-authoring `max`-only plan-contract gate
+- `worker/check.py` - read-only `samocode check final-polish` gate re-run
 - `worker/routing.py` - profile resolution and immutable ExecutionTarget
 - `worker/adapters.py` - provider registry and Claude/Codex argv construction
 - `worker/runner.py` - per-iteration plan/context resolution and retry execution

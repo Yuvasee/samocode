@@ -25,6 +25,9 @@ selection source.
 - Do not change provider, profile, model, or effort inside the iteration.
 - On implementation iterations, `Active Implementation Plan Phase` is also
   authoritative. Execute that exact phase instead of re-scanning the plan.
+- On testing iterations, the worker injects `**Testing run:** first (post-implementation)`
+  or `second (post-quality)` into Session Context, derived from the latest accepted
+  transition into testing. Use that label; never infer the run from files or the Flow Log.
 - Normal Claude sub-agents use `model: inherit` and inherit session effort. Explicit
   second-opinion skills may cross providers; normal workflow work may not.
 
@@ -99,6 +102,13 @@ one attempt per phase entry — injecting a recovery contract into the escalated
 context. The provider never changes and every gate stays intact; a second environment
 block ends the run for a human. The worktree guard snapshots project `HEAD` + tracked
 status around every testing iteration and rejects a mutated run as `workflow_error`.
+
+**Testing -> pr-readiness gate**: the worker rejects a `testing -> pr-readiness`
+transition unless the epoch already recorded, in order, `implementation -> testing`,
+`testing -> quality`, `quality -> testing`. On the first testing run, signal `quality`,
+not `pr-readiness`; an early `pr-readiness` signal is rejected at transition time and the
+overview is not mutated. Self-check with `samocode check final-polish` before signaling
+into a late phase.
 
 ## Status Section Format
 
