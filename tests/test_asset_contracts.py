@@ -402,6 +402,19 @@ def test_pr_readiness_assets_run_final_polish_check() -> None:
     assert "never signal `done` on non-zero" in pr_agent_lower
 
 
+def test_workflow_does_not_run_final_polish_before_transition_lands() -> None:
+    """The gate requires `testing -> pr-readiness` to be the latest accepted transition,
+    so workflow.md must not instruct running it before that transition lands."""
+    workflow = (ROOT / "workflow.md").read_text()
+    normalized = " ".join(workflow.split())
+
+    assert "before signaling into pr-readiness" not in normalized
+    assert "pr-readiness owns it" in normalized
+    assert "latest\naccepted transition" in workflow or (
+        "latest accepted transition" in normalized
+    )
+
+
 def test_quality_assets_defer_gate_to_pr_readiness() -> None:
     """The full gate cannot pass mid-quality; quality assets must instruct NOT to run
     it (deferring to pr-readiness), never present it as an executable quality step."""
