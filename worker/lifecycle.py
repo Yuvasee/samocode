@@ -29,6 +29,8 @@ REQUIRED_FINAL_POLISH_TRANSITIONS = (
     ("testing", "pr-readiness"),
 )
 
+_PR_READINESS_TO_QUALITY = ("pr-readiness", "quality")
+
 LIFECYCLE_MISSING_ERROR = (
     "Signal history lacks the ordered final-polish lifecycle: "
     "testing -> quality -> testing -> pr-readiness"
@@ -89,6 +91,41 @@ class EpochPhaseRunCount:
 
 
 @dataclass(frozen=True)
+class ProvenanceRule:
+    """One accepted provenance shape: an ordered subsequence that must be present, plus
+    the exact latest accepted transition that admits the phase under it."""
+
+    required: tuple[tuple[str, str], ...]
+    latest: tuple[str, str]
+
+
+# A phase passes provenance if ANY of its rules matches; a phase absent here has no
+# requirement. QUALITY's two rules share the first-2 subsequence but accept either the
+# initial or the pr-readiness->quality loop as latest.
+PROVENANCE_RULES: dict[Phase, tuple[ProvenanceRule, ...]] = {
+    Phase.TESTING: (
+        ProvenanceRule(
+            REQUIRED_FINAL_POLISH_TRANSITIONS[:1], REQUIRED_FINAL_POLISH_TRANSITIONS[0]
+        ),
+        ProvenanceRule(
+            REQUIRED_FINAL_POLISH_TRANSITIONS[:3], REQUIRED_FINAL_POLISH_TRANSITIONS[2]
+        ),
+    ),
+    Phase.QUALITY: (
+        ProvenanceRule(
+            REQUIRED_FINAL_POLISH_TRANSITIONS[:2], REQUIRED_FINAL_POLISH_TRANSITIONS[1]
+        ),
+        ProvenanceRule(REQUIRED_FINAL_POLISH_TRANSITIONS[:2], _PR_READINESS_TO_QUALITY),
+    ),
+    Phase.PR_READINESS: (
+        ProvenanceRule(
+            REQUIRED_FINAL_POLISH_TRANSITIONS[:3], REQUIRED_FINAL_POLISH_TRANSITIONS[3]
+        ),
+    ),
+}
+
+
+@dataclass(frozen=True)
 class RecoveryAnchor:
     recovery_id: str
     history_rows_before: int
@@ -144,6 +181,14 @@ def validate_final_polish_lifecycle(session_path: Path) -> LifecycleCheck:
     return LifecycleCheck(tuple(issues))
 
 
+def has_final_polish_prerequisites(
+    transitions: list[tuple[str | None, str | None]],
+) -> bool:
+    """True when implementation->testing->quality->testing appears in order — the shared
+    precondition for admitting pr-readiness, reused by the transition-time gate."""
+    return _contains_ordered(transitions, REQUIRED_FINAL_POLISH_TRANSITIONS[:3])
+
+
 def validate_phase_provenance(session_path: Path, phase: Phase) -> LifecycleCheck:
     """Validate the recovery epoch and late-phase transition provenance."""
     history, anchor_errors = scoped_history(session_path)
@@ -154,36 +199,21 @@ def validate_phase_provenance(session_path: Path, phase: Phase) -> LifecycleChec
                 for message in anchor_errors
             )
         )
-    if phase not in {Phase.TESTING, Phase.QUALITY, Phase.PR_READINESS}:
+    rules = PROVENANCE_RULES.get(phase)
+    if rules is None:
         return LifecycleCheck(())
     transitions = accepted_transitions(history)
     latest = transitions[-1] if transitions else None
-
-    if phase is Phase.QUALITY:
-        required = REQUIRED_FINAL_POLISH_TRANSITIONS[:2]
-        expected_latest = REQUIRED_FINAL_POLISH_TRANSITIONS[1]
-    elif phase is Phase.PR_READINESS:
-        required = REQUIRED_FINAL_POLISH_TRANSITIONS
-        expected_latest = REQUIRED_FINAL_POLISH_TRANSITIONS[-1]
-    elif latest == REQUIRED_FINAL_POLISH_TRANSITIONS[2]:
-        required = REQUIRED_FINAL_POLISH_TRANSITIONS[:3]
-        expected_latest = REQUIRED_FINAL_POLISH_TRANSITIONS[2]
-    else:
-        required = REQUIRED_FINAL_POLISH_TRANSITIONS[:1]
-        expected_latest = REQUIRED_FINAL_POLISH_TRANSITIONS[0]
-
-    if _contains_ordered(transitions, required) and latest == expected_latest:
+    if any(
+        latest == rule.latest and _contains_ordered(transitions, rule.required)
+        for rule in rules
+    ):
         return LifecycleCheck(())
-    expected = " -> ".join(target for _, target in required)
     return LifecycleCheck(
         (
             LifecycleIssue(
                 LifecycleIssueCode.PHASE_PROVENANCE_MISSING,
-                (
-                    f"Overview phase '{phase.value}' lacks matching accepted "
-                    f"lifecycle provenance ({expected}); latest accepted transition "
-                    f"is {_format_transition(latest)}"
-                ),
+                _phase_provenance_error(phase, rules, latest),
             ),
         )
     )
@@ -333,6 +363,19 @@ def _contains_ordered(
             if required_index == len(required):
                 return True
     return False
+
+
+def _phase_provenance_error(
+    phase: Phase,
+    rules: tuple[ProvenanceRule, ...],
+    latest: tuple[str | None, str | None] | None,
+) -> str:
+    accepted = " or ".join(_format_transition(rule.latest) for rule in rules)
+    return (
+        f"Overview phase '{phase.value}' lacks matching accepted lifecycle provenance; "
+        f"accepted latest transition is {accepted}, but latest accepted transition is "
+        f"{_format_transition(latest)}. Inspect with `samocode check final-polish`"
+    )
 
 
 def _format_transition(transition: tuple[str | None, str | None] | None) -> str:

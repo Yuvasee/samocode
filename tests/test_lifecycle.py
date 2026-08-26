@@ -9,6 +9,7 @@ from worker.lifecycle import (
     accepted_transitions,
     count_epoch_source_phase_runs_including_current,
     count_escalations_since_phase_entry,
+    has_final_polish_prerequisites,
     recovery_commit_marker,
     validate_phase_provenance,
 )
@@ -181,3 +182,67 @@ class TestEscalationRowsDoNotDisturbExistingChecks:
             ("quality", "testing"),
             ("testing", "pr-readiness"),
         ]
+
+
+def _first_pass(session: Path) -> int:
+    """Record the canonical impl->testing->quality->testing->pr-readiness first pass."""
+    _transition(session, Phase.IMPLEMENTATION, Phase.TESTING, 1)
+    _transition(session, Phase.TESTING, Phase.QUALITY, 2)
+    _transition(session, Phase.QUALITY, Phase.TESTING, 3)
+    _transition(session, Phase.TESTING, Phase.PR_READINESS, 4)
+    return 4
+
+
+class TestPhaseProvenanceAcceptance:
+    def test_quality_accepts_initial_testing_predecessor(self, tmp_path: Path) -> None:
+        session = _session(tmp_path)
+        _transition(session, Phase.IMPLEMENTATION, Phase.TESTING, 1)
+        _transition(session, Phase.TESTING, Phase.QUALITY, 2)
+        assert validate_phase_provenance(session, Phase.QUALITY).ok
+
+    def test_quality_accepts_pr_readiness_loop(self, tmp_path: Path) -> None:
+        session = _session(tmp_path)
+        last = _first_pass(session)
+        _transition(session, Phase.PR_READINESS, Phase.QUALITY, last + 1)
+        assert validate_phase_provenance(session, Phase.QUALITY).ok
+
+    def test_quality_rejects_without_prior_testing_quality(
+        self, tmp_path: Path
+    ) -> None:
+        session = _session(tmp_path)
+        _transition(session, Phase.PR_READINESS, Phase.QUALITY, 1)
+        check = validate_phase_provenance(session, Phase.QUALITY)
+        assert not check.ok
+        message = "; ".join(check.errors)
+        assert "testing -> quality" in message
+        assert "pr-readiness -> quality" in message
+        assert "samocode check final-polish" in message
+
+    def test_pr_readiness_requires_testing_predecessor(self, tmp_path: Path) -> None:
+        session = _session(tmp_path)
+        last = _first_pass(session)
+        _transition(session, Phase.PR_READINESS, Phase.QUALITY, last + 1)
+        assert not validate_phase_provenance(session, Phase.PR_READINESS).ok
+
+    def test_pr_readiness_loop_reentry_passes(self, tmp_path: Path) -> None:
+        session = _session(tmp_path)
+        last = _first_pass(session)
+        _transition(session, Phase.PR_READINESS, Phase.QUALITY, last + 1)
+        _transition(session, Phase.QUALITY, Phase.TESTING, last + 2)
+        _transition(session, Phase.TESTING, Phase.PR_READINESS, last + 3)
+        assert validate_phase_provenance(session, Phase.PR_READINESS).ok
+
+    def test_testing_second_run_requires_full_prefix(self, tmp_path: Path) -> None:
+        session = _session(tmp_path)
+        _transition(session, Phase.IMPLEMENTATION, Phase.TESTING, 1)
+        _transition(session, Phase.QUALITY, Phase.TESTING, 2)
+        assert not validate_phase_provenance(session, Phase.TESTING).ok
+
+    def test_has_final_polish_prerequisites_predicate(self) -> None:
+        full: list[tuple[str | None, str | None]] = [
+            ("implementation", "testing"),
+            ("testing", "quality"),
+            ("quality", "testing"),
+        ]
+        assert has_final_polish_prerequisites(full)
+        assert not has_final_polish_prerequisites(full[:2])
