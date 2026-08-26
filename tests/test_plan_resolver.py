@@ -390,6 +390,36 @@ class TestDocumentationProfileScope:
         with pytest.raises(PlanResolutionError, match="authors documentation"):
             validate_plan_contract(text)
 
+    @pytest.mark.parametrize(
+        "task",
+        [
+            "Add tests for documentation rendering",
+            "Add tests for the README generator",
+            "Write rules about documentation formatting",
+        ],
+    )
+    def test_test_or_rule_object_is_not_documentation_authoring(
+        self, task: str
+    ) -> None:
+        """A test/rule task that merely names documentation must stay off `max`."""
+        text = (
+            "## Implementation Phases\n\n"
+            f"### Phase 1: Cover\n**Profile:** `standard`\n- [ ] {task}\n"
+        )
+        phases = validate_plan_contract(text)
+        assert phases[0].profile == "standard"
+
+    def test_genuine_authoring_still_requires_max_after_test_rule_exclusion(
+        self,
+    ) -> None:
+        text = (
+            "## Implementation Phases\n\n"
+            "### Phase 1: Ship\n**Profile:** `standard`\n"
+            "- [ ] Update the API documentation for the new endpoints\n"
+        )
+        with pytest.raises(PlanResolutionError, match="authors documentation"):
+            validate_plan_contract(text)
+
     def test_meta_reference_to_documentation_policy_is_not_authoring(self) -> None:
         """A phase *about* the doc-profile classifier itself (this plan's own
         Phase 8) must not be swept in by the phrase "documentation-authoring"

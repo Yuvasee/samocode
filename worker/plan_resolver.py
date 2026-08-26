@@ -420,6 +420,18 @@ _AUTHORING_VERB_GOVERNS_DOCUMENTATION_RE = re.compile(
     rf"(?:\s+\S+){{0,2}}\s+documentation\b",
     re.IGNORECASE,
 )
+# A `test(s)`/`rule(s)` object followed by a doc noun ("tests for documentation",
+# "rule about the README") is testing/governance work, not doc authoring; without
+# this the authoring-verb window sweeps "Add tests for documentation" into `max`.
+_DOC_NOUN_ALTERNATION = (
+    rf"documentation|{_word_alternation(_DOC_ARTIFACT_WORDS)}"
+    rf"|{_word_alternation(_DOC_ARTIFACT_FILENAMES)}"
+)
+_TEST_OR_RULE_GOVERNS_DOC_RE = re.compile(
+    r"\b(?:tests?|rules?)\s+(?:for|about|on|of|regarding|covering)\s+"
+    rf"(?:\S+\s+){{0,3}}?(?:{_DOC_NOUN_ALTERNATION})\b",
+    re.IGNORECASE,
+)
 
 
 def validate_documentation_profile_scope(phases: list[PlanPhase]) -> None:
@@ -454,7 +466,15 @@ def _is_documentation_authoring_text(text: str) -> bool:
     present is read-only. Docstrings and source comments never match
     (`\\bdocs\\b` excludes "docstring"; "comment" is not in the vocabulary), so
     they need no separate exclusion.
+
+    Known residual limits (bounded heuristic, not clause-aware): the {0,2}-word
+    authoring window misses 3+ modifiers ("create clear concise API documentation"
+    reads as non-authoring), and any non-read-only verb near a bare artifact word
+    over-matches ("add caching to the docs pipeline"). Fixing either needs a
+    clause parser with real precision/recall tradeoffs.
     """
+    if _TEST_OR_RULE_GOVERNS_DOC_RE.search(text):
+        return False
     if _AUTHORING_VERB_GOVERNS_DOCUMENTATION_RE.search(text):
         return True
     if not _DOC_ARTIFACT_RE.search(text):
