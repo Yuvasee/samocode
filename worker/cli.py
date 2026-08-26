@@ -30,6 +30,7 @@ from . import (
     RejectionReason,
     Signal,
     SignalStatus,
+    WorktreeSnapshot,
     acquire_process_lease,
     add_session_handler,
     apply_overview_transition,
@@ -38,6 +39,7 @@ from . import (
     clear_signal_file,
     compose_startup,
     count_epoch_source_phase_runs_including_current,
+    describe_worktree_mutation,
     exit_code_for,
     extract_phase,
     extract_total_iterations,
@@ -58,11 +60,43 @@ from . import (
     resolve_working_dir,
     run_ai_with_retry,
     setup_logging,
+    snapshot_worktree,
     supported_providers,
     uninstall,
     validate_phase_provenance,
 )
 from .installer import resolve_asset_source_dir
+
+
+# Read-only phases (worktree_readonly) must not touch tracked files or move HEAD;
+# the {mutation} delta comes from describe_worktree_mutation and names no project.
+_WORKTREE_READONLY_REJECTION = (
+    "Phase '{phase}' is read-only but the working directory changed during the "
+    "iteration ({mutation}); read-only phases must not modify tracked files or "
+    "move HEAD. Revert the change and rerun the phase."
+)
+
+
+def _detect_readonly_worktree_mutation(
+    source_phase: str,
+    worktree_before: WorktreeSnapshot | None,
+    working_dir: Path | None,
+) -> str | None:
+    """Describe a tracked-worktree change a read-only phase must not have made.
+
+    Returns None (guard inert) when the phase is not read-only, no baseline was
+    captured, or the working dir is not a git repo — the guard never guesses, it
+    only reports a concrete before/after delta.
+    """
+    if worktree_before is None or working_dir is None:
+        return None
+    config = get_phase_config(source_phase)
+    if config is None or not config.worktree_readonly:
+        return None
+    after = snapshot_worktree(working_dir)
+    if after is None:
+        return None
+    return describe_worktree_mutation(worktree_before, after)
 
 
 def apply_signal(
@@ -73,6 +107,7 @@ def apply_signal(
     logger: logging.Logger,
     *,
     working_dir: Path | None = None,
+    worktree_before: WorktreeSnapshot | None = None,
 ) -> Signal:
     """Use one authority to validate, mutate, audit, and surface truthful rejection."""
     if source_phase is None:
@@ -98,25 +133,38 @@ def apply_signal(
                 needs="investigation",
             )
 
-    epoch_runs = count_epoch_source_phase_runs_including_current(
-        session_path, source_phase
+    # A read-only phase that mutated tracked worktree state is rejected before the
+    # workflow event runs, so an otherwise-valid transition never advances _overview.
+    mutation = _detect_readonly_worktree_mutation(
+        source_phase, worktree_before, working_dir
     )
-    if epoch_runs.count is None:
+    if mutation is not None:
         outcome = ProcessedOutcome.rejected_validation(
             Phase(source_phase),
             None,
-            RejectionReason.RECOVERY_ANCHOR_INVALID,
-            "Recovery epoch invalid: " + "; ".join(epoch_runs.errors),
+            RejectionReason.WORKTREE_MUTATED,
+            _WORKTREE_READONLY_REJECTION.format(phase=source_phase, mutation=mutation),
         )
     else:
-        outcome = apply_workflow_event(
-            session_path,
-            signal,
-            source_phase,
-            epoch_runs.count,
-            iteration,
-            working_dir=working_dir,
+        epoch_runs = count_epoch_source_phase_runs_including_current(
+            session_path, source_phase
         )
+        if epoch_runs.count is None:
+            outcome = ProcessedOutcome.rejected_validation(
+                Phase(source_phase),
+                None,
+                RejectionReason.RECOVERY_ANCHOR_INVALID,
+                "Recovery epoch invalid: " + "; ".join(epoch_runs.errors),
+            )
+        else:
+            outcome = apply_workflow_event(
+                session_path,
+                signal,
+                source_phase,
+                epoch_runs.count,
+                iteration,
+                working_dir=working_dir,
+            )
     record_processed_outcome(session_path, signal, iteration, outcome)
     if not outcome.accepted:
         _persist_workflow_rejection(session_path, outcome, logger)
@@ -307,6 +355,7 @@ _HUMAN_DECISION_REJECTIONS: frozenset[RejectionReason] = frozenset(
     {
         RejectionReason.TRANSITION_REQUIRES_APPROVAL,
         RejectionReason.ITERATION_LIMIT_EXCEEDED,
+        RejectionReason.WORKTREE_MUTATED,
     }
 )
 
@@ -537,6 +586,25 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return build_parser().parse_args(argv)
 
 
+def _snapshot_readonly_worktree(
+    phase: str | None, working_dir: Path, logger: logging.Logger
+) -> WorktreeSnapshot | None:
+    """Baseline a read-only phase's worktree before the provider runs.
+
+    None for non-read-only phases (guard inert) and for non-git working dirs; the
+    latter logs a notice so an unguardable read-only run is visible in the log.
+    """
+    config = get_phase_config(phase)
+    if config is None or not config.worktree_readonly:
+        return None
+    snapshot = snapshot_worktree(working_dir)
+    if snapshot is None:
+        logger.warning(
+            "Worktree guard inactive: %s is not a git working directory", working_dir
+        )
+    return snapshot
+
+
 def run_orchestrator(args: argparse.Namespace) -> None:
     """Run the autonomous orchestrator loop (the `run` command)."""
     samocode_dir = resolve_asset_source_dir()
@@ -649,6 +717,13 @@ def run_orchestrator(args: argparse.Namespace) -> None:
                 logger.info(f"Previous signal: {previous_signal}")
             logger.info("Cleared signal file")
 
+            # Resolve the working dir once: reused for the read-only baseline
+            # snapshot below and for apply_signal (final-polish) after the run.
+            working_dir = resolve_working_dir(
+                config, session_path, phase or Phase.INIT.value
+            )
+            worktree_before = _snapshot_readonly_worktree(phase, working_dir, logger)
+
             try:
                 result = run_ai_with_retry(
                     workflow_prompt_path,
@@ -695,9 +770,6 @@ def run_orchestrator(args: argparse.Namespace) -> None:
 
             signal = read_signal_file(session_path)
 
-            working_dir = resolve_working_dir(
-                config, session_path, phase or Phase.INIT.value
-            )
             signal = apply_signal(
                 signal,
                 phase,
@@ -705,6 +777,7 @@ def run_orchestrator(args: argparse.Namespace) -> None:
                 iteration,
                 logger,
                 working_dir=working_dir,
+                worktree_before=worktree_before,
             )
 
             # Use phase from signal if available, otherwise use previously extracted phase

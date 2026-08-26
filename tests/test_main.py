@@ -1,6 +1,7 @@
 import json
 import logging
 import subprocess
+from argparse import Namespace
 from pathlib import Path
 
 import pytest
@@ -8,15 +9,18 @@ import pytest
 from worker import cli as main
 from worker import workflow_state
 from worker.approval import ApprovalOutcome, approve_session
-from worker.config import ProjectConfig
+from worker.config import ProjectConfig, RuntimeConfig, SamocodeConfig
 from worker.phases import Phase
+from worker.runner import ExecutionResult, ExecutionStatus
 from worker.signals import Signal, SignalStatus
+from worker.startup import StartupComposition
 from worker.workflow_event import RejectionReason
 from worker.workflow_state import (
     OverviewParseError,
     OverviewWriteResult,
     read_overview_state,
 )
+from worker.worktree_guard import WorktreeSnapshot, snapshot_worktree
 
 
 def _overview_text(
@@ -624,3 +628,204 @@ class TestCliParsing:
     def test_parse_args_run_once_flag(self) -> None:
         args = main.parse_args(["run", "--config", "x", "--session", "y", "--once"])
         assert args.once is True
+
+
+class TestDetectReadonlyWorktreeMutation:
+    def test_tracked_edit_in_readonly_phase_is_described(self, tmp_path: Path) -> None:
+        project, _head = _git_project(tmp_path)
+        before = snapshot_worktree(project)
+        assert before is not None
+        (project / "file.txt").write_text("mutated by a read-only phase\n")
+
+        mutation = main._detect_readonly_worktree_mutation("testing", before, project)
+
+        assert mutation is not None
+        assert "file.txt" in mutation
+
+    def test_non_readonly_phase_is_inert(self, tmp_path: Path) -> None:
+        project, _head = _git_project(tmp_path)
+        before = snapshot_worktree(project)
+        (project / "file.txt").write_text("edited during implementation\n")
+
+        assert (
+            main._detect_readonly_worktree_mutation("implementation", before, project)
+            is None
+        )
+
+    def test_missing_baseline_is_inert(self, tmp_path: Path) -> None:
+        project, _head = _git_project(tmp_path)
+        assert main._detect_readonly_worktree_mutation("testing", None, project) is None
+
+    def test_non_git_working_dir_is_inert(self, tmp_path: Path) -> None:
+        plain = tmp_path / "plain"
+        plain.mkdir()
+        before = WorktreeSnapshot(head="deadbeef", tracked_status="")
+
+        assert main._detect_readonly_worktree_mutation("testing", before, plain) is None
+
+
+class TestWorktreeGuardApplySignal:
+    def test_tracked_edit_rejected_and_persisted(self, tmp_path: Path) -> None:
+        session = _session(tmp_path, "testing")
+        project, _head = _git_project(tmp_path)
+        before = snapshot_worktree(project)
+        assert before is not None
+        (project / "file.txt").write_text("mutated by a read-only phase\n")
+
+        result = main.apply_signal(
+            _sig(SignalStatus.CONTINUE),
+            "testing",
+            session,
+            1,
+            _logger(),
+            working_dir=project,
+            worktree_before=before,
+        )
+
+        assert result.status is SignalStatus.BLOCKED
+        assert result.needs == "human_decision"
+        assert _overview_phase(session) is Phase.TESTING  # phase did not advance
+        parsed = read_overview_state(session)
+        assert parsed.state is not None
+        assert parsed.state.blocked == "workflow_error"
+        rows = _history_rows(session)
+        assert rows[-1]["accepted"] is False
+        assert rows[-1]["rejection_reason"] == "worktree_mutated"
+
+    def test_untracked_file_is_accepted(self, tmp_path: Path) -> None:
+        session = _session(tmp_path, "testing")
+        project, _head = _git_project(tmp_path)
+        before = snapshot_worktree(project)
+        (project / "scratch.txt").write_text("untracked scratch output\n")
+
+        result = main.apply_signal(
+            _sig(SignalStatus.CONTINUE),
+            "testing",
+            session,
+            1,
+            _logger(),
+            working_dir=project,
+            worktree_before=before,
+        )
+
+        assert result.status is SignalStatus.CONTINUE
+        assert _history_rows(session)[-1]["accepted"] is True
+
+    def test_non_git_working_dir_skips_guard(self, tmp_path: Path) -> None:
+        session = _session(tmp_path, "testing")
+        plain = tmp_path / "plain"
+        plain.mkdir()
+        before = WorktreeSnapshot(head="deadbeef", tracked_status="")
+
+        result = main.apply_signal(
+            _sig(SignalStatus.CONTINUE),
+            "testing",
+            session,
+            1,
+            _logger(),
+            working_dir=plain,
+            worktree_before=before,
+        )
+
+        assert result.status is SignalStatus.CONTINUE
+        assert _history_rows(session)[-1]["accepted"] is True
+
+
+class TestWorktreeGuardOrchestrator:
+    def test_run_orchestrator_blocks_on_readonly_mutation(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        main_repo = tmp_path / "repo"
+        worktrees = tmp_path / "worktrees"
+        sessions = tmp_path / "_sessions"
+        for directory in (main_repo, worktrees, sessions):
+            directory.mkdir()
+        config_path = tmp_path / ".samocode"
+        config_path.write_text(
+            f"MAIN_REPO={main_repo}\nWORKTREES={worktrees}\nSESSIONS={sessions}\n"
+        )
+
+        session = sessions / "task"
+        session.mkdir()
+        (session / "_overview.md").write_text(_overview_text("testing"))
+        # Preflight requires accepted implementation->testing provenance as the
+        # latest accepted transition for the testing phase; seed exactly that so
+        # the loop reaches the provider stub.
+        (session / "_signal_history.jsonl").write_text(
+            json.dumps(
+                {
+                    "v": 2,
+                    "timestamp": "2026-08-26 09:00:00",
+                    "iteration": 1,
+                    "source_phase": "implementation",
+                    "target_phase": "testing",
+                    "status": "continue",
+                    "accepted": True,
+                    "validation_error": None,
+                    "rejection_reason": None,
+                    "outcome_kind": "accepted_transition",
+                    "mutated": True,
+                }
+            )
+            + "\n"
+        )
+
+        working_dir = worktrees / "task"
+        working_dir.mkdir()
+        subprocess.run(["git", "init", "-q", str(working_dir)], check=True)
+        subprocess.run(
+            ["git", "-C", str(working_dir), "config", "user.email", "t@example.com"],
+            check=True,
+        )
+        subprocess.run(
+            ["git", "-C", str(working_dir), "config", "user.name", "Test"], check=True
+        )
+        (working_dir / "file.txt").write_text("tested\n")
+        subprocess.run(["git", "-C", str(working_dir), "add", "file.txt"], check=True)
+        subprocess.run(
+            ["git", "-C", str(working_dir), "commit", "-qm", "initial"], check=True
+        )
+
+        config = SamocodeConfig(
+            project=ProjectConfig.from_file(config_path),
+            runtime=RuntimeConfig(ai_provider="codex"),
+            session_path=session,
+            provider="codex",
+        )
+        monkeypatch.setattr(
+            main, "compose_startup", lambda **_k: StartupComposition(config, (), ())
+        )
+
+        def stub_run(*_a: object, **_k: object) -> ExecutionResult:
+            (working_dir / "file.txt").write_text("mutated during testing\n")
+            (session / "_signal.json").write_text(json.dumps({"status": "continue"}))
+            return ExecutionResult(
+                status=ExecutionStatus.SUCCESS,
+                stdout="",
+                stderr="",
+                returncode=0,
+                attempt=1,
+            )
+
+        monkeypatch.setattr(main, "run_ai_with_retry", stub_run)
+        monkeypatch.setattr(main, "notify_blocked", lambda *_a, **_k: None)
+
+        main.run_orchestrator(
+            Namespace(
+                config=str(config_path),
+                session="task",
+                provider=None,
+                timeout=None,
+                dive=None,
+                task=None,
+                once=False,
+            )
+        )
+
+        parsed = read_overview_state(session)
+        assert parsed.state is not None
+        assert parsed.state.phase is Phase.TESTING
+        assert parsed.state.blocked == "workflow_error"
+        rows = _history_rows(session)
+        assert rows[-1]["rejection_reason"] == "worktree_mutated"
+        assert rows[-1]["accepted"] is False
