@@ -660,12 +660,17 @@ class TestDetectReadonlyWorktreeMutation:
         project, _head = _git_project(tmp_path)
         assert main._detect_readonly_worktree_mutation("testing", None, project) is None
 
-    def test_non_git_working_dir_is_inert(self, tmp_path: Path) -> None:
+    def test_postrun_snapshot_failure_is_rejected(self, tmp_path: Path) -> None:
+        # A valid baseline proves the dir was a git repo; a post-run snapshot that
+        # fails (git broke / repo gone) must reject, not read as "no mutation".
         plain = tmp_path / "plain"
         plain.mkdir()
         before = WorktreeSnapshot(head="deadbeef", tracked_status="")
 
-        assert main._detect_readonly_worktree_mutation("testing", before, plain) is None
+        mutation = main._detect_readonly_worktree_mutation("testing", before, plain)
+
+        assert mutation is not None
+        assert "post-run git snapshot failed" in mutation
 
 
 class TestWorktreeGuardApplySignal:
@@ -715,7 +720,7 @@ class TestWorktreeGuardApplySignal:
         assert result.status is SignalStatus.CONTINUE
         assert _history_rows(session)[-1]["accepted"] is True
 
-    def test_non_git_working_dir_skips_guard(self, tmp_path: Path) -> None:
+    def test_postrun_snapshot_failure_blocks(self, tmp_path: Path) -> None:
         session = _session(tmp_path, "testing")
         plain = tmp_path / "plain"
         plain.mkdir()
@@ -731,8 +736,9 @@ class TestWorktreeGuardApplySignal:
             worktree_before=before,
         )
 
-        assert result.status is SignalStatus.CONTINUE
-        assert _history_rows(session)[-1]["accepted"] is True
+        assert result.status is SignalStatus.BLOCKED
+        assert result.needs == "human_decision"
+        assert _history_rows(session)[-1]["rejection_reason"] == "worktree_mutated"
 
 
 class TestWorktreeGuardOrchestrator:

@@ -91,9 +91,11 @@ def _detect_readonly_worktree_mutation(
 ) -> str | None:
     """Describe a tracked-worktree change a read-only phase must not have made.
 
-    Returns None (guard inert) when the phase is not read-only, no baseline was
-    captured, or the working dir is not a git repo — the guard never guesses, it
-    only reports a concrete before/after delta.
+    Returns None (guard inert) when the phase is not read-only or no baseline was
+    captured — a missing baseline means the working dir was never a git repo, so
+    there is nothing to guard. A valid baseline proves the dir was a repo, so a
+    failed post-run snapshot is a guard failure (git broke), not "no mutation": it
+    is rejected rather than allowed to advance the workflow unguarded.
     """
     if worktree_before is None or working_dir is None:
         return None
@@ -102,7 +104,10 @@ def _detect_readonly_worktree_mutation(
         return None
     after = snapshot_worktree(working_dir)
     if after is None:
-        return None
+        return (
+            "post-run git snapshot failed, so the read-only guard cannot verify "
+            "the working directory is unchanged"
+        )
     return describe_worktree_mutation(worktree_before, after)
 
 
