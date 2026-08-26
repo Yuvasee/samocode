@@ -726,6 +726,17 @@ def _apply_escalation(
     notification) is caught, logged loudly, and `context` is still returned — the
     committed escalation must proceed even if its audit row or notification go
     missing; returning None there would desync the run from the committed overview.
+
+    Known accepted weakening: the one-shot budget is counted from the audit rows
+    (count_escalations_since_phase_entry), so a dropped post-commit audit row leaves
+    the spent attempt uncounted, letting a later `environment` block in the same
+    phase entry re-escalate. This is bounded — it re-escalates to the same rung and
+    is still capped by the phase-run limit — and strictly better than the prior
+    behavior (an uncaught raise here crashed the loop after the overview committed).
+    A dropped-row-proof budget needs the audit row and overview transition to be one
+    durable unit, which is the persist+recover pending-escalation redesign deferred
+    with Q-006; do not reorder the two writes piecemeal (audit-first re-opens the
+    Q-001 failure where a failed overview write burns the budget without replaying).
     """
     try:
         phase_enum = Phase((phase or "").lower())
