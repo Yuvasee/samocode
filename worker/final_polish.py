@@ -5,7 +5,7 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-from .lifecycle import validate_final_polish_lifecycle
+from .lifecycle import TESTING_RUN_SECOND, validate_final_polish_lifecycle
 
 _FULL_SHA = re.compile(r"^[0-9a-fA-F]{40}$")
 _DEBT_ID = re.compile(r"^(?:CL|Q)-\d+$", re.IGNORECASE)
@@ -14,6 +14,9 @@ _DEBT_ID = re.compile(r"^(?:CL|Q)-\d+$", re.IGNORECASE)
 # from these tuples, so accepted tokens live in exactly one place.
 _CLARITY_RESULTS: tuple[str, ...] = ("clean", "findings")
 _DEBT_DECISIONS: tuple[str, ...] = ("fix now", "defer", "reject")
+# A `fix now` row must carry one of these explicit closed statuses; any other value
+# (including empty, `open`, `in progress`, `not fixed`) means the finding is unresolved.
+_DEBT_FIXED_STATUSES: tuple[str, ...] = ("fixed", "closed", "resolved", "verified")
 _EMPHASIS_CHARS = "*_`"
 
 
@@ -90,8 +93,8 @@ def validate_final_polish_evidence(
             errors.append(_mismatch("Safety check must be `pass`", safety_raw))
     if regression:
         run_raw = regression["Run"]
-        if _normalize_token(run_raw) != "2nd (post-quality)":
-            errors.append(_mismatch("Run must be `2nd (post-quality)`", run_raw))
+        if _normalize_token(run_raw) != TESTING_RUN_SECOND:
+            errors.append(_mismatch(f"Run must be `{TESTING_RUN_SECOND}`", run_raw))
         regression_result_raw = regression["Result"]
         if _normalize_token(regression_result_raw) != "pass":
             errors.append(
@@ -216,7 +219,8 @@ def _validate_review_debt(session_path: Path, errors: list[str]) -> None:
 
         decision_raw = _debt_cell(cells, columns.get("decision"))
         decision = _normalize_token(decision_raw)
-        status = _normalize_token(_debt_cell(cells, columns.get("status")))
+        status_raw = _debt_cell(cells, columns.get("status"))
+        status = _normalize_token(status_raw)
         evidence_index = next(
             (index for name, index in columns.items() if _is_evidence_header(name)),
             None,
@@ -224,9 +228,13 @@ def _validate_review_debt(session_path: Path, errors: list[str]) -> None:
         evidence = _debt_cell(cells, evidence_index)
         if decision in {"", "undecided"}:
             errors.append(f"Review debt row {cells[0]} has no explicit decision")
-        elif decision == "fix now" and status in {"", "open", "undecided"}:
+        elif decision == "fix now" and status not in _DEBT_FIXED_STATUSES:
             errors.append(
-                f"Review debt row {cells[0]} selected fix now but is not closed"
+                _mismatch(
+                    f"Review debt row {cells[0]} selected fix now but its status is "
+                    f"not one of {_quoted(_DEBT_FIXED_STATUSES)}",
+                    status_raw,
+                )
             )
         elif decision in {"defer", "reject"} and not evidence:
             if evidence_index is None:

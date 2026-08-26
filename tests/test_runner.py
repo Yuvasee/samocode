@@ -239,7 +239,7 @@ class TestTestingRunInjection:
 
         context = build_session_context(workflow, session, config, phase="testing")
 
-        assert "**Testing run:** first (post-implementation)" in context
+        assert "**Testing run:** 1st (post-implementation)" in context
 
     def test_injected_second_run_from_history(self, tmp_path: Path) -> None:
         from worker.phases import Phase
@@ -265,7 +265,7 @@ class TestTestingRunInjection:
 
         context = build_session_context(workflow, session, config, phase="testing")
 
-        assert "**Testing run:** second (post-quality)" in context
+        assert "**Testing run:** 2nd (post-quality)" in context
 
 
 class TestCodexPromptBuilding:

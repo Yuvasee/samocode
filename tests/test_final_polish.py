@@ -246,6 +246,40 @@ def test_accepts_emphasis_and_case_drift_in_debt(tmp_path: Path) -> None:
     assert validate_final_polish(session, project).ok
 
 
+@pytest.mark.parametrize("status", ["in progress", "not fixed", "failed", "wip", ""])
+def test_rejects_fix_now_with_non_closed_status(tmp_path: Path, status: str) -> None:
+    project, head = _project(tmp_path)
+    session = tmp_path / "session"
+    _evidence(session, reviewed=head, output=head)
+    (session / "_review_debt.md").write_text(
+        "| ID | Decision | Evidence / Ticket | Status |\n"
+        "|---|---|---|---|\n"
+        f"| Q-006 | fix now | n/a | {status} |\n"
+    )
+
+    check = validate_final_polish(session, project)
+
+    assert not check.ok
+    assert any(
+        "Q-006 selected fix now but its status is not one of" in error
+        for error in check.errors
+    )
+
+
+@pytest.mark.parametrize("status", ["fixed", "Closed", "resolved", "**verified**"])
+def test_accepts_fix_now_with_closed_status(tmp_path: Path, status: str) -> None:
+    project, head = _project(tmp_path)
+    session = tmp_path / "session"
+    _evidence(session, reviewed=head, output=head)
+    (session / "_review_debt.md").write_text(
+        "| ID | Decision | Evidence / Ticket | Status |\n"
+        "|---|---|---|---|\n"
+        f"| Q-007 | fix now | n/a | {status} |\n"
+    )
+
+    assert validate_final_polish(session, project).ok
+
+
 def test_rejects_parenthetical_result_naming_expected(tmp_path: Path) -> None:
     project, head = _project(tmp_path)
     session = tmp_path / "session"

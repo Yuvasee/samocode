@@ -5,6 +5,8 @@ import json
 from pathlib import Path
 
 from worker.lifecycle import (
+    TESTING_RUN_FIRST,
+    TESTING_RUN_SECOND,
     LifecycleIssueCode,
     accepted_transitions,
     count_epoch_source_phase_runs_including_current,
@@ -252,19 +254,19 @@ class TestPhaseProvenanceAcceptance:
 class TestDeriveTestingRun:
     def test_no_history_defaults_to_first(self, tmp_path: Path) -> None:
         session = _session(tmp_path)
-        assert derive_testing_run(session) == "first (post-implementation)"
+        assert derive_testing_run(session) == TESTING_RUN_FIRST
 
     def test_impl_to_testing_is_first(self, tmp_path: Path) -> None:
         session = _session(tmp_path)
         _transition(session, Phase.IMPLEMENTATION, Phase.TESTING, 1)
-        assert derive_testing_run(session) == "first (post-implementation)"
+        assert derive_testing_run(session) == TESTING_RUN_FIRST
 
     def test_quality_to_testing_is_second(self, tmp_path: Path) -> None:
         session = _session(tmp_path)
         _transition(session, Phase.IMPLEMENTATION, Phase.TESTING, 1)
         _transition(session, Phase.TESTING, Phase.QUALITY, 2)
         _transition(session, Phase.QUALITY, Phase.TESTING, 3)
-        assert derive_testing_run(session) == "second (post-quality)"
+        assert derive_testing_run(session) == TESTING_RUN_SECOND
 
     def test_latest_wins_when_multiple_entries(self, tmp_path: Path) -> None:
         session = _session(tmp_path)
@@ -272,11 +274,11 @@ class TestDeriveTestingRun:
         # pr-readiness->quality->testing loop: latest into testing is quality->testing
         _transition(session, Phase.PR_READINESS, Phase.QUALITY, last + 1)
         _transition(session, Phase.QUALITY, Phase.TESTING, last + 2)
-        assert derive_testing_run(session) == "second (post-quality)"
+        assert derive_testing_run(session) == TESTING_RUN_SECOND
 
     def test_recovery_epoch_respected(self, tmp_path: Path) -> None:
         session = _session(tmp_path)
         _transition(session, Phase.QUALITY, Phase.TESTING, 1)  # pre-recovery
         _apply_recovery_anchor(session)
         _transition(session, Phase.IMPLEMENTATION, Phase.TESTING, 2)  # new epoch
-        assert derive_testing_run(session) == "first (post-implementation)"
+        assert derive_testing_run(session) == TESTING_RUN_FIRST
