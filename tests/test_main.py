@@ -527,6 +527,12 @@ class TestNeedsMapping:
         assert main._needs_for_rejection(RejectionReason.ITERATION_LIMIT_EXCEEDED) == (
             "human_decision"
         )
+        assert main._needs_for_rejection(RejectionReason.WORKTREE_MUTATED) == (
+            "human_decision"
+        )
+        assert main._needs_for_rejection(RejectionReason.WORKTREE_UNVERIFIABLE) == (
+            "human_decision"
+        )
 
     def test_investigation_default(self) -> None:
         for reason in (
@@ -645,11 +651,12 @@ class TestDetectReadonlyWorktreeMutation:
         assert before is not None
         (project / "file.txt").write_text("mutated by a read-only phase\n")
 
-        mutation = main._detect_readonly_worktree_mutation("testing", before, project)
+        rejection = main._detect_readonly_worktree_mutation("testing", before, project)
 
-        assert mutation is not None
-        assert "file.txt" in mutation
-        assert f"git -C {project} checkout -- file.txt" in mutation
+        assert rejection is not None
+        assert rejection.reason is RejectionReason.WORKTREE_MUTATED
+        assert "file.txt" in rejection.message
+        assert f"git -C {project} checkout -- file.txt" in rejection.message
 
     def test_non_readonly_phase_is_inert(self, tmp_path: Path) -> None:
         project, _head = _git_project(tmp_path)
@@ -665,17 +672,19 @@ class TestDetectReadonlyWorktreeMutation:
         project, _head = _git_project(tmp_path)
         assert main._detect_readonly_worktree_mutation("testing", None, project) is None
 
-    def test_postrun_snapshot_failure_is_rejected(self, tmp_path: Path) -> None:
+    def test_postrun_snapshot_failure_is_unverifiable(self, tmp_path: Path) -> None:
         # A valid baseline proves the dir was a git repo; a post-run snapshot that
-        # fails (git broke / repo gone) must reject, not read as "no mutation".
+        # fails (git broke / repo gone) verified nothing, so it audits as
+        # unverifiable rather than as a mutation it never detected.
         plain = tmp_path / "plain"
         plain.mkdir()
         before = WorktreeSnapshot(head="deadbeef", tracked_status="")
 
-        mutation = main._detect_readonly_worktree_mutation("testing", before, plain)
+        rejection = main._detect_readonly_worktree_mutation("testing", before, plain)
 
-        assert mutation is not None
-        assert "post-run git snapshot failed" in mutation
+        assert rejection is not None
+        assert rejection.reason is RejectionReason.WORKTREE_UNVERIFIABLE
+        assert "post-run git snapshot failed" in rejection.message
 
 
 class TestWorktreeGuardApplySignal:
@@ -743,7 +752,9 @@ class TestWorktreeGuardApplySignal:
 
         assert result.status is SignalStatus.BLOCKED
         assert result.needs == "human_decision"
-        assert _history_rows(session)[-1]["rejection_reason"] == "worktree_mutated"
+        assert (
+            _history_rows(session)[-1]["rejection_reason"] == "worktree_unverifiable"
+        )
 
 
 class TestWorktreeGuardOrchestrator:

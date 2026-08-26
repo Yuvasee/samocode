@@ -102,6 +102,12 @@ Do NOT assume samocode should run just because a session exists.
        `git -C [WORKING_DIR] status` to see the change, `git -C [WORKING_DIR] checkout --
        <path>` (or reset the stray commit) to undo it — and restart the worker. Do NOT run
        `recover final-polish` for this class and never edit `_overview.md`/`_signal.json`.
+     - **If it is a `worktree_unverifiable` guard rejection** (the post-run git snapshot
+       could not run, so the guard could not confirm the working dir is unchanged — git
+       broke or the repo went away, nothing was necessarily mutated): have the human
+       confirm the working dir is still a healthy git repo (`git -C [WORKING_DIR] status`)
+       and fix whatever broke git before restarting the worker. Same handling class as
+       `worktree_mutated`: never run `recover final-polish` and never edit control files.
      - For a final-polish provenance error, run the read-only eligibility check:
        ```bash
        samocode recover final-polish --config [PATH_TO_.SAMOCODE] --session [SESSION_NAME] --check

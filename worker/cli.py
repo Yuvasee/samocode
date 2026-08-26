@@ -87,18 +87,34 @@ _WORKTREE_READONLY_REJECTION = (
 )
 
 
+@dataclass(frozen=True)
+class ReadonlyRejection:
+    """A read-only guard rejection paired with the reason to audit it under.
+
+    A real detected tracked-worktree change audits as WORKTREE_MUTATED; a post-run
+    snapshot that could not run (git broke on a dir that was a valid repo) mutated
+    nothing but left the guard unable to verify, so it audits as WORKTREE_UNVERIFIABLE
+    — distinct so history filtered by reason never misattributes an unverifiable run
+    as a mutation. Both still block with the same human_decision routing and text.
+    """
+
+    reason: RejectionReason
+    message: str
+
+
 def _detect_readonly_worktree_mutation(
     source_phase: str,
     worktree_before: WorktreeSnapshot | None,
     working_dir: Path | None,
-) -> str | None:
-    """Describe a tracked-worktree change a read-only phase must not have made.
+) -> ReadonlyRejection | None:
+    """Reject a read-only phase that mutated, or could not be verified as unchanged.
 
     Returns None (guard inert) when the phase is not read-only or no baseline was
     captured — a missing baseline means the working dir was never a git repo, so
     there is nothing to guard. A valid baseline proves the dir was a repo, so a
     failed post-run snapshot is a guard failure (git broke), not "no mutation": it
-    is rejected rather than allowed to advance the workflow unguarded.
+    is rejected as WORKTREE_UNVERIFIABLE rather than allowed to advance unguarded. A
+    detected tracked change is rejected as WORKTREE_MUTATED.
     """
     if worktree_before is None or working_dir is None:
         return None
@@ -107,15 +123,25 @@ def _detect_readonly_worktree_mutation(
         return None
     after = snapshot_worktree(working_dir)
     if after is None:
-        return (
-            "post-run git snapshot failed, so the read-only guard cannot verify "
-            "the working directory is unchanged"
+        return ReadonlyRejection(
+            RejectionReason.WORKTREE_UNVERIFIABLE,
+            _WORKTREE_READONLY_REJECTION.format(
+                phase=source_phase,
+                mutation=(
+                    "post-run git snapshot failed, so the read-only guard cannot "
+                    "verify the working directory is unchanged"
+                ),
+            ),
         )
     mutation = describe_worktree_mutation(worktree_before, after)
     if mutation is None:
         return None
     restore = _restore_command(working_dir, changed_tracked_paths(worktree_before, after))
-    return f"{mutation}; {restore}" if restore else mutation
+    delta = f"{mutation}; {restore}" if restore else mutation
+    return ReadonlyRejection(
+        RejectionReason.WORKTREE_MUTATED,
+        _WORKTREE_READONLY_REJECTION.format(phase=source_phase, mutation=delta),
+    )
 
 
 def _restore_command(working_dir: Path, paths: list[str]) -> str | None:
@@ -162,15 +188,15 @@ def apply_signal(
 
     # A read-only phase that mutated tracked worktree state is rejected before the
     # workflow event runs, so an otherwise-valid transition never advances _overview.
-    mutation = _detect_readonly_worktree_mutation(
+    rejection = _detect_readonly_worktree_mutation(
         source_phase, worktree_before, working_dir
     )
-    if mutation is not None:
+    if rejection is not None:
         outcome = ProcessedOutcome.rejected_validation(
             Phase(source_phase),
             None,
-            RejectionReason.WORKTREE_MUTATED,
-            _WORKTREE_READONLY_REJECTION.format(phase=source_phase, mutation=mutation),
+            rejection.reason,
+            rejection.message,
         )
     else:
         epoch_runs = count_epoch_source_phase_runs_including_current(
@@ -383,6 +409,7 @@ _HUMAN_DECISION_REJECTIONS: frozenset[RejectionReason] = frozenset(
         RejectionReason.TRANSITION_REQUIRES_APPROVAL,
         RejectionReason.ITERATION_LIMIT_EXCEEDED,
         RejectionReason.WORKTREE_MUTATED,
+        RejectionReason.WORKTREE_UNVERIFIABLE,
     }
 )
 
