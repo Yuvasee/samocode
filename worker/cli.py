@@ -682,11 +682,16 @@ def _apply_escalation(
     the run; an unknown/absent phase is not escalatable and falls through. Never
     raises: it runs in the loop's BLOCKED branch outside run_ai_with_retry's guard,
     so a resolution error from plan_escalation is caught and degraded to a logged
-    fall-through, and a failed overview write degrades the same way.
+    fall-through, and a failed overview write degrades the same way (both return None
+    so the caller runs the normal blocked handling).
 
     The overview transition is persisted first; the budget-counted audit row and
     the notification follow only once the write commits, so a failed write never
-    spends the one-shot escalation budget.
+    spends the one-shot escalation budget. Once the write commits the escalation is
+    in effect, so a failure in those post-commit side effects (audit row, log line,
+    notification) is caught, logged loudly, and `context` is still returned — the
+    committed escalation must proceed even if its audit row or notification go
+    missing; returning None there would desync the run from the committed overview.
     """
     try:
         phase_enum = Phase((phase or "").lower())
@@ -731,26 +736,35 @@ def _apply_escalation(
         )
         return None
 
-    record_escalation(
-        session_path,
-        phase_enum,
-        iteration,
-        base,
-        escalated,
-        context.blocker_reason,
-    )
-    logger.info(flow_log_line)
-    notify_escalation(
-        session_display_name,
-        phase_enum.value,
-        base.profile,
-        escalated.profile,
-        base.model,
-        escalated.model,
-        context.blocker_reason,
-        config.telegram_bot_token,
-        config.telegram_chat_id,
-    )
+    try:
+        record_escalation(
+            session_path,
+            phase_enum,
+            iteration,
+            base,
+            escalated,
+            context.blocker_reason,
+        )
+        logger.info(flow_log_line)
+        notify_escalation(
+            session_display_name,
+            phase_enum.value,
+            base.profile,
+            escalated.profile,
+            base.model,
+            escalated.model,
+            context.blocker_reason,
+            config.telegram_bot_token,
+            config.telegram_chat_id,
+        )
+    except Exception:
+        # The overview transition already committed, so the escalation is in
+        # effect; a missing audit row / notification is acceptable but must not
+        # crash the loop or desync the run from the committed overview.
+        logger.exception(
+            "Escalation committed but a post-commit side effect failed; "
+            "proceeding with the escalated run"
+        )
     return context
 
 

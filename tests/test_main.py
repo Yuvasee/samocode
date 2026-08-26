@@ -1230,6 +1230,29 @@ class TestEscalationHelpers:
         assert result is None
         assert not any(r["status"] == "escalation" for r in _history_rows(session))
 
+    def test_apply_escalation_returns_context_when_audit_raises(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        session = _session(tmp_path, "testing")
+        _seed_testing_provenance(session)
+        config, _ = _escalation_config(tmp_path, session)
+
+        def boom(*_a: object, **_k: object) -> object:
+            raise OSError("signal history append failed")
+
+        monkeypatch.setattr(main, "record_escalation", boom)
+        monkeypatch.setattr(main, "notify_escalation", lambda *_a, **_k: None)
+
+        signal = Signal(status=SignalStatus.BLOCKED, needs="environment", reason="boom")
+        result = main._apply_escalation(
+            "testing", signal, session, "task", 3, config, _logger(), once=False
+        )
+
+        # The overview transition already committed, so the escalation is in effect:
+        # a post-commit audit failure must not propagate and must still return context.
+        assert isinstance(result, EscalationContext)
+        assert _overview_phase(session) is Phase.TESTING
+
     def test_apply_escalation_swallows_resolution_error(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
