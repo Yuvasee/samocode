@@ -12,11 +12,13 @@ from .approval import (
     check_approval,
     exit_code_for,
 )
+from .check import CheckResult, run_final_polish_check
 from .config import (
     ProjectConfig,
     RuntimeConfig,
     SamocodeConfig,
     parse_samocode_file,
+    resolve_project_working_dir,
     resolve_session_path,
 )
 from .escalation import (
@@ -206,7 +208,11 @@ __all__ = [
     "RuntimeConfig",
     "SamocodeConfig",
     "parse_samocode_file",
+    "resolve_project_working_dir",
     "resolve_session_path",
+    # Check
+    "CheckResult",
+    "run_final_polish_check",
     # Global config
     "ConfigBootstrapResult",
     "ConfigBootstrapStatus",

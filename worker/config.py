@@ -140,7 +140,9 @@ class SamocodeConfig:
     runtime: RuntimeConfig
     session_path: Path
     provider: str = ""  # authoritative selected provider; "" -> use runtime tier
-    global_config: GlobalConfig | None = None  # None => legacy mode; carried for routing
+    global_config: GlobalConfig | None = (
+        None  # None => legacy mode; carried for routing
+    )
 
     @property
     def main_repo(self) -> Path:
@@ -227,7 +229,9 @@ class SamocodeConfig:
 
     @property
     def ai_timeout(self) -> int:
-        return self.claude_timeout if self.ai_provider == "claude" else self.codex_timeout
+        return (
+            self.claude_timeout if self.ai_provider == "claude" else self.codex_timeout
+        )
 
     @property
     def max_retries(self) -> int:
@@ -305,6 +309,12 @@ def resolve_session_path(sessions_dir: Path, session_name: str) -> Path:
     # 3. New session with date prefix
     dated_name = f"{folder_timestamp()}-{session_name}"
     return sessions_dir / dated_name
+
+
+def resolve_project_working_dir(project: ProjectConfig, session_path: Path) -> Path:
+    """This session's worktree if it exists, else the project main repo."""
+    worktree = project.worktrees / session_path.name
+    return worktree if worktree.is_dir() else project.main_repo
 
 
 # Keep for backward compatibility during transition

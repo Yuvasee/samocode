@@ -14,7 +14,7 @@ from datetime import datetime
 from enum import Enum
 from pathlib import Path
 
-from .config import ProjectConfig, resolve_session_path
+from .config import ProjectConfig, resolve_project_working_dir, resolve_session_path
 from .final_polish import validate_final_polish_evidence
 from .lifecycle import (
     RECOVERY_DIRNAME,
@@ -218,7 +218,8 @@ def _inspect_project(project: ProjectConfig, session_name: str) -> RecoveryResul
     if state.phase is not Phase.PR_READINESS or state.blocked != "workflow_error":
         return _rejected(
             RecoveryRejection.STATE_NOT_RECOVERABLE,
-            "Recovery requires Phase: pr-readiness and Blocked: workflow_error",
+            "Recovery requires Phase: pr-readiness and Blocked: workflow_error; "
+            "run `samocode check final-polish` to see the gate errors for this session",
         )
     if latest_applied_recovery_anchor(session_path) is not None:
         return _rejected(
@@ -263,14 +264,13 @@ def _inspect_project(project: ProjectConfig, session_name: str) -> RecoveryResul
             "Latest history row is not the rejected pr-readiness -> done final-polish event",
         )
 
-    working_dir = project.worktrees / session_path.name
-    if not working_dir.is_dir():
-        working_dir = project.main_repo
+    working_dir = resolve_project_working_dir(project, session_path)
     evidence = validate_final_polish_evidence(session_path, working_dir)
     if not evidence.ok:
         return _rejected(
             RecoveryRejection.EVIDENCE_INVALID,
-            "Non-history final-polish evidence is invalid: " + "; ".join(evidence.errors),
+            "Non-history final-polish evidence is invalid: "
+            + "; ".join(evidence.errors),
         )
     lifecycle = validate_final_polish_lifecycle(session_path)
     allowed = {
@@ -367,9 +367,7 @@ def _apply_recovery(
         temp_dir = Path(tempfile.mkdtemp(prefix=".pending-", dir=recovery_root))
         _write_sync(temp_dir / "_overview.before.md", inspection.overview_bytes)
         _write_sync(temp_dir / "_signal.before.json", inspection.signal_bytes)
-        _write_sync(
-            temp_dir / "_signal_history.before.jsonl", inspection.history_bytes
-        )
+        _write_sync(temp_dir / "_signal_history.before.jsonl", inspection.history_bytes)
         _write_sync(temp_dir / "plan.before.md", inspection.plan_bytes)
         _write_sync(
             temp_dir / RECOVERY_RECEIPT_FILENAME,

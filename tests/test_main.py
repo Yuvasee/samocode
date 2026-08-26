@@ -8,6 +8,7 @@ import pytest
 
 from worker import cli as main
 from worker import workflow_state
+from worker.check import run_final_polish_check
 from worker.approval import ApprovalOutcome, approve_session
 from worker.config import ProjectConfig, RuntimeConfig, SamocodeConfig
 from worker.phases import Phase
@@ -642,6 +643,147 @@ class TestCliParsing:
     def test_parse_args_run_once_flag(self) -> None:
         args = main.parse_args(["run", "--config", "x", "--session", "y", "--once"])
         assert args.once is True
+
+
+def _check_project(
+    tmp_path: Path, *, main_repo_is_git: bool = True
+) -> tuple[Path, Path, str]:
+    """Config whose resolved working dir (main_repo fallback) is a git repo whose
+    HEAD matches the written final-polish evidence. Returns (config_path, session, head)."""
+    repo, head = _git_project(tmp_path)
+    sessions = tmp_path / "_sessions"
+    worktrees = tmp_path / "worktrees"
+    worktrees.mkdir(exist_ok=True)
+    session = _session(tmp_path, "pr-readiness", "task")
+    _write_final_polish_evidence(session, head)
+    main_repo = repo if main_repo_is_git else (tmp_path / "bare")
+    if not main_repo_is_git:
+        main_repo.mkdir()
+    config = tmp_path / ".samocode"
+    config.write_text(
+        f"MAIN_REPO={main_repo}\nWORKTREES={worktrees}\nSESSIONS={sessions}\n"
+    )
+    return config, session, head
+
+
+def _dir_snapshot(path: Path) -> dict[str, bytes]:
+    return {
+        str(child.relative_to(path)): child.read_bytes()
+        for child in sorted(path.rglob("*"))
+        if child.is_file()
+    }
+
+
+class TestCheckFinalPolish:
+    def test_clean_session_passes_core(self, tmp_path: Path) -> None:
+        config, _session, _head = _check_project(tmp_path)
+        result = run_final_polish_check(config, "task")
+        assert result.ok
+        assert result.errors == ()
+        assert result.exit_code == 0
+
+    def test_drifted_session_reports_gate_errors(self, tmp_path: Path) -> None:
+        config, session, head = _check_project(tmp_path)
+        (session / "03-test-report.md").write_text(
+            f"Run: 2nd (post-quality)\nResult: PASS\nTested HEAD: {'0' * 40}\n"
+        )
+        result = run_final_polish_check(config, "task")
+        assert result.exit_code == 1
+        assert any("regression HEAD" in err for err in result.errors)
+
+    def test_bad_config_exits_one(self, tmp_path: Path) -> None:
+        result = run_final_polish_check(tmp_path / "missing.samocode", "task")
+        assert result.exit_code == 1
+        assert result.errors[0].startswith("Config error:")
+
+    def test_invalid_project_paths_exit_one(self, tmp_path: Path) -> None:
+        config = tmp_path / ".samocode"
+        config.write_text(
+            f"MAIN_REPO={tmp_path / 'nope'}\n"
+            f"WORKTREES={tmp_path / 'nope2'}\n"
+            f"SESSIONS={tmp_path / 'nope3'}\n"
+        )
+        result = run_final_polish_check(config, "task")
+        assert result.exit_code == 1
+        assert all(e.startswith("Invalid project config:") for e in result.errors)
+
+    def test_missing_session_exits_one(self, tmp_path: Path) -> None:
+        config, _session, _head = _check_project(tmp_path)
+        result = run_final_polish_check(config, "no-such-session")
+        assert result.exit_code == 1
+        assert result.errors[0].startswith("Session directory does not exist:")
+
+    def test_removed_worktree_reports_git_gate_errors(self, tmp_path: Path) -> None:
+        # main_repo is a non-git dir and no worktree exists -> gate's git errors surface.
+        config, _session, _head = _check_project(tmp_path, main_repo_is_git=False)
+        result = run_final_polish_check(config, "task")
+        assert result.exit_code == 1
+        assert result.errors
+
+    def test_cmd_check_clean_exits_zero_silent(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        config, _session, _head = _check_project(tmp_path)
+        args = Namespace(
+            command="check",
+            check_kind="final-polish",
+            config=str(config),
+            session="task",
+        )
+        with pytest.raises(SystemExit) as exc:
+            main.cmd_check(args)
+        assert exc.value.code == 0
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert captured.err == ""
+
+    def test_cmd_check_drift_exits_one_prints_stderr(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        config, session, _head = _check_project(tmp_path)
+        (session / "01-code-clarity.md").write_text(
+            f"Reviewed HEAD: {'0' * 40}\nResult: clean\nDisposition: settled\n"
+        )
+        args = Namespace(
+            command="check",
+            check_kind="final-polish",
+            config=str(config),
+            session="task",
+        )
+        with pytest.raises(SystemExit) as exc:
+            main.cmd_check(args)
+        assert exc.value.code == 1
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert captured.err.strip().splitlines()
+
+    def test_cmd_check_is_read_only(self, tmp_path: Path) -> None:
+        config, session, head = _check_project(tmp_path)
+        (session / "03-test-report.md").write_text(
+            f"Run: 2nd (post-quality)\nResult: PASS\nTested HEAD: {'0' * 40}\n"
+        )
+        before = _dir_snapshot(session)
+        args = Namespace(
+            command="check",
+            check_kind="final-polish",
+            config=str(config),
+            session="task",
+        )
+        with pytest.raises(SystemExit):
+            main.cmd_check(args)
+        after = _dir_snapshot(session)
+        assert before == after
+        assert not (session / "_signal.json").exists()
+        assert not (session / ".lock").exists()
+
+    def test_parser_requires_final_polish_kind(self) -> None:
+        args = main.parse_args(
+            ["check", "final-polish", "--config", "x", "--session", "y"]
+        )
+        assert args.command == "check"
+        assert args.check_kind == "final-polish"
+        with pytest.raises(SystemExit):
+            main.parse_args(["check"])
 
 
 class TestDetectReadonlyWorktreeMutation:

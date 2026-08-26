@@ -106,9 +106,7 @@ def _git_init(path: Path) -> str:
         ["git", "-C", str(path), "config", "user.email", "test@example.com"],
         check=True,
     )
-    subprocess.run(
-        ["git", "-C", str(path), "config", "user.name", "Test"], check=True
-    )
+    subprocess.run(["git", "-C", str(path), "config", "user.name", "Test"], check=True)
     (path / "file.txt").write_text("clean\n")
     subprocess.run(["git", "-C", str(path), "add", "file.txt"], check=True)
     subprocess.run(["git", "-C", str(path), "commit", "-qm", "initial"], check=True)
@@ -174,9 +172,7 @@ def _recoverable_project(tmp_path: Path) -> tuple[Path, Path, Path, str]:
 def test_check_is_read_only_and_reports_exact_recoverable_state(tmp_path: Path) -> None:
     config, session, _working_dir, _head = _recoverable_project(tmp_path)
     before = {
-        path.name: path.read_bytes()
-        for path in session.iterdir()
-        if path.is_file()
+        path.name: path.read_bytes() for path in session.iterdir() if path.is_file()
     }
 
     result = inspect_final_polish_recovery(config, "task")
@@ -185,13 +181,13 @@ def test_check_is_read_only_and_reports_exact_recoverable_state(tmp_path: Path) 
     assert result.inspection is not None
     assert not (session / "_recovery").exists()
     assert before == {
-        path.name: path.read_bytes()
-        for path in session.iterdir()
-        if path.is_file()
+        path.name: path.read_bytes() for path in session.iterdir() if path.is_file()
     }
 
 
-def test_apply_snapshots_state_preserves_history_and_sets_anchor(tmp_path: Path) -> None:
+def test_apply_snapshots_state_preserves_history_and_sets_anchor(
+    tmp_path: Path,
+) -> None:
     config, session, working_dir, _head = _recoverable_project(tmp_path)
     history_before = (session / "_signal_history.jsonl").read_bytes()
     overview_before = (session / "_overview.md").read_bytes()
@@ -207,8 +203,12 @@ def test_apply_snapshots_state_preserves_history_and_sets_anchor(tmp_path: Path)
     assert (session / "_signal.json").read_text() == "{}"
     assert (session / "_signal_history.jsonl").read_bytes() == history_before
     receipt = json.loads(result.receipt_path.read_text())
-    assert receipt["history_sha256_before"] == hashlib.sha256(history_before).hexdigest()
-    assert (result.receipt_path.parent / "_overview.before.md").read_bytes() == overview_before
+    assert (
+        receipt["history_sha256_before"] == hashlib.sha256(history_before).hexdigest()
+    )
+    assert (
+        result.receipt_path.parent / "_overview.before.md"
+    ).read_bytes() == overview_before
 
     still_missing = validate_final_polish(session, working_dir)
     assert not still_missing.ok
@@ -304,9 +304,7 @@ def test_apply_signal_uses_recovery_epoch_budget_not_lifetime_history(
 
 
 @pytest.mark.parametrize("mutation", ["dirty", "plan", "signal", "phase"])
-def test_recovery_refuses_non_allowlisted_state(
-    tmp_path: Path, mutation: str
-) -> None:
+def test_recovery_refuses_non_allowlisted_state(tmp_path: Path, mutation: str) -> None:
     config, session, working_dir, _head = _recoverable_project(tmp_path)
     if mutation == "dirty":
         (working_dir / "untracked.txt").write_text("dirty")
@@ -317,12 +315,25 @@ def test_recovery_refuses_non_allowlisted_state(
         (session / "_signal.json").write_text("{}")
     else:
         path = session / "_overview.md"
-        path.write_text(path.read_text().replace("Phase: pr-readiness", "Phase: quality"))
+        path.write_text(
+            path.read_text().replace("Phase: pr-readiness", "Phase: quality")
+        )
 
     result = recover_final_polish(config, "task")
 
     assert result.outcome is RecoveryOutcome.REJECTED
     assert not (session / "_recovery").exists()
+
+
+def test_state_not_recoverable_points_at_check_command(tmp_path: Path) -> None:
+    config, session, _working_dir, _head = _recoverable_project(tmp_path)
+    path = session / "_overview.md"
+    path.write_text(path.read_text().replace("Phase: pr-readiness", "Phase: quality"))
+
+    result = recover_final_polish(config, "task")
+
+    assert result.rejection is RecoveryRejection.STATE_NOT_RECOVERABLE
+    assert "samocode check final-polish" in result.message
 
 
 def test_second_recovery_is_refused(tmp_path: Path) -> None:
@@ -475,7 +486,9 @@ def test_apply_signal_rejects_invalid_epoch_without_phase_mutation(
     assert parsed.state is not None
     assert parsed.state.phase is Phase.IMPLEMENTATION
     assert parsed.state.blocked == "workflow_error"
-    latest = json.loads((session / "_signal_history.jsonl").read_text().splitlines()[-1])
+    latest = json.loads(
+        (session / "_signal_history.jsonl").read_text().splitlines()[-1]
+    )
     assert latest["rejection_reason"] == "recovery_anchor_invalid"
 
 

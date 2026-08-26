@@ -68,6 +68,7 @@ from . import (
     recovery_exit_code,
     resolve_working_dir,
     run_ai_with_retry,
+    run_final_polish_check,
     sanitize_overview_reason,
     setup_logging,
     snapshot_worktree,
@@ -466,7 +467,7 @@ def enforce_lifecycle_preflight(session_path: Path) -> str | None:
 
 # === CLI ===
 
-SUBCOMMANDS = ("run", "install", "uninstall", "approve", "recover")
+SUBCOMMANDS = ("run", "install", "uninstall", "approve", "recover", "check")
 
 
 def add_run_arguments(parser: argparse.ArgumentParser) -> None:
@@ -609,6 +610,34 @@ Examples:
     )
     recovery_mode.add_argument(
         "--apply", action="store_true", help="Apply the validated recovery"
+    )
+
+    check_parser = subparsers.add_parser(
+        "check",
+        help="Run a read-only diagnostic without touching workflow state",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "Exit codes:\n"
+            "  0  clean: the final-polish gate passes for this session\n"
+            "  1  failing: gate errors or config/session resolution failure "
+            "(printed one per line to stderr)\n"
+            "  (2 is reserved by argparse for CLI usage errors)"
+        ),
+    )
+    check_subparsers = check_parser.add_subparsers(dest="check_kind", required=True)
+    check_final_polish_parser = check_subparsers.add_parser(
+        "final-polish",
+        help="Re-run the pr-readiness -> done final-polish gate, read-only",
+    )
+    check_final_polish_parser.add_argument(
+        "--config",
+        required=True,
+        help="Path to .samocode config file",
+    )
+    check_final_polish_parser.add_argument(
+        "--session",
+        required=True,
+        help="Session name, not path",
     )
 
     return parser
@@ -1076,6 +1105,18 @@ def cmd_recover(args: argparse.Namespace) -> None:
     sys.exit(recovery_exit_code(result))
 
 
+def cmd_check(args: argparse.Namespace) -> None:
+    """Read-only re-run of the final-polish gate: no lock, no writes, no precondition."""
+    if args.check_kind != "final-polish":
+        build_parser().print_help()
+        sys.exit(2)
+    config_path = Path(args.config).expanduser().resolve()
+    result = run_final_polish_check(config_path, args.session)
+    for error in result.errors:
+        print(error, file=sys.stderr)
+    sys.exit(result.exit_code)
+
+
 def cmd_uninstall(_args: argparse.Namespace) -> None:
     """Remove samocode-owned assets from provider directories."""
     uninstall()
@@ -1091,6 +1132,7 @@ def main() -> None:
         "uninstall": cmd_uninstall,
         "approve": cmd_approve,
         "recover": cmd_recover,
+        "check": cmd_check,
     }
     # parse_args() guarantees a command (defaults to "run"); the get() guard
     # keeps the dispatcher total and future-proof.

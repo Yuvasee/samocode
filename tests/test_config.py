@@ -20,8 +20,30 @@ from worker.config import (
     SamocodeConfig,
     _parse_config_file,
     parse_samocode_file,
+    resolve_project_working_dir,
     resolve_session_path,
 )
+
+
+class TestResolveProjectWorkingDir:
+    def _project(self, tmp_path: Path) -> ProjectConfig:
+        return ProjectConfig(
+            main_repo=tmp_path / "repo",
+            worktrees=tmp_path / "worktrees",
+            sessions=tmp_path / "sessions",
+        )
+
+    def test_returns_worktree_when_present(self, tmp_path: Path) -> None:
+        project = self._project(tmp_path)
+        session = tmp_path / "sessions" / "26-08-26-task"
+        worktree = project.worktrees / session.name
+        worktree.mkdir(parents=True)
+        assert resolve_project_working_dir(project, session) == worktree
+
+    def test_falls_back_to_main_repo_when_absent(self, tmp_path: Path) -> None:
+        project = self._project(tmp_path)
+        session = tmp_path / "sessions" / "26-08-26-task"
+        assert resolve_project_working_dir(project, session) == project.main_repo
 
 
 class TestProjectConfigFromFile:
@@ -38,7 +60,7 @@ class TestProjectConfigFromFile:
 
         config_file = tmp_path / ".samocode"
         config_file.write_text(
-            f"MAIN_REPO={repo}\n" f"WORKTREES={worktrees}\n" f"SESSIONS={sessions}\n"
+            f"MAIN_REPO={repo}\nWORKTREES={worktrees}\nSESSIONS={sessions}\n"
         )
 
         config = ProjectConfig.from_file(config_file)
@@ -89,7 +111,7 @@ class TestProjectConfigFromFile:
         """Tilde in paths is expanded to home directory."""
         config_file = tmp_path / ".samocode"
         config_file.write_text(
-            "MAIN_REPO=~/repo\n" "WORKTREES=~/worktrees\n" "SESSIONS=~/sessions\n"
+            "MAIN_REPO=~/repo\nWORKTREES=~/worktrees\nSESSIONS=~/sessions\n"
         )
 
         config = ProjectConfig.from_file(config_file)
