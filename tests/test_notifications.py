@@ -14,6 +14,7 @@ from worker.notifications import (
     notify_blocked,
     notify_complete,
     notify_error,
+    notify_escalation,
     notify_waiting,
     send_telegram_message,
 )
@@ -132,6 +133,47 @@ class TestNotifyWaiting:
             assert "Waiting" in message
             assert "my-session" in message
             assert "qa_answers" in message
+
+
+class TestNotifyEscalation:
+    """Tests for notify_escalation - profile-ladder escalation notification."""
+
+    def test_formats_message(self) -> None:
+        """Message includes phase, both profiles, both models, and the reason."""
+        with patch("worker.notifications.send_telegram_message") as mock_send:
+            notify_escalation(
+                "my-session",
+                "testing",
+                "strong",
+                "max",
+                "opus-strong",
+                "opus-max",
+                "environment",
+                "token",
+                "chat",
+            )
+
+            message = mock_send.call_args[0][0]
+            assert "Escalation" in message
+            assert "my-session" in message
+            assert "testing" in message
+            assert "strong" in message
+            assert "max" in message
+            assert "opus-strong" in message
+            assert "opus-max" in message
+            assert "environment" in message
+            assert "->" in message
+
+    def test_sends_via_telegram(self) -> None:
+        """Threads bot_token and chat_id through to the transport."""
+        with patch("worker.notifications.send_telegram_message") as mock_send:
+            notify_escalation(
+                "s", "testing", "strong", "max", "m1", "m2", "why", "token", "chat"
+            )
+
+            mock_send.assert_called_once()
+            assert mock_send.call_args[0][1] == "token"
+            assert mock_send.call_args[0][2] == "chat"
 
 
 class TestNotifyComplete:

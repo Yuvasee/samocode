@@ -91,6 +91,29 @@ def notify_waiting(
     send_telegram_message(message, bot_token, chat_id)
 
 
+def notify_escalation(
+    session_name: str,
+    phase: str,
+    base_profile: str,
+    escalated_profile: str,
+    base_model: str,
+    escalated_model: str,
+    reason: str,
+    bot_token: str,
+    chat_id: str,
+) -> None:
+    """Notify that a phase iteration was escalated one profile rung."""
+    message = (
+        f"*Samocode Escalation*\n\n"
+        f"*Session:* `{session_name}`\n"
+        f"*Phase:* `{phase}`\n"
+        f"*Profile:* `{base_profile}` -> `{escalated_profile}`\n"
+        f"*Model:* `{base_model}` -> `{escalated_model}`\n"
+        f"*Reason:* `{reason}`"
+    )
+    send_telegram_message(message, bot_token, chat_id)
+
+
 def notify_complete(
     summary: str,
     session_name: str,

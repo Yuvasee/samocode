@@ -19,6 +19,11 @@ from .config import (
     parse_samocode_file,
     resolve_session_path,
 )
+from .escalation import (
+    EscalationDecision,
+    EscalationSkip,
+    plan_escalation,
+)
 from .final_polish import (
     FinalPolishCheck,
     validate_final_polish,
@@ -56,7 +61,13 @@ from .lifecycle import (
     validate_phase_provenance,
 )
 from .logging import add_session_handler, setup_logging
-from .notifications import notify_blocked, notify_complete, notify_error, notify_waiting
+from .notifications import (
+    notify_blocked,
+    notify_complete,
+    notify_error,
+    notify_escalation,
+    notify_waiting,
+)
 from .phases import (
     PHASE_CONFIGS,
     ApprovalGate,
@@ -245,7 +256,12 @@ __all__ = [
     "notify_blocked",
     "notify_complete",
     "notify_error",
+    "notify_escalation",
     "notify_waiting",
+    # Escalation
+    "EscalationDecision",
+    "EscalationSkip",
+    "plan_escalation",
     # Phases
     "ApprovalGate",
     "EscalationPolicy",
