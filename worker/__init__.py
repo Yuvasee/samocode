@@ -151,6 +151,11 @@ from .workflow_event import (
     WorkflowEventResult,
     validate_workflow_event,
 )
+from .worktree_guard import (
+    WorktreeSnapshot,
+    describe_worktree_mutation,
+    snapshot_worktree,
+)
 from .workflow_state import (
     OutcomeKind,
     OverviewParseError,
@@ -295,6 +300,10 @@ __all__ = [
     "WorkflowEvent",
     "WorkflowEventResult",
     "validate_workflow_event",
+    # Worktree guard
+    "WorktreeSnapshot",
+    "describe_worktree_mutation",
+    "snapshot_worktree",
     # Workflow state
     "OutcomeKind",
     "OverviewParseError",
