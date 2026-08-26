@@ -83,11 +83,12 @@ Dispatch on the `Quality Step` field in the Status section of `_overview.md`
 
 1. Re-run the `quality` skill (multi-review action) via Skill tool, scoped to
    the fix commits (review the diff of the fixes, not the whole branch again).
-2. Validate that the updated review and ledger pass the machine gate:
-   ```bash
-   samocode check final-polish --config [CONFIG_PATH] --session [SESSION_NAME]
-   ```
-   Non-zero = vocabulary drift in reports/ledger; fix the drift before routing.
+2. Keep the review report and `_review_debt.md` on the closed-vocabulary templates
+   (bare decision tokens; a `fix now` row carries an explicit closed status). Do NOT
+   run `samocode check final-polish` here: it is the pr-readiness/done gate and
+   structurally cannot pass mid-quality (the 2nd regression run, Comment Hygiene, and
+   Code Clarity artifacts do not exist yet), so a non-zero result is expected, not
+   vocabulary drift.
 3. **If clean** (no blocking issues, no undecided important issues): set
    `Quality Step: clarity-review` and signal
    `{"status": "continue", "phase": "quality"}`.
@@ -150,11 +151,9 @@ Dispatch on the `Quality Step` field in the Status section of `_overview.md`
 2. Reconcile repeated findings with existing `CL-*` rows instead of duplicating
    them. Reopen a deferred/rejected row only when its evidence is invalid at the
    current `HEAD`.
-3. Validate reports and ledger:
-   ```bash
-   samocode check final-polish --config [CONFIG_PATH] --session [SESSION_NAME]
-   ```
-   Non-zero = vocabulary drift introduced by clarity fixes; fix before routing.
+3. Keep the clarity report and `_review_debt.md` on the closed-vocabulary templates.
+   Do NOT run `samocode check final-polish` here — it is the pr-readiness/done gate
+   and cannot pass mid-quality; a non-zero result is expected, not vocabulary drift.
 4. Route on the result:
    - **High/medium-impact findings are undecided:** keep `Disposition: pending` and
      signal blocked with "Code Clarity decisions required".
@@ -183,11 +182,11 @@ all Code Clarity fix cycles because those fixes may introduce redundant comments
 5. Write `[SESSION_PATH]/[TIMESTAMP_FILE]-comment-hygiene.md` with `Input HEAD`,
    `Output HEAD`, scope, removed/reworded/kept/stale counts, and
    `Safety check: PASS`.
-6. Validate that all final-polish artifacts pass the machine gate:
-   ```bash
-   samocode check final-polish --config [CONFIG_PATH] --session [SESSION_NAME]
-   ```
-   Non-zero = vocabulary drift introduced during hygiene; fix before transitioning.
+6. Keep the hygiene report and `_review_debt.md` on the closed-vocabulary templates.
+   Do NOT run `samocode check final-polish` here — the full gate also requires the
+   2nd post-quality regression run (which happens after quality) and the
+   `testing -> pr-readiness` lifecycle transition, so it cannot pass yet. The gate
+   runs at pr-readiness, once the second testing run has landed.
 7. Remove `Quality Step`, `Quality Iteration`, and `Clarity Iteration`. Transition
    to regression testing. The testing phase still runs when no automated test suite
    exists: it records that fact and performs the applicable deterministic checks.

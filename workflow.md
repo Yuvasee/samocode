@@ -107,8 +107,9 @@ status around every testing iteration and rejects a mutated run as `workflow_err
 transition unless the epoch already recorded, in order, `implementation -> testing`,
 `testing -> quality`, `quality -> testing`. On the first testing run, signal `quality`,
 not `pr-readiness`; an early `pr-readiness` signal is rejected at transition time and the
-overview is not mutated. Self-check with `samocode check final-polish` before signaling
-into a late phase.
+overview is not mutated. `samocode check final-polish` is the pr-readiness/done gate:
+run it as a self-check only once the second (post-quality) testing run has landed, before
+signaling into pr-readiness. It cannot pass mid-quality, so quality steps must not run it.
 
 ## Status Section Format
 

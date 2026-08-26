@@ -21,9 +21,12 @@ Do not mark quality work done while blocking or important findings remain undeci
 
 ## Requirements
 
-- After steps that write a final-polish report or the ledger (verify, clarity-verify,
-  hygiene), the agent runs `samocode check final-polish --config <path> --session <name>`
-  and fixes any vocabulary drift before routing.
+- Keep every final-polish report and the ledger on the closed-vocabulary templates
+  (bare decision tokens; a `fix now` row carries an explicit closed status). Do NOT run
+  `samocode check final-polish` during quality: it is the pr-readiness/done gate and
+  structurally cannot pass mid-quality (the second post-quality regression run, Comment
+  Hygiene, and Code Clarity artifacts do not exist yet, and the `testing -> pr-readiness`
+  lifecycle transition has not happened). pr-readiness runs the gate once those land.
 - None of the actions depend on each other; both work independently.
 
 ## Actions

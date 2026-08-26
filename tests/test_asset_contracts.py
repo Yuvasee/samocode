@@ -383,20 +383,16 @@ def test_generic_assets_contain_no_repository_specific_identifiers() -> None:
             assert token not in lowered, f"{path}: contains forbidden token {token!r}"
 
 
-def test_agents_and_skills_run_final_polish_check() -> None:
-    """All final-polish-adjacent assets must reference samocode check final-polish."""
+def test_pr_readiness_assets_run_final_polish_check() -> None:
+    """pr-readiness owns the full gate; its assets must reference the command."""
     pr_agent = (ROOT / "agents" / "pr-readiness-agent.md").read_text()
     pr_skill = (ROOT / "skills" / "pr-readiness" / "SKILL.md").read_text()
-    quality_agent = (ROOT / "agents" / "quality-agent.md").read_text()
-    quality_skill = (ROOT / "skills" / "quality" / "SKILL.md").read_text()
     run_skill = (ROOT / "skills" / "samocode-run" / "SKILL.md").read_text()
 
     cmd = "samocode check final-polish"
     for content, label in [
         (pr_agent, "agents/pr-readiness-agent.md"),
         (pr_skill, "skills/pr-readiness/SKILL.md"),
-        (quality_agent, "agents/quality-agent.md"),
-        (quality_skill, "skills/quality/SKILL.md"),
         (run_skill, "skills/samocode-run/SKILL.md"),
     ]:
         assert cmd in content, f"{label} must reference {cmd!r}"
@@ -405,8 +401,23 @@ def test_agents_and_skills_run_final_polish_check() -> None:
     pr_agent_lower = " ".join(pr_agent.lower().split())
     assert "never signal `done` on non-zero" in pr_agent_lower
 
-    # Quality agent must run the check after verify, clarity-verify, and hygiene
-    assert quality_agent.count(cmd) >= 3
+
+def test_quality_assets_defer_gate_to_pr_readiness() -> None:
+    """The full gate cannot pass mid-quality; quality assets must instruct NOT to run
+    it (deferring to pr-readiness), never present it as an executable quality step."""
+    quality_agent = (ROOT / "agents" / "quality-agent.md").read_text()
+    quality_skill = (ROOT / "skills" / "quality" / "SKILL.md").read_text()
+
+    cmd = "samocode check final-polish"
+    for content, label in [
+        (quality_agent, "agents/quality-agent.md"),
+        (quality_skill, "skills/quality/SKILL.md"),
+    ]:
+        lowered = " ".join(content.lower().split())
+        if cmd in content:
+            assert f"do not run `{cmd}`" in lowered, (
+                f"{label} may only mention {cmd!r} as deferred-to-pr-readiness guidance"
+            )
 
 
 def test_cli_entry_point_lives_inside_the_package() -> None:

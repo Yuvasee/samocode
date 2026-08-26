@@ -89,11 +89,15 @@ contract rejects any other profile before a model call.
 
 **Final-polish self-check** - `samocode check final-polish --config <path> --session
 <name>` re-runs the `pr-readiness -> done` gate read-only (no lock, no writes, no
-Phase/Blocked precondition); the quality and pr-readiness agents run it after each
-report/ledger write. One shared `has_final_polish_prerequisites` predicate
-(`worker/lifecycle.py`) backs both the `testing -> pr-readiness` transition gate and
-pr-readiness preflight, so they cannot disagree. The worker injects `**Testing run:**`
-(first/second) into testing Session Context so the testing agent never infers its run.
+Phase/Blocked precondition). Only pr-readiness runs it: the full gate needs the second
+(post-quality) regression run and the `testing -> pr-readiness` lifecycle transition, so
+it structurally cannot pass mid-quality; quality steps instead keep reports/ledger on the
+closed-vocabulary templates. Both the `testing -> pr-readiness` transition gate
+(`has_final_polish_prerequisites`) and the pr-readiness preflight provenance rule derive
+their prerequisite check from the single `FINAL_POLISH_PREREQUISITE_TRANSITIONS` constant
+(`worker/lifecycle.py`), so they cannot disagree. The worker injects `**Testing run:**`
+(`1st`/`2nd`, the gate's own vocabulary) into testing Session Context so the testing agent
+never infers its run and can copy the label straight into the report.
 
 ## Testing
 
