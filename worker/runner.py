@@ -14,6 +14,7 @@ from typing import IO, TextIO
 
 from .adapters import AdapterInputs, build_codex_agent_prompt, get_adapter
 from .config import SamocodeConfig
+from .lifecycle import derive_testing_run
 from .phases import Phase, get_agent_for_phase
 from .routing import (
     ExecutionProfileSource,
@@ -577,6 +578,8 @@ def build_session_context(
         lines.append(f"**Phase:** {phase}")
     if iteration:
         lines.append(f"**Iteration:** {iteration}")
+    if phase == "testing":
+        lines.append(f"**Testing run:** {derive_testing_run(session_path)}")
 
     # Add time limit so agent knows constraints; prefer the resolved target timeout.
     timeout = target.timeout if target is not None else config.ai_timeout

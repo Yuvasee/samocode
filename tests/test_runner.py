@@ -213,6 +213,61 @@ class TestBuildSessionContext:
         assert "IMPORTANT" in context
 
 
+class TestTestingRunInjection:
+    """Tests for **Testing run:** injection in build_session_context."""
+
+    def _make_workflow(self, tmp_path: Path) -> Path:
+        workflow = tmp_path / "workflow.md"
+        workflow.write_text("# Workflow")
+        return workflow
+
+    def test_no_injection_for_non_testing_phases(self, tmp_path: Path) -> None:
+        workflow = self._make_workflow(tmp_path)
+        config = make_config(tmp_path)
+        session = tmp_path / "test-session"
+        session.mkdir()
+
+        for phase in ("implementation", "quality", "pr-readiness"):
+            context = build_session_context(workflow, session, config, phase=phase)
+            assert "Testing run" not in context
+
+    def test_injected_for_testing_phase_no_history(self, tmp_path: Path) -> None:
+        workflow = self._make_workflow(tmp_path)
+        config = make_config(tmp_path)
+        session = tmp_path / "test-session"
+        session.mkdir()
+
+        context = build_session_context(workflow, session, config, phase="testing")
+
+        assert "**Testing run:** first (post-implementation)" in context
+
+    def test_injected_second_run_from_history(self, tmp_path: Path) -> None:
+        from worker.phases import Phase
+        from worker.signal_history import record_processed_outcome
+        from worker.signals import Signal, SignalStatus
+        from worker.workflow_state import ProcessedOutcome
+
+        def _transition(session: Path, src: Phase, tgt: Phase, it: int) -> None:
+            record_processed_outcome(
+                session,
+                Signal(status=SignalStatus.CONTINUE, phase=tgt.value),
+                it,
+                ProcessedOutcome.accepted_transition(src, tgt),
+            )
+
+        workflow = self._make_workflow(tmp_path)
+        config = make_config(tmp_path)
+        session = tmp_path / "test-session"
+        session.mkdir()
+        _transition(session, Phase.IMPLEMENTATION, Phase.TESTING, 1)
+        _transition(session, Phase.TESTING, Phase.QUALITY, 2)
+        _transition(session, Phase.QUALITY, Phase.TESTING, 3)
+
+        context = build_session_context(workflow, session, config, phase="testing")
+
+        assert "**Testing run:** second (post-quality)" in context
+
+
 class TestCodexPromptBuilding:
     """Tests for Codex provider prompt and CLI construction."""
 

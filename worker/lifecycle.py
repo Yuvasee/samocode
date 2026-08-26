@@ -181,6 +181,25 @@ def validate_final_polish_lifecycle(session_path: Path) -> LifecycleCheck:
     return LifecycleCheck(tuple(issues))
 
 
+def derive_testing_run(session_path: Path) -> str:
+    """Return the testing-run label based on the latest accepted transition into testing.
+
+    - `quality -> testing` -> "second (post-quality)"
+    - `implementation -> testing` -> "first (post-implementation)"
+    - No accepted transition into testing -> "first (post-implementation)" (conservative
+      default; provenance absent stated in caller's injection so agent is not misled).
+    """
+    history, _ = scoped_history(session_path)
+    transitions = accepted_transitions(history)
+    latest_into_testing: tuple[str | None, str | None] | None = None
+    for t in transitions:
+        if t[1] == "testing":
+            latest_into_testing = t
+    if latest_into_testing is not None and latest_into_testing[0] == "quality":
+        return "second (post-quality)"
+    return "first (post-implementation)"
+
+
 def has_final_polish_prerequisites(
     transitions: list[tuple[str | None, str | None]],
 ) -> bool:
@@ -290,7 +309,7 @@ def _is_accepted_transition(record: HistoryRecord) -> bool:
 
 def latest_applied_recovery_anchor(session_path: Path) -> RecoveryAnchor | None:
     """A receipt becomes authoritative only after its ID appears in the Flow Log."""
-    anchor, _errors = _resolve_applied_recovery_anchor(session_path)
+    anchor, _ = _resolve_applied_recovery_anchor(session_path)
     return anchor
 
 
