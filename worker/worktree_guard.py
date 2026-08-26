@@ -6,6 +6,8 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
+_PORCELAIN_PATH_START = 3  # git status --porcelain line is `XY` + space + path
+
 
 @dataclass(frozen=True)
 class WorktreeSnapshot:
@@ -46,10 +48,14 @@ def changed_tracked_paths(
 ) -> list[str]:
     """Tracked paths whose status differs between the two snapshots."""
     before_paths = {
-        line[3:] for line in before.tracked_status.splitlines() if len(line) > 3
+        line[_PORCELAIN_PATH_START:]
+        for line in before.tracked_status.splitlines()
+        if len(line) > _PORCELAIN_PATH_START
     }
     after_paths = {
-        line[3:] for line in after.tracked_status.splitlines() if len(line) > 3
+        line[_PORCELAIN_PATH_START:]
+        for line in after.tracked_status.splitlines()
+        if len(line) > _PORCELAIN_PATH_START
     }
     return sorted((before_paths | after_paths) - (before_paths & after_paths))
 
