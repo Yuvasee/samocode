@@ -129,6 +129,15 @@ Choose the profile only from the character and risk of that phase:
 | `strong` | Architecture, persistence/schema/data changes, concurrency, retries/idempotency, security/auth, public contracts, failure recovery, or other cross-cutting multi-component work. |
 | `max` | Rare phases where high uncertainty, large blast radius, and difficult or costly recovery are all present. If only one or two apply, use `strong`; split an oversized phase before escalating it to `max`. |
 
+**Documentation authoring is `max`-only.** Any phase that authors or substantively
+rewrites documentation content — README, ARCHITECTURE.md, CHANGELOG, workflow.md,
+CLAUDE.md, CONTRIBUTING.md, or files under `docs/` — must be split into its own phase
+carrying a `**Profile:** max` line, even when the edit looks mechanical. This overrides
+the general "max is rare" guidance above. It does not apply to reading documentation
+for context, or to source comments and docstrings, which keep whatever profile their
+surrounding work warrants. `worker/plan_resolver.py` enforces this and rejects a
+pending documentation-authoring phase whose profile is missing or not `max`.
+
 Profiles are provider-neutral semantic labels. When assigning them:
 
 - Do NOT read global/provider model configuration, `config.toml`, model catalogs,

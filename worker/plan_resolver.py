@@ -293,9 +293,173 @@ def validate_pending_implementation_scope(phases: list[PlanPhase]) -> None:
                 raise _lifecycle_scope_error(phase, task.text)
 
 
+# === Documentation profile enforcement ===
+
+# Closed vocabulary mirroring the project's own definition of "Docs": bare nouns
+# are unambiguous on their own; the rest are exact filenames so a generic "*.md"
+# match never sweeps in skill/agent instruction files (operational contracts
+# edited at their own risk-appropriate profile, not documentation).
+_DOC_ARTIFACT_WORDS = frozenset({"readme", "changelog", "docs"})
+_DOC_ARTIFACT_FILENAMES = frozenset(
+    {"architecture.md", "workflow.md", "claude.md", "contributing.md"}
+)
+
+# Enumerated forms, matching this module's closed-vocabulary style; no stemming.
+_DOC_AUTHORING_VERB_FORMS = frozenset(
+    {
+        "document",
+        "documents",
+        "documenting",
+        "documented",
+        "write",
+        "writes",
+        "writing",
+        "wrote",
+        "written",
+        "author",
+        "authors",
+        "authoring",
+        "authored",
+        "draft",
+        "drafts",
+        "drafting",
+        "drafted",
+        "revise",
+        "revises",
+        "revising",
+        "revised",
+        "rewrite",
+        "rewrites",
+        "rewriting",
+        "rewrote",
+        "rewritten",
+        "update",
+        "updates",
+        "updating",
+        "updated",
+    }
+)
+_DOC_READ_ONLY_VERB_FORMS = frozenset(
+    {
+        "read",
+        "reads",
+        "reading",
+        "review",
+        "reviews",
+        "reviewing",
+        "reviewed",
+        "consult",
+        "consults",
+        "consulting",
+        "consulted",
+        "reference",
+        "references",
+        "referencing",
+        "referenced",
+        "check",
+        "checks",
+        "checking",
+        "checked",
+        "inspect",
+        "inspects",
+        "inspecting",
+        "inspected",
+        "browse",
+        "browses",
+        "browsing",
+        "browsed",
+        "view",
+        "views",
+        "viewing",
+        "viewed",
+        "see",
+        "sees",
+        "seeing",
+    }
+)
+
+
+def _word_alternation(words: frozenset[str]) -> str:
+    return "|".join(re.escape(word) for word in sorted(words))
+
+
+_DOC_ARTIFACT_RE = re.compile(
+    rf"\b(?:{_word_alternation(_DOC_ARTIFACT_WORDS)})\b"
+    rf"|\b(?:{_word_alternation(_DOC_ARTIFACT_FILENAMES)})\b",
+    re.IGNORECASE,
+)
+_AUTHORING_VERB_RE = re.compile(
+    rf"\b(?:{_word_alternation(_DOC_AUTHORING_VERB_FORMS)})\b", re.IGNORECASE
+)
+_READ_ONLY_VERB_RE = re.compile(
+    rf"\b(?:{_word_alternation(_DOC_READ_ONLY_VERB_FORMS)})\b", re.IGNORECASE
+)
+# "documentation" alone is too generic to anchor on: it also names *policy about*
+# docs (e.g. a phase whose task is "add a rule that documentation-authoring work
+# is isolated"). It counts as an object only when an authoring verb governs it
+# within a couple of words.
+_AUTHORING_VERB_GOVERNS_DOCUMENTATION_RE = re.compile(
+    rf"\b(?:{_word_alternation(_DOC_AUTHORING_VERB_FORMS)})\b"
+    rf"(?:\s+\S+){{0,2}}\s+documentation\b",
+    re.IGNORECASE,
+)
+
+
+def validate_documentation_profile_scope(phases: list[PlanPhase]) -> None:
+    """Documentation-authoring work always routes to `max`.
+
+    Mirrors validate_pending_implementation_scope: only pending phases are
+    checked and a completed task's text is not re-evaluated, so a phase already
+    executed under an earlier profile stays recoverable.
+    """
+    for phase in phases:
+        if not phase.has_unchecked_task:
+            continue
+        if _phase_is_documentation_authoring(phase) and phase.profile != "max":
+            raise _documentation_profile_error(phase)
+
+
+def _phase_is_documentation_authoring(phase: PlanPhase) -> bool:
+    if _is_documentation_authoring_text(phase.title):
+        return True
+    return any(
+        _is_documentation_authoring_text(task.text)
+        for task in phase.tasks
+        if not task.complete
+    )
+
+
+def _is_documentation_authoring_text(text: str) -> bool:
+    """True when `text` (a phase title or one task) describes writing or changing
+    documentation content, not merely reading it.
+
+    A closed-vocabulary artifact name counts on its own unless the only verb
+    present is read-only. Docstrings and source comments never match
+    (`\\bdocs\\b` excludes "docstring"; "comment" is not in the vocabulary), so
+    they need no separate exclusion.
+    """
+    if _AUTHORING_VERB_GOVERNS_DOCUMENTATION_RE.search(text):
+        return True
+    if not _DOC_ARTIFACT_RE.search(text):
+        return False
+    reads_only = bool(
+        _READ_ONLY_VERB_RE.search(text)
+    ) and not _AUTHORING_VERB_RE.search(text)
+    return not reads_only
+
+
+def _documentation_profile_error(phase: PlanPhase) -> PlanResolutionError:
+    return PlanResolutionError(
+        f"Phase {phase.label} ({phase.title!r}) authors documentation but its "
+        f"profile is {phase.profile!r}, not `max`; split the documentation work "
+        "into its own phase with **Profile:** `max`"
+    )
+
+
 def validate_plan_contract(plan_text: str) -> list[PlanPhase]:
     phases = parse_implementation_phases(plan_text)
     validate_pending_implementation_scope(phases)
+    validate_documentation_profile_scope(phases)
     return phases
 
 

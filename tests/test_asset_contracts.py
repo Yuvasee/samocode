@@ -290,6 +290,26 @@ def test_planning_contract_keeps_profile_selection_semantic() -> None:
         assert phrase not in normalized
 
 
+def test_documentation_authoring_is_pinned_to_max_in_both_planning_assets() -> None:
+    skill = (ROOT / "skills" / "planning" / "SKILL.md").read_text()
+    agent = (ROOT / "agents" / "planning-agent.md").read_text()
+
+    rule = "**Documentation authoring is `max`-only.**"
+    for content in (skill, agent):
+        assert rule in content
+        normalized = " ".join(content.split())
+        assert "must be split into its own phase" in normalized
+        assert "overrides the general" in normalized
+        assert "does not apply to reading documentation" in normalized
+        assert "source comments and docstrings" in normalized
+        assert "worker/plan_resolver.py" in content
+
+    light_row = next(
+        line for line in skill.splitlines() if line.strip().startswith("| `light`")
+    )
+    assert "documentation" not in light_row.lower()
+
+
 def test_interactive_planning_skill_writes_the_approval_handoff_state() -> None:
     content = (ROOT / "skills" / "planning" / "SKILL.md").read_text()
     assert "Phase: planning" in content

@@ -23,6 +23,7 @@ from worker.plan_resolver import (
     resolve_plan_phase,
     select_active_phase,
     select_active_plan,
+    validate_documentation_profile_scope,
     validate_pending_implementation_scope,
     validate_plan_contract,
 )
@@ -283,6 +284,110 @@ class TestLifecycleScopeValidation:
         )
         phases = validate_plan_contract(text)
         assert select_active_phase(phases) is None
+
+
+class TestDocumentationProfileScope:
+    @pytest.mark.parametrize("profile", ["light", "standard", "strong"])
+    def test_rejects_documentation_phase_below_max(self, profile: str) -> None:
+        text = (
+            "## Implementation Phases\n\n"
+            f"### Phase 1: Docs\n**Profile:** `{profile}`\n"
+            "- [ ] README: document the new CLI flags\n"
+        )
+        with pytest.raises(PlanResolutionError, match="authors documentation"):
+            validate_plan_contract(text)
+
+    def test_rejects_documentation_phase_with_no_profile(self) -> None:
+        text = (
+            "## Implementation Phases\n\n"
+            "### Phase 1: Docs\n- [ ] README: document the new CLI flags\n"
+        )
+        with pytest.raises(PlanResolutionError, match="authors documentation"):
+            validate_plan_contract(text)
+
+    def test_accepts_documentation_phase_on_max(self) -> None:
+        text = (
+            "## Implementation Phases\n\n"
+            "### Phase 9: Docs (R7)\n**Profile:** `max`\n"
+            "- [ ] README: document `approve` / `check` / `recover` commands.\n"
+            "- [ ] `workflow.md`: testing-run injection and the "
+            "`testing -> pr-readiness` transition gate.\n"
+            "- [ ] `ARCHITECTURE.md`: source map entries for the new "
+            "predicate/command.\n"
+        )
+        phases = validate_plan_contract(text)
+        assert phases[0].profile == "max"
+
+    def test_bare_docs_title_is_sufficient_signal(self) -> None:
+        """A task line with no verb still puts the phase in scope via the bare
+        `Docs` title, matching this plan's own Phase 9 shape."""
+        text = (
+            "## Implementation Phases\n\n"
+            "### Phase 1: Docs\n**Profile:** `standard`\n"
+            "- [ ] `workflow.md`: describe the new transition gate\n"
+        )
+        with pytest.raises(PlanResolutionError, match="authors documentation"):
+            validate_plan_contract(text)
+
+    def test_documentation_task_hidden_in_neutral_phase_is_rejected(self) -> None:
+        phases = [
+            PlanPhase(
+                "3",
+                "Finish up",
+                "standard",
+                2,
+                0,
+                (
+                    PlanTask("Wire up the new endpoint", False),
+                    PlanTask("Write end-user documentation for the export flag", False),
+                ),
+            )
+        ]
+        with pytest.raises(PlanResolutionError, match="authors documentation"):
+            validate_documentation_profile_scope(phases)
+
+    def test_allows_completed_documentation_phase_to_recover(self) -> None:
+        text = (
+            "## Implementation Phases\n\n"
+            "### Phase 1: Docs\n**Profile:** `standard`\n"
+            "- [x] README: document it\n"
+        )
+        phases = validate_plan_contract(text)
+        assert select_active_phase(phases) is None
+
+    @pytest.mark.parametrize(
+        "task",
+        [
+            "Read the README before implementing the retry logic",
+            "Review documentation for the payments flow before starting",
+            "Add docstrings to the new public functions in worker/lifecycle.py",
+            "Update the inline comment above _contains_ordered to explain the check",
+        ],
+    )
+    def test_non_authoring_documentation_work_is_allowed(self, task: str) -> None:
+        text = (
+            "## Implementation Phases\n\n"
+            f"### Phase 1: Investigate\n**Profile:** `standard`\n- [ ] {task}\n"
+        )
+        phases = validate_plan_contract(text)
+        assert phases[0].profile == "standard"
+
+    def test_meta_reference_to_documentation_policy_is_not_authoring(self) -> None:
+        """A phase *about* the doc-profile classifier itself (this plan's own
+        Phase 8) must not be swept in by the phrase "documentation-authoring"
+        describing the policy, nor by incidental `.md` mentions of skill/agent
+        instruction files."""
+        text = (
+            "## Implementation Phases\n\n"
+            "### Phase 8: Enforce max routing for documentation\n"
+            "**Profile:** `strong`\n"
+            "- [ ] skills/planning/SKILL.md + agents/planning-agent.md: remove "
+            "documentation from the light examples and add a non-negotiable rule "
+            "that documentation-authoring work is isolated in its own phase with "
+            "the max profile.\n"
+        )
+        phases = validate_plan_contract(text)
+        assert phases[0].profile == "strong"
 
 
 class TestResolvePlanPhase:
