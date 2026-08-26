@@ -95,11 +95,13 @@ from .routing import (
     validate_workflow_overrides,
 )
 from .runner import (
+    EscalationContext,
     ExecutionResult,
     ExecutionStatus,
     extract_phase,
     extract_total_iterations,
     increment_total_iterations,
+    latest_test_report,
     resolve_working_dir,
     run_ai_with_retry,
     run_claude_with_retry,
@@ -265,11 +267,13 @@ __all__ = [
     "resolve_workflow_profile",
     "validate_workflow_overrides",
     # Runner
+    "EscalationContext",
     "ExecutionResult",
     "ExecutionStatus",
     "extract_phase",
     "extract_total_iterations",
     "increment_total_iterations",
+    "latest_test_report",
     "run_ai_with_retry",
     "run_claude_with_retry",
     "resolve_working_dir",
