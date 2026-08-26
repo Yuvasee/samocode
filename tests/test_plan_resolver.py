@@ -420,6 +420,39 @@ class TestDocumentationProfileScope:
         with pytest.raises(PlanResolutionError, match="authors documentation"):
             validate_plan_contract(text)
 
+    @pytest.mark.parametrize(
+        "task",
+        [
+            "Write end-user documentation, then add tests for the README",
+            "Add tests for the README and update the user documentation",
+            "Fix tests for parser, update the user documentation",
+        ],
+    )
+    def test_authoring_clause_survives_colocated_test_rule_clause(
+        self, task: str
+    ) -> None:
+        """A compound bullet mixing a test/rule clause with a genuine authoring
+        clause must still route to `max`; the test/rule exclusion is scoped to its
+        own span and must not clear the independent authoring clause."""
+        text = (
+            "## Implementation Phases\n\n"
+            f"### Phase 1: Ship\n**Profile:** `standard`\n- [ ] {task}\n"
+        )
+        with pytest.raises(PlanResolutionError, match="authors documentation"):
+            validate_plan_contract(text)
+
+    def test_test_rule_window_does_not_cross_clause_boundary(self) -> None:
+        """The filler window between a test/rule object and a doc noun stops at a
+        comma/conjunction, so "update docs" in the second clause is not read as
+        governed by the test object and wrongly excluded."""
+        text = (
+            "## Implementation Phases\n\n"
+            "### Phase 1: Ship\n**Profile:** `standard`\n"
+            "- [ ] Fix tests for parser, update docs\n"
+        )
+        with pytest.raises(PlanResolutionError, match="authors documentation"):
+            validate_plan_contract(text)
+
     def test_meta_reference_to_documentation_policy_is_not_authoring(self) -> None:
         """A phase *about* the doc-profile classifier itself (this plan's own
         Phase 8) must not be swept in by the phrase "documentation-authoring"

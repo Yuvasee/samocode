@@ -427,9 +427,15 @@ _DOC_NOUN_ALTERNATION = (
     rf"documentation|{_word_alternation(_DOC_ARTIFACT_WORDS)}"
     rf"|{_word_alternation(_DOC_ARTIFACT_FILENAMES)}"
 )
+# The filler between the test/rule object and its doc noun must stay in one clause:
+# a comma/semicolon/colon/period or a coordinating conjunction opens a new clause,
+# so the window stops there. Otherwise "Fix tests for parser, update docs" would
+# read the *second* clause's doc noun as governed by the test object and wrongly
+# clear a genuine "update docs" authoring clause.
+_CLAUSE_FILLER_WORD = r"(?:(?!(?:and|or|but|then|plus)\b)[^\s,;:.]+\s+)"
 _TEST_OR_RULE_GOVERNS_DOC_RE = re.compile(
     r"\b(?:tests?|rules?)\s+(?:for|about|on|of|regarding|covering)\s+"
-    rf"(?:\S+\s+){{0,3}}?(?:{_DOC_NOUN_ALTERNATION})\b",
+    rf"{_CLAUSE_FILLER_WORD}{{0,3}}?(?:{_DOC_NOUN_ALTERNATION})\b",
     re.IGNORECASE,
 )
 
@@ -473,15 +479,19 @@ def _is_documentation_authoring_text(text: str) -> bool:
     over-matches ("add caching to the docs pipeline"). Fixing either needs a
     clause parser with real precision/recall tradeoffs.
     """
-    if _TEST_OR_RULE_GOVERNS_DOC_RE.search(text):
-        return False
-    if _AUTHORING_VERB_GOVERNS_DOCUMENTATION_RE.search(text):
+    # A test/rule object that names a doc ("add tests for the README") is not
+    # authoring, but the same bullet can *also* carry a real authoring clause
+    # ("write the guide, add tests for the README"). Strip only the matched
+    # test/rule span and classify the remainder, so a co-located authoring clause
+    # is not masked by an unconditional short-circuit on the test/rule match.
+    remainder = _TEST_OR_RULE_GOVERNS_DOC_RE.sub(" ", text)
+    if _AUTHORING_VERB_GOVERNS_DOCUMENTATION_RE.search(remainder):
         return True
-    if not _DOC_ARTIFACT_RE.search(text):
+    if not _DOC_ARTIFACT_RE.search(remainder):
         return False
     reads_only = bool(
-        _READ_ONLY_VERB_RE.search(text)
-    ) and not _AUTHORING_VERB_RE.search(text)
+        _READ_ONLY_VERB_RE.search(remainder)
+    ) and not _AUTHORING_VERB_RE.search(remainder)
     return not reads_only
 
 
