@@ -48,6 +48,7 @@ from .lifecycle import (
     LifecycleIssueCode,
     RecoveryAnchor,
     count_epoch_source_phase_runs_including_current,
+    count_escalations_since_phase_entry,
     latest_applied_recovery_anchor,
     recovery_commit_marker,
     scoped_history,
@@ -105,6 +106,7 @@ from .runner import (
     validate_session_structure,
 )
 from .signal_history import (
+    ESCALATION_STATUS,
     HistoryRecord,
     SignalHistoryEntry,
     count_source_phase_iterations,
@@ -112,6 +114,7 @@ from .signal_history import (
     get_phase_iteration_count,
     read_history,
     read_signal_history,
+    record_escalation,
     record_processed_outcome,
     record_signal,
 )
@@ -209,6 +212,7 @@ __all__ = [
     "LifecycleIssueCode",
     "RecoveryAnchor",
     "count_epoch_source_phase_runs_including_current",
+    "count_escalations_since_phase_entry",
     "latest_applied_recovery_anchor",
     "scoped_history",
     "recovery_commit_marker",
@@ -266,6 +270,7 @@ __all__ = [
     "resolve_working_dir",
     "validate_session_structure",
     # Signal history
+    "ESCALATION_STATUS",
     "HistoryRecord",
     "SignalHistoryEntry",
     "count_source_phase_iterations",
@@ -273,6 +278,7 @@ __all__ = [
     "get_phase_iteration_count",
     "read_history",
     "read_signal_history",
+    "record_escalation",
     "record_processed_outcome",
     "record_signal",
     # Signals

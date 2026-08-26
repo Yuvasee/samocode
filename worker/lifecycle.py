@@ -10,7 +10,12 @@ from enum import Enum
 from pathlib import Path
 
 from .phases import Phase
-from .signal_history import HISTORY_FILENAME, HistoryRecord, read_history
+from .signal_history import (
+    ESCALATION_STATUS,
+    HISTORY_FILENAME,
+    HistoryRecord,
+    read_history,
+)
 from .signals import OVERVIEW_FILENAME
 
 RECOVERY_DIRNAME = "_recovery"
@@ -129,10 +134,7 @@ def validate_final_polish_lifecycle(session_path: Path) -> LifecycleCheck:
                 LIFECYCLE_MISSING_ERROR,
             )
         )
-    if (
-        not transitions
-        or transitions[-1] != REQUIRED_FINAL_POLISH_TRANSITIONS[-1]
-    ):
+    if not transitions or transitions[-1] != REQUIRED_FINAL_POLISH_TRANSITIONS[-1]:
         issues.append(
             LifecycleIssue(
                 LifecycleIssueCode.LATEST_TRANSITION_INVALID,
@@ -208,14 +210,62 @@ def count_epoch_source_phase_runs_including_current(
     return EpochPhaseRunCount(count=completed_runs + 1)
 
 
+def count_escalations_since_phase_entry(
+    session_path: Path, phase: Phase
+) -> EpochPhaseRunCount:
+    """Escalations recorded since the last accepted entry into `phase`.
+
+    The window opens at the last accepted+mutated transition whose target is
+    `phase` (the most recent entry into it), or at the start of scoped history when
+    there is no such transition. Recovery-anchor errors propagate as issues,
+    matching count_epoch_source_phase_runs_including_current.
+    """
+    history, anchor_errors = scoped_history(session_path)
+    if anchor_errors:
+        return EpochPhaseRunCount(
+            count=None,
+            issues=tuple(
+                LifecycleIssue(LifecycleIssueCode.RECOVERY_ANCHOR_INVALID, message)
+                for message in anchor_errors
+            ),
+        )
+    target_phase = phase.value
+    entry_index = _last_phase_entry_index(history, target_phase)
+    escalations = sum(
+        1
+        for record in history[entry_index + 1 :]
+        if record.raw_status == ESCALATION_STATUS
+        and record.target_phase == target_phase
+    )
+    return EpochPhaseRunCount(count=escalations)
+
+
+def _last_phase_entry_index(history: list[HistoryRecord], target_phase: str) -> int:
+    """Index of the last accepted transition into `target_phase`, or -1 if none.
+
+    -1 makes the caller's `history[entry_index + 1:]` slice span the whole scoped
+    history — the "no entry transition" case.
+    """
+    for index in range(len(history) - 1, -1, -1):
+        record = history[index]
+        if _is_accepted_transition(record) and record.target_phase == target_phase:
+            return index
+    return -1
+
+
 def accepted_transitions(
     history: list[HistoryRecord],
 ) -> list[tuple[str | None, str | None]]:
     return [
         (record.source_phase, record.target_phase)
         for record in history
-        if record.accepted is True and record.mutated is True
+        if _is_accepted_transition(record)
     ]
+
+
+def _is_accepted_transition(record: HistoryRecord) -> bool:
+    """The single definition of an accepted phase transition: accepted and mutated."""
+    return record.accepted is True and record.mutated is True
 
 
 def latest_applied_recovery_anchor(session_path: Path) -> RecoveryAnchor | None:
