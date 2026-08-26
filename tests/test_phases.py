@@ -13,6 +13,7 @@ import pytest
 from worker.phases import (
     PHASE_CONFIGS,
     ApprovalGate,
+    EscalationPolicy,
     Phase,
     PhaseConfig,
     PhaseRegistryError,
@@ -114,6 +115,21 @@ class TestPhaseConfigs:
         assert is_iteration_limit_exceeded("quality", 20) == (False, 20)
         assert is_iteration_limit_exceeded("quality", 21) == (True, 20)
 
+    def test_testing_escalates_on_environment_and_is_readonly(self) -> None:
+        config = PHASE_CONFIGS[Phase.TESTING]
+        assert config.default_profile == "strong"
+        assert config.worktree_readonly is True
+        assert config.escalation is not None
+        assert config.escalation.trigger_needs == frozenset({"environment"})
+        assert config.escalation.max_attempts == 1
+
+    def test_non_testing_phases_have_no_escalation_by_default(self) -> None:
+        for phase, config in PHASE_CONFIGS.items():
+            if phase is Phase.TESTING:
+                continue
+            assert config.escalation is None
+            assert config.worktree_readonly is False
+
 
 class TestRegistryInvariants:
     def _cfg(self, **kw: object) -> PhaseConfig:
@@ -164,6 +180,35 @@ class TestRegistryInvariants:
             allowed_waits=frozenset({"human_action"}),
         )
         with pytest.raises(PhaseRegistryError, match="waiting"):
+            validate_phase_registry({Phase.PLANNING: bad})
+
+    def test_escalation_requires_blocked_signal(self) -> None:
+        bad = self._cfg(
+            allowed_signals=frozenset({"continue", "waiting"}),
+            escalation=EscalationPolicy(frozenset({"environment"}), 1),
+        )
+        with pytest.raises(PhaseRegistryError, match="'blocked' signal"):
+            validate_phase_registry({Phase.PLANNING: bad})
+
+    def test_escalation_max_attempts_must_be_positive(self) -> None:
+        bad = self._cfg(
+            escalation=EscalationPolicy(frozenset({"environment"}), 0),
+        )
+        with pytest.raises(PhaseRegistryError, match="max_attempts must be >= 1"):
+            validate_phase_registry({Phase.PLANNING: bad})
+
+    def test_escalation_trigger_must_be_blocked_need(self) -> None:
+        bad = self._cfg(
+            escalation=EscalationPolicy(frozenset({"not_a_need"}), 1),
+        )
+        with pytest.raises(PhaseRegistryError, match="not a BLOCKED_NEEDS value"):
+            validate_phase_registry({Phase.PLANNING: bad})
+
+    def test_escalation_trigger_cannot_be_worker_resolvable(self) -> None:
+        bad = self._cfg(
+            escalation=EscalationPolicy(frozenset({"human_decision"}), 1),
+        )
+        with pytest.raises(PhaseRegistryError, match="worker-resolvable"):
             validate_phase_registry({Phase.PLANNING: bad})
 
 

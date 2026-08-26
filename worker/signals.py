@@ -12,6 +12,13 @@ SIGNAL_FILENAME = "_signal.json"
 OVERVIEW_FILENAME = "_overview.md"
 
 
+# `needs` vocabularies for escalation policies. A trigger need must be in
+# BLOCKED_NEEDS and absent from WORKER_NEEDS; the intentional overlap on
+# "human_decision" makes it non-escalating (the worker can synthesize it itself).
+BLOCKED_NEEDS = ("human_decision", "clarification", "error_resolution", "environment")
+WORKER_NEEDS = ("investigation", "human_decision")
+
+
 class SignalStatus(Enum):
     """Valid signal statuses for orchestrator control."""
 

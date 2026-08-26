@@ -59,6 +59,7 @@ from .notifications import notify_blocked, notify_complete, notify_error, notify
 from .phases import (
     PHASE_CONFIGS,
     ApprovalGate,
+    EscalationPolicy,
     Phase,
     PhaseConfig,
     PhaseRegistryError,
@@ -115,8 +116,10 @@ from .signal_history import (
     record_signal,
 )
 from .signals import (
+    BLOCKED_NEEDS,
     OVERVIEW_FILENAME,
     SIGNAL_FILENAME,
+    WORKER_NEEDS,
     Signal,
     SignalStatus,
     clear_signal_file,
@@ -234,6 +237,7 @@ __all__ = [
     "notify_waiting",
     # Phases
     "ApprovalGate",
+    "EscalationPolicy",
     "Phase",
     "PhaseConfig",
     "PhaseRegistryError",
@@ -272,8 +276,10 @@ __all__ = [
     "record_processed_outcome",
     "record_signal",
     # Signals
+    "BLOCKED_NEEDS",
     "OVERVIEW_FILENAME",
     "SIGNAL_FILENAME",
+    "WORKER_NEEDS",
     "Signal",
     "SignalStatus",
     "clear_signal_file",

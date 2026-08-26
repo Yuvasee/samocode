@@ -63,7 +63,7 @@ class TestPhaseDefaults:
             Phase.REQUIREMENTS: "strong",
             Phase.PLANNING: "max",
             Phase.IMPLEMENTATION: "standard",
-            Phase.TESTING: "standard",
+            Phase.TESTING: "strong",
             Phase.QUALITY: "strong",
             Phase.PR_READINESS: "strong",
             Phase.DONE: "light",
@@ -258,7 +258,7 @@ class TestCrossProviderInvocation:
             config=cfg,
             runtime=RuntimeConfig(),
         )
-        assert claude_target.profile == codex_target.profile == "standard"
+        assert claude_target.profile == codex_target.profile == "strong"
         assert claude_target.model != codex_target.model
 
 
@@ -356,10 +356,10 @@ class TestPathTimeoutOverrides:
         assert target.timeout == 99
 
     def test_unknown_provider_falls_back_to_provider_executable(self) -> None:
-        # Phase.TESTING default profile is "standard", which gemini provides.
+        # Phase.TESTING default profile is "strong", which gemini must provide.
         cfg = _config(
             '\n[providers.gemini]\nexecutable = "gemini-cli"\n'
-            '[providers.gemini.profiles.standard]\nmodel = "gemini-x"\n'
+            '[providers.gemini.profiles.strong]\nmodel = "gemini-x"\n'
         )
         target = resolve_execution_target(
             provider_name="gemini",
