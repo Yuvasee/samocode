@@ -7,6 +7,7 @@ assets; a top-level module would be copied into site-packages and go stale.
 import argparse
 import logging
 import os
+import shlex
 import sys
 from dataclasses import dataclass
 from enum import Enum
@@ -15,6 +16,8 @@ from pathlib import Path
 from . import (
     OVERVIEW_FILENAME,
     ApprovalOutcome,
+    EscalationContext,
+    EscalationSkip,
     ExecutionResolutionError,
     ExecutionStatus,
     GlobalConfigError,
@@ -28,16 +31,20 @@ from . import (
     ProcessLeaseState,
     RecoveryOutcome,
     RejectionReason,
+    SamocodeConfig,
     Signal,
     SignalStatus,
+    WorktreeSnapshot,
     acquire_process_lease,
     add_session_handler,
     apply_overview_transition,
     apply_workflow_event,
     approve,
+    changed_tracked_paths,
     clear_signal_file,
     compose_startup,
     count_epoch_source_phase_runs_including_current,
+    describe_worktree_mutation,
     exit_code_for,
     extract_phase,
     extract_total_iterations,
@@ -46,23 +53,94 @@ from . import (
     increment_total_iterations,
     inspect_final_polish_recovery,
     install,
+    iteration_timestamp,
     notify_blocked,
     notify_complete,
     notify_error,
+    notify_escalation,
     notify_waiting,
+    plan_escalation,
     read_overview_state,
     read_signal_file,
+    record_escalation,
     record_processed_outcome,
     recover_final_polish,
     recovery_exit_code,
     resolve_working_dir,
     run_ai_with_retry,
+    sanitize_overview_reason,
     setup_logging,
+    snapshot_worktree,
     supported_providers,
     uninstall,
     validate_phase_provenance,
 )
 from .installer import resolve_asset_source_dir
+
+
+_WORKTREE_READONLY_REJECTION = (
+    "Phase '{phase}' is read-only but the working directory changed during the "
+    "iteration ({mutation}); read-only phases must not modify tracked files or "
+    "move HEAD. Revert the change and rerun the phase."
+)
+
+
+# A failed snapshot proves nothing was mutated; the remedy is to repair git, not revert.
+_WORKTREE_UNVERIFIABLE_REJECTION = (
+    "Phase '{phase}' is read-only, but the post-run git snapshot failed, so the "
+    "read-only guard cannot verify the working directory is unchanged. Nothing was "
+    "necessarily modified — confirm the working directory is a healthy git checkout "
+    "(repair git / restore the repo), then rerun the phase."
+)
+
+
+@dataclass(frozen=True)
+class ReadonlyRejection:
+    """Guard rejection with its audit reason: WORKTREE_MUTATED for a detected
+    tracked change, WORKTREE_UNVERIFIABLE when the post-run snapshot failed."""
+
+    reason: RejectionReason
+    message: str
+
+
+def _detect_readonly_worktree_mutation(
+    source_phase: str,
+    worktree_before: WorktreeSnapshot | None,
+    working_dir: Path | None,
+) -> ReadonlyRejection | None:
+    """None when the phase is not read-only or no baseline exists (not a git repo).
+    A baseline proves the dir was a repo, so a failed post-run snapshot rejects as
+    unverifiable instead of advancing unguarded."""
+    if worktree_before is None or working_dir is None:
+        return None
+    config = get_phase_config(source_phase)
+    if config is None or not config.worktree_readonly:
+        return None
+    after = snapshot_worktree(working_dir)
+    if after is None:
+        return ReadonlyRejection(
+            RejectionReason.WORKTREE_UNVERIFIABLE,
+            _WORKTREE_UNVERIFIABLE_REJECTION.format(phase=source_phase),
+        )
+    mutation = describe_worktree_mutation(worktree_before, after)
+    if mutation is None:
+        return None
+    restore = _restore_command(
+        working_dir, changed_tracked_paths(worktree_before, after)
+    )
+    delta = f"{mutation}; {restore}" if restore else mutation
+    return ReadonlyRejection(
+        RejectionReason.WORKTREE_MUTATED,
+        _WORKTREE_READONLY_REJECTION.format(phase=source_phase, mutation=delta),
+    )
+
+
+def _restore_command(working_dir: Path, paths: list[str]) -> str | None:
+    """The exact git checkout that reverts the guard-tripping tracked edits."""
+    if not paths:
+        return None
+    args = " ".join(shlex.quote(path) for path in paths)
+    return f"restore with: git -C {shlex.quote(str(working_dir))} checkout -- {args}"
 
 
 def apply_signal(
@@ -73,6 +151,7 @@ def apply_signal(
     logger: logging.Logger,
     *,
     working_dir: Path | None = None,
+    worktree_before: WorktreeSnapshot | None = None,
 ) -> Signal:
     """Use one authority to validate, mutate, audit, and surface truthful rejection."""
     if source_phase is None:
@@ -98,25 +177,37 @@ def apply_signal(
                 needs="investigation",
             )
 
-    epoch_runs = count_epoch_source_phase_runs_including_current(
-        session_path, source_phase
+    # Guard runs before the workflow event so a mutated read-only phase never advances.
+    rejection = _detect_readonly_worktree_mutation(
+        source_phase, worktree_before, working_dir
     )
-    if epoch_runs.count is None:
+    if rejection is not None:
         outcome = ProcessedOutcome.rejected_validation(
             Phase(source_phase),
             None,
-            RejectionReason.RECOVERY_ANCHOR_INVALID,
-            "Recovery epoch invalid: " + "; ".join(epoch_runs.errors),
+            rejection.reason,
+            rejection.message,
         )
     else:
-        outcome = apply_workflow_event(
-            session_path,
-            signal,
-            source_phase,
-            epoch_runs.count,
-            iteration,
-            working_dir=working_dir,
+        epoch_runs = count_epoch_source_phase_runs_including_current(
+            session_path, source_phase
         )
+        if epoch_runs.count is None:
+            outcome = ProcessedOutcome.rejected_validation(
+                Phase(source_phase),
+                None,
+                RejectionReason.RECOVERY_ANCHOR_INVALID,
+                "Recovery epoch invalid: " + "; ".join(epoch_runs.errors),
+            )
+        else:
+            outcome = apply_workflow_event(
+                session_path,
+                signal,
+                source_phase,
+                epoch_runs.count,
+                iteration,
+                working_dir=working_dir,
+            )
     record_processed_outcome(session_path, signal, iteration, outcome)
     if not outcome.accepted:
         _persist_workflow_rejection(session_path, outcome, logger)
@@ -307,6 +398,8 @@ _HUMAN_DECISION_REJECTIONS: frozenset[RejectionReason] = frozenset(
     {
         RejectionReason.TRANSITION_REQUIRES_APPROVAL,
         RejectionReason.ITERATION_LIMIT_EXCEEDED,
+        RejectionReason.WORKTREE_MUTATED,
+        RejectionReason.WORKTREE_UNVERIFIABLE,
     }
 )
 
@@ -537,6 +630,134 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return build_parser().parse_args(argv)
 
 
+def _snapshot_readonly_worktree(
+    phase: str | None, working_dir: Path, logger: logging.Logger
+) -> WorktreeSnapshot | None:
+    """None for non-read-only phases and non-git dirs; the latter is logged."""
+    config = get_phase_config(phase)
+    if config is None or not config.worktree_readonly:
+        return None
+    snapshot = snapshot_worktree(working_dir)
+    if snapshot is None:
+        logger.warning(
+            "Worktree guard inactive: %s is not a git working directory", working_dir
+        )
+    return snapshot
+
+
+def _effort_label(effort: str | None) -> str:
+    return effort or "default"
+
+
+def _escalation_flow_log_line(
+    phase: Phase, context: EscalationContext, iteration: int
+) -> str:
+    """Built once for both the log call and the overview entry so they never drift."""
+    base = context.base
+    escalated = context.target
+    return (
+        f"- {iteration_timestamp(iteration)} Escalation: {phase.value} "
+        f"{base.profile} ({base.model}/{_effort_label(base.effort)}) -> "
+        f"{escalated.profile} ({escalated.model}/{_effort_label(escalated.effort)}); "
+        f"blocker: {sanitize_overview_reason(context.blocker_reason)}"
+    )
+
+
+def _apply_escalation(
+    phase: str | None,
+    signal: Signal,
+    session_path: Path,
+    session_display_name: str,
+    iteration: int,
+    config: SamocodeConfig,
+    logger: logging.Logger,
+    *,
+    once: bool,
+) -> EscalationContext | None:
+    """Escalate a blocked phase one rung; return the context to replay, or None to
+    fall through to normal blocked handling. Never raises (runs outside
+    run_ai_with_retry's guard).
+
+    Overview transition first, audit row and notification after: a failed overview
+    write must not spend the one-shot budget, and once it commits the escalation
+    stands even if a post-commit side effect fails. Known weakening: the budget is
+    counted from audit rows, so a dropped row lets the same phase entry re-escalate
+    (bounded by the phase-run limit). Do not reorder to audit-first — that burns the
+    budget without replaying when the overview write fails.
+    """
+    try:
+        phase_enum = Phase((phase or "").lower())
+    except ValueError:
+        logger.info("Escalation skipped: no known phase to escalate from")
+        return None
+
+    try:
+        decision = plan_escalation(session_path, phase_enum, signal, config, once=once)
+    except (ExecutionResolutionError, GlobalConfigError) as exc:
+        logger.error(f"Escalation skipped: could not resolve escalation target: {exc}")
+        return None
+    if isinstance(decision, EscalationSkip):
+        logger.info(f"Escalation skipped: {decision.reason}")
+        return None
+
+    context = decision.context
+    base = context.base
+    escalated = context.target
+    flow_log_line = _escalation_flow_log_line(phase_enum, context, iteration)
+
+    write = apply_overview_transition(
+        session_path,
+        OverviewTransition(
+            target_phase=phase_enum,
+            blocked="no",
+            last_action=(
+                f"Testing blocked on {signal.needs}; "
+                f"escalating {base.profile} -> {escalated.profile}"
+            ),
+            next_action=(
+                f"Escalated testing attempt {context.attempt}/{context.max_attempts}"
+            ),
+            flow_log_entry=flow_log_line,
+        ),
+        expected_source=phase_enum,
+    )
+    if not write.ok:
+        logger.error(
+            "Could not persist escalation transition in overview: %s",
+            write.message or "unknown overview write failure",
+        )
+        return None
+
+    try:
+        record_escalation(
+            session_path,
+            phase_enum,
+            iteration,
+            base,
+            escalated,
+            context.blocker_reason,
+        )
+        logger.info(flow_log_line)
+        notify_escalation(
+            session_display_name,
+            phase_enum.value,
+            base.profile,
+            escalated.profile,
+            base.model,
+            escalated.model,
+            context.blocker_reason,
+            config.telegram_bot_token,
+            config.telegram_chat_id,
+        )
+    except Exception:
+        # Overview already committed: the escalation stands without its audit row.
+        logger.exception(
+            "Escalation committed but a post-commit side effect failed; "
+            "proceeding with the escalated run"
+        )
+    return context
+
+
 def run_orchestrator(args: argparse.Namespace) -> None:
     """Run the autonomous orchestrator loop (the `run` command)."""
     samocode_dir = resolve_asset_source_dir()
@@ -606,9 +827,14 @@ def run_orchestrator(args: argparse.Namespace) -> None:
     initial_dive = args.dive
     initial_task = args.task
     session_handler = None
+    pending_escalation: EscalationContext | None = None
 
     try:
         while True:
+            # Consumed once; a normal iteration never inherits a stale escalation.
+            escalation = pending_escalation
+            pending_escalation = None
+
             preflight_error = enforce_lifecycle_preflight(session_path)
             if preflight_error:
                 logger.error(f"Lifecycle preflight failed: {preflight_error}")
@@ -649,6 +875,11 @@ def run_orchestrator(args: argparse.Namespace) -> None:
                 logger.info(f"Previous signal: {previous_signal}")
             logger.info("Cleared signal file")
 
+            working_dir = resolve_working_dir(
+                config, session_path, phase or Phase.INIT.value
+            )
+            worktree_before = _snapshot_readonly_worktree(phase, working_dir, logger)
+
             try:
                 result = run_ai_with_retry(
                     workflow_prompt_path,
@@ -656,6 +887,7 @@ def run_orchestrator(args: argparse.Namespace) -> None:
                     config,
                     initial_dive if iteration == 1 else None,
                     initial_task if iteration == 1 else None,
+                    escalation=escalation,
                 )
             except (
                 PlanResolutionError,
@@ -695,9 +927,6 @@ def run_orchestrator(args: argparse.Namespace) -> None:
 
             signal = read_signal_file(session_path)
 
-            working_dir = resolve_working_dir(
-                config, session_path, phase or Phase.INIT.value
-            )
             signal = apply_signal(
                 signal,
                 phase,
@@ -705,6 +934,7 @@ def run_orchestrator(args: argparse.Namespace) -> None:
                 iteration,
                 logger,
                 working_dir=working_dir,
+                worktree_before=worktree_before,
             )
 
             # Use phase from signal if available, otherwise use previously extracted phase
@@ -725,6 +955,20 @@ def run_orchestrator(args: argparse.Namespace) -> None:
                 break
 
             if signal.status == SignalStatus.BLOCKED:
+                pending_escalation = _apply_escalation(
+                    phase,
+                    signal,
+                    session_path,
+                    session_display_name,
+                    iteration,
+                    config,
+                    logger,
+                    once=args.once,
+                )
+                if pending_escalation is not None:
+                    logger.info("Escalating: replaying iteration on a stronger profile")
+                    continue
+
                 logger.warning(f"Blocked: {signal.reason}")
                 logger.warning(f"Needs: {signal.needs}")
                 notify_blocked(

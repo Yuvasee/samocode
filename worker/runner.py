@@ -119,12 +119,27 @@ class IterationPlan:
     timeout: int
 
 
+@dataclass(frozen=True)
+class EscalationContext:
+    """One escalated replay of a failed testing iteration: `base` failed, `target`
+    is one rung up. The orchestrator decides budget and rung; the runner only
+    routes and injects the recovery contract."""
+
+    base: ExecutionTarget
+    target: ExecutionTarget
+    blocker_reason: str
+    previous_report: Path | None
+    attempt: int
+    max_attempts: int
+
+
 def resolve_iteration_plan(
     workflow_prompt_path: Path,
     session_path: Path,
     config: SamocodeConfig,
     initial_dive: str | None = None,
     initial_task: str | None = None,
+    escalation: EscalationContext | None = None,
 ) -> IterationPlan:
     """Resolve the single immutable plan for one orchestration iteration.
 
@@ -132,6 +147,9 @@ def resolve_iteration_plan(
     working dir, the execution target (routed via global config, or a synthesized
     legacy target), the frozen session context, and the full provider argv built
     through the adapter registry.
+
+    With `escalation`, `escalation.target` is used verbatim and its recovery
+    contract is injected into session context.
 
     Raises:
         SessionStructureError: deprecated nested _samocode structure.
@@ -168,7 +186,11 @@ def resolve_iteration_plan(
     logger.info(f"Working Dir: {working_dir}")
     logger.info(f"Using agent: {agent_name} (phase: {phase})")
 
-    target = _resolve_target(config, phase, session_path)
+    target = (
+        escalation.target
+        if escalation is not None
+        else _resolve_target(config, phase, session_path)
+    )
     session_context = build_session_context(
         workflow_prompt_path=workflow_prompt_path,
         session_path=session_path,
@@ -178,6 +200,7 @@ def resolve_iteration_plan(
         initial_dive=initial_dive,
         initial_task=initial_task,
         target=target,
+        escalation=escalation,
     )
     inputs = AdapterInputs(
         agent_name=agent_name,
@@ -208,14 +231,21 @@ def run_ai_with_retry(
     initial_dive: str | None = None,
     initial_task: str | None = None,
     on_line: Callable[[str], None] | None = None,
+    escalation: EscalationContext | None = None,
 ) -> ExecutionResult:
     """Execute configured AI CLI with retry logic for transient failures.
 
     Resolves the iteration plan ONCE, then replays the same plan on every attempt
-    so a retry never re-resolves the provider, model, or plan phase.
+    so a retry never re-resolves the provider, model, or plan phase; an
+    `escalation` pins every retry to the escalated target.
     """
     plan = resolve_iteration_plan(
-        workflow_prompt_path, session_path, config, initial_dive, initial_task
+        workflow_prompt_path,
+        session_path,
+        config,
+        initial_dive,
+        initial_task,
+        escalation,
     )
     _log_iteration_target(plan)
 
@@ -245,6 +275,7 @@ def run_ai_once(
     initial_dive: str | None = None,
     initial_task: str | None = None,
     on_line: Callable[[str], None] | None = None,
+    escalation: EscalationContext | None = None,
 ) -> ExecutionResult:
     """Resolve the iteration plan and execute it once.
 
@@ -252,7 +283,12 @@ def run_ai_once(
     `resolve_iteration_plan` + `_execute_plan` so it resolves exactly once.
     """
     plan = resolve_iteration_plan(
-        workflow_prompt_path, session_path, config, initial_dive, initial_task
+        workflow_prompt_path,
+        session_path,
+        config,
+        initial_dive,
+        initial_task,
+        escalation,
     )
     return _execute_plan(plan, attempt, on_line)
 
@@ -264,6 +300,7 @@ def run_claude_with_retry(
     initial_dive: str | None = None,
     initial_task: str | None = None,
     on_line: Callable[[str], None] | None = None,
+    escalation: EscalationContext | None = None,
 ) -> ExecutionResult:
     """Backward-compatible alias for run_ai_with_retry."""
     return run_ai_with_retry(
@@ -273,6 +310,7 @@ def run_claude_with_retry(
         initial_dive,
         initial_task,
         on_line,
+        escalation,
     )
 
 
@@ -284,6 +322,7 @@ def run_claude_once(
     initial_dive: str | None = None,
     initial_task: str | None = None,
     on_line: Callable[[str], None] | None = None,
+    escalation: EscalationContext | None = None,
 ) -> ExecutionResult:
     """Backward-compatible alias for run_ai_once."""
     return run_ai_once(
@@ -294,6 +333,7 @@ def run_claude_once(
         initial_dive,
         initial_task,
         on_line,
+        escalation,
     )
 
 
@@ -399,12 +439,15 @@ def _log_iteration_target(plan: IterationPlan) -> None:
     target = plan.target
     pp = target.plan_phase
     plan_label = f"{pp.phase_label}:{pp.phase_title}" if pp and pp.phase_label else "-"
-    logger.info(
+    message = (
         f"Routing | provider={target.provider} profile={target.profile} "
         f"model={target.model} effort={target.effort or '-'} "
         f"workflow={target.workflow_phase.value} plan={plan_label} "
         f"source={target.source.value}"
     )
+    if target.escalated_from is not None:
+        message += f" escalated_from={target.escalated_from}"
+    logger.info(message)
 
 
 # =============================================================================
@@ -440,6 +483,15 @@ def extract_total_iterations(session_path: Path) -> int:
 
     match = re.search(r"^Total Iterations:\s*(\d+)$", content, re.MULTILINE)
     return int(match.group(1)) if match else 0
+
+
+def latest_test_report(session_path: Path) -> Path | None:
+    """Newest `*-test-report.md`; names start with `MM-DD-HH:MM`, so a descending
+    name sort is chronological."""
+    reports = sorted(
+        session_path.glob("*-test-report.md"), key=lambda p: p.name, reverse=True
+    )
+    return reports[0] if reports else None
 
 
 def increment_total_iterations(session_path: Path) -> int:
@@ -491,12 +543,14 @@ def build_session_context(
     initial_dive: str | None = None,
     initial_task: str | None = None,
     target: ExecutionTarget | None = None,
+    escalation: EscalationContext | None = None,
 ) -> str:
     """Build session context for --append-system-prompt injection.
 
     Includes workflow.md (common context for all phases), the immutable execution
     target, and session-specific details. When `target` carries a plan phase, that
-    active plan selection is injected as an additional implementation contract.
+    active plan selection is injected as an additional implementation contract;
+    an `escalation` adds the `## Escalated Testing Attempt` section.
     """
     # Start with workflow.md - common context for all phases
     lines = [workflow_prompt_path.read_text().strip()]
@@ -549,6 +603,10 @@ def build_session_context(
         lines.append("")
         lines.extend(_build_plan_phase_section(target))
 
+    if escalation is not None:
+        lines.append("")
+        lines.extend(_build_escalation_section(escalation))
+
     if initial_dive or initial_task:
         lines.append("")
         lines.extend(_build_initial_instructions(initial_dive, initial_task))
@@ -585,6 +643,51 @@ def _build_plan_phase_section(target: ExecutionTarget) -> list[str]:
     else:
         lines.append(f"- **Plan phase:** `{plan.phase_label}` — {plan.phase_title}")
     lines.append("Execute exactly this phase; do not independently pick another.")
+    return lines
+
+
+_RECOVERY_CONTRACT: tuple[str, ...] = (
+    "**Recovery contract for this escalated attempt:**",
+    "- Separate a product failure (the change under test is genuinely wrong) from "
+    "an environment failure (the harness, tooling, or setup is wrong). They need "
+    "different fixes, and only a product failure is a real test result.",
+    "- Before improvising with ad-hoc paths or environment variables, inspect the "
+    "project's own test environment and use it as intended: service-specific "
+    "virtualenvs, dev containers, editable installs, already-installed browser "
+    "binaries, and setup docs.",
+    "- Discover and apply the project's own skills and docs for local development, "
+    "testing, and frontend verification whenever they are present.",
+    "- You may change temporary, untracked, or user-level configuration; you may "
+    "not modify tracked project files; and you commit nothing.",
+    "- Confirm any remaining blocker with reproducible commands, and record those "
+    "commands in the report.",
+    "- Produce a complete test report covering every gate, not only the gate that "
+    "first failed.",
+    "- An environment failure is never a PASS, and mandatory browser E2E is never "
+    "skipped silently. Signal blocked for a human decision instead of deferring.",
+)
+
+
+def _build_escalation_section(escalation: EscalationContext) -> list[str]:
+    base = escalation.base
+    target = escalation.target
+    lines = [
+        "## Escalated Testing Attempt",
+        f"- **Attempt:** {escalation.attempt} of {escalation.max_attempts}",
+        f"- **Base profile:** `{base.profile}` "
+        f"(model `{base.model or 'provider default'}`, "
+        f"effort `{base.effort or 'provider default'}`)",
+        f"- **Escalated profile:** `{target.profile}` "
+        f"(model `{target.model or 'provider default'}`, "
+        f"effort `{target.effort or 'provider default'}`)",
+        f"- **Blocker reason:** {escalation.blocker_reason}",
+    ]
+    if escalation.previous_report is not None:
+        lines.append(f"- **Previous test report:** `{escalation.previous_report}`")
+    else:
+        lines.append("- **Previous test report:** none recorded")
+    lines.append("")
+    lines.extend(_RECOVERY_CONTRACT)
     return lines
 
 

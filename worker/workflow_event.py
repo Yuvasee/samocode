@@ -21,6 +21,8 @@ class RejectionReason(Enum):
     DONE_ONLY_IN_TERMINAL = "done_only_in_terminal"
     FINAL_POLISH_INVALID = "final_polish_invalid"
     RECOVERY_ANCHOR_INVALID = "recovery_anchor_invalid"
+    WORKTREE_MUTATED = "worktree_mutated"
+    WORKTREE_UNVERIFIABLE = "worktree_unverifiable"
 
 
 @dataclass(frozen=True)

@@ -13,11 +13,13 @@ from .phases import Phase
 from .signals import Signal
 
 if TYPE_CHECKING:
+    from .routing import ExecutionTarget
     from .workflow_state import ProcessedOutcome
 
 HISTORY_FILENAME = "_signal_history.jsonl"
 SCHEMA_VERSION = 2
 LEGACY_SCHEMA_VERSION = 1
+ESCALATION_STATUS = "escalation"
 
 
 @dataclass(frozen=True)
@@ -83,10 +85,14 @@ class HistoryRecord:
     rejection_reason: str | None = None
     outcome_kind: str | None = None
     mutated: bool | None = None
+    escalated_from_profile: str | None = None
+    escalated_to_profile: str | None = None
+    escalated_from_model: str | None = None
+    escalated_to_model: str | None = None
     schema_version: int = SCHEMA_VERSION
 
     def to_dict(self) -> dict[str, object]:
-        return {
+        payload: dict[str, object] = {
             "v": self.schema_version,
             "timestamp": self.timestamp,
             "iteration": self.iteration,
@@ -103,6 +109,17 @@ class HistoryRecord:
             "needs": self.needs,
             "for": self.waiting_for,
         }
+        # Only when set: pre-existing rows must stay byte-identical for the
+        # recovery-anchor SHA accounting.
+        for key, value in (
+            ("escalated_from_profile", self.escalated_from_profile),
+            ("escalated_to_profile", self.escalated_to_profile),
+            ("escalated_from_model", self.escalated_from_model),
+            ("escalated_to_model", self.escalated_to_model),
+        ):
+            if value is not None:
+                payload[key] = value
+        return payload
 
 
 def record_processed_outcome(
@@ -129,6 +146,36 @@ def record_processed_outcome(
         ),
         outcome_kind=outcome.kind.value,
         mutated=outcome.mutated,
+    )
+    _append(session_path, record.to_dict())
+    return record
+
+
+def record_escalation(
+    session_path: Path,
+    phase: Phase,
+    iteration: int,
+    base: ExecutionTarget,
+    escalated: ExecutionTarget,
+    reason: str,
+) -> HistoryRecord:
+    """Audit-only row: `source_phase=None` keeps it out of run counting and
+    `accepted=None`/`mutated=False` out of accepted_transitions."""
+    record = HistoryRecord(
+        timestamp=_now(),
+        iteration=iteration,
+        source_phase=None,
+        target_phase=phase.value,
+        raw_status=ESCALATION_STATUS,
+        accepted=None,
+        validation_error=None,
+        reason=reason,
+        outcome_kind="escalation",
+        mutated=False,
+        escalated_from_profile=base.profile,
+        escalated_to_profile=escalated.profile,
+        escalated_from_model=base.model,
+        escalated_to_model=escalated.model,
     )
     _append(session_path, record.to_dict())
     return record
@@ -241,6 +288,10 @@ def _normalize(data: dict[str, object]) -> HistoryRecord:
         rejection_reason=_as_str(data.get("rejection_reason")),
         outcome_kind=_as_str(data.get("outcome_kind")),
         mutated=_as_bool(data.get("mutated")),
+        escalated_from_profile=_as_str(data.get("escalated_from_profile")),
+        escalated_to_profile=_as_str(data.get("escalated_to_profile")),
+        escalated_from_model=_as_str(data.get("escalated_from_model")),
+        escalated_to_model=_as_str(data.get("escalated_to_model")),
         schema_version=_as_int(data.get("v")) or SCHEMA_VERSION,
     )
 

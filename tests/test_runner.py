@@ -18,11 +18,17 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 
+from worker.adapters import AdapterInputs, get_adapter
 from worker.config import ProjectConfig, RuntimeConfig, SamocodeConfig
 from worker.global_config import default_config
 from worker.phases import Phase, get_agent_for_phase
-from worker.routing import ExecutionProfileSource
+from worker.routing import (
+    ExecutionProfileSource,
+    escalate_execution_target,
+    resolve_execution_target,
+)
 from worker.runner import (
+    EscalationContext,
     ExecutionResult,
     ExecutionStatus,
     _build_cli_args,
@@ -31,6 +37,7 @@ from worker.runner import (
     extract_iteration,
     extract_phase,
     generate_log_filename,
+    latest_test_report,
     resolve_iteration_plan,
     run_claude_once,
     run_claude_with_retry,
@@ -732,3 +739,217 @@ class TestLegacyIterationResolution:
         plan = resolve_iteration_plan(workflow, session, config)
 
         assert "--model" not in plan.command
+
+
+def write_testing_session(tmp_path: Path) -> Path:
+    """Create a testing-phase session dir with _overview.md for routed resolution."""
+    session = tmp_path / "esc-session"
+    session.mkdir()
+    (session / "_overview.md").write_text("Phase: testing\nIteration: 4\n")
+    return session
+
+
+def make_escalation(
+    session: Path,
+    config: SamocodeConfig,
+    *,
+    attempt: int = 2,
+    max_attempts: int = 3,
+    reason: str = "Tests failed: login endpoint returns 500",
+    report: Path | None = None,
+) -> EscalationContext:
+    """Resolve the testing base target and escalate it one rung (strong -> max)."""
+    gc = config.global_config
+    assert gc is not None
+    base = resolve_execution_target(
+        provider_name=config.ai_provider,
+        workflow_phase=Phase.TESTING,
+        session_dir=session,
+        config=gc,
+        runtime=config.runtime,
+    )
+    escalated = escalate_execution_target(base, gc)
+    assert escalated is not None
+    return EscalationContext(
+        base=base,
+        target=escalated,
+        blocker_reason=reason,
+        previous_report=report,
+        attempt=attempt,
+        max_attempts=max_attempts,
+    )
+
+
+class TestLatestTestReport:
+    """latest_test_report: newest MM-DD-HH:MM-test-report.md by name."""
+
+    def test_none_when_no_reports(self, tmp_path: Path) -> None:
+        session = tmp_path / "session"
+        session.mkdir()
+        assert latest_test_report(session) is None
+
+    def test_ignores_non_report_files(self, tmp_path: Path) -> None:
+        session = tmp_path / "session"
+        session.mkdir()
+        (session / "_overview.md").write_text("x")
+        (session / "notes.md").write_text("x")
+        assert latest_test_report(session) is None
+
+    def test_picks_newest_by_name(self, tmp_path: Path) -> None:
+        session = tmp_path / "session"
+        session.mkdir()
+        for name in (
+            "08-26-09:10-test-report.md",
+            "08-26-11:45-test-report.md",
+            "08-26-09:40-test-report.md",
+        ):
+            (session / name).write_text("report")
+
+        newest = latest_test_report(session)
+
+        assert newest is not None
+        assert newest.name == "08-26-11:45-test-report.md"
+
+
+class TestEscalatedIteration:
+    """Phase 6: escalated iterations route through the escalated target."""
+
+    def _workflow(self, tmp_path: Path) -> Path:
+        workflow = tmp_path / "workflow.md"
+        workflow.write_text("# Workflow")
+        return workflow
+
+    def test_escalation_context_section_content(self, tmp_path: Path) -> None:
+        """Section reports base/escalated target, budget, blocker, report, contract."""
+        workflow = self._workflow(tmp_path)
+        config = make_routed_config(tmp_path)
+        session = write_testing_session(tmp_path)
+        report = session / "08-26-09:40-test-report.md"
+        report.write_text("# prior")
+        escalation = make_escalation(session, config, report=report)
+
+        plan = resolve_iteration_plan(workflow, session, config, escalation=escalation)
+        ctx = plan.session_context
+
+        assert "## Escalated Testing Attempt" in ctx
+        assert "**Attempt:** 2 of 3" in ctx
+        assert "**Base profile:** `strong`" in ctx
+        assert "effort `high`" in ctx
+        assert "**Escalated profile:** `max`" in ctx
+        assert "effort `xhigh`" in ctx
+        assert "Tests failed: login endpoint returns 500" in ctx
+        assert str(report) in ctx
+        # Recovery contract, generic wording only.
+        assert "Recovery contract for this escalated attempt" in ctx
+        assert "product failure" in ctx
+        assert "environment failure" in ctx
+        assert "dev containers" in ctx
+        assert "browser E2E is never" in ctx
+        assert "commit nothing" in ctx
+
+    def test_missing_previous_report_renders_placeholder(self, tmp_path: Path) -> None:
+        workflow = self._workflow(tmp_path)
+        config = make_routed_config(tmp_path)
+        session = write_testing_session(tmp_path)
+        escalation = make_escalation(session, config, report=None)
+
+        ctx = build_session_context(
+            workflow,
+            session,
+            config,
+            phase="testing",
+            target=escalation.target,
+            escalation=escalation,
+        )
+
+        assert "**Previous test report:** none recorded" in ctx
+
+    def test_no_escalation_omits_section(self, tmp_path: Path) -> None:
+        workflow = self._workflow(tmp_path)
+        config = make_routed_config(tmp_path)
+        session = write_testing_session(tmp_path)
+
+        plan = resolve_iteration_plan(workflow, session, config)
+
+        assert "## Escalated Testing Attempt" not in plan.session_context
+
+    def test_plan_uses_escalated_target_and_command(self, tmp_path: Path) -> None:
+        """resolve_iteration_plan pins the escalated target and builds argv from it."""
+        workflow = self._workflow(tmp_path)
+        config = make_routed_config(tmp_path)
+        session = write_testing_session(tmp_path)
+        escalation = make_escalation(session, config)
+
+        plan = resolve_iteration_plan(workflow, session, config, escalation=escalation)
+
+        assert plan.target is escalation.target
+        assert plan.target.profile == "max"
+        assert plan.target.effort == "xhigh"
+        assert plan.target.source == ExecutionProfileSource.ESCALATION
+        assert plan.target.escalated_from == "strong"
+
+        expected = get_adapter("claude").build_command(
+            escalation.target,
+            AdapterInputs(
+                agent_name="testing-agent",
+                session_context=plan.session_context,
+                agents_dir=workflow.parent / "agents",
+                max_turns=config.claude_max_turns,
+            ),
+        )
+        assert plan.command == expected
+        assert "## Escalated Testing Attempt" in plan.session_context
+
+    def test_codex_escalated_effort_reaches_command(self, tmp_path: Path) -> None:
+        """The escalated effort (xhigh) is emitted in the Codex argv, proving the
+        escalated target - not the strong base - built the command."""
+        workflow = self._workflow(tmp_path)
+        agents = workflow.parent / "agents"
+        agents.mkdir()
+        (agents / "testing-agent.md").write_text("# Testing")
+        config = make_routed_config(tmp_path, provider="codex")
+        session = write_testing_session(tmp_path)
+        escalation = make_escalation(session, config)
+
+        plan = resolve_iteration_plan(workflow, session, config, escalation=escalation)
+
+        assert plan.target.profile == "max"
+        assert plan.target.effort == "xhigh"
+        assert "model_reasoning_effort=xhigh" in plan.command
+
+    def test_routing_log_includes_escalated_from(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """The one routing line gains escalated_from=<prior profile> when escalated."""
+        workflow = self._workflow(tmp_path)
+        config = make_routed_config(tmp_path)
+        session = write_testing_session(tmp_path)
+        escalation = make_escalation(session, config)
+
+        with caplog.at_level(logging.INFO, logger="samocode"):
+            with patch("worker.runner._execute_plan") as mock_exec:
+                mock_exec.return_value = _result(ExecutionStatus.SUCCESS, 1)
+                run_claude_with_retry(workflow, session, config, escalation=escalation)
+
+        routing = [r for r in caplog.records if r.getMessage().startswith("Routing |")]
+        assert len(routing) == 1
+        msg = routing[0].getMessage()
+        assert "profile=max" in msg
+        assert "source=escalation" in msg
+        assert "escalated_from=strong" in msg
+
+    def test_no_escalation_log_omits_escalated_from(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        workflow = self._workflow(tmp_path)
+        config = make_routed_config(tmp_path)
+        session = write_testing_session(tmp_path)
+
+        with caplog.at_level(logging.INFO, logger="samocode"):
+            with patch("worker.runner._execute_plan") as mock_exec:
+                mock_exec.return_value = _result(ExecutionStatus.SUCCESS, 1)
+                run_claude_with_retry(workflow, session, config)
+
+        routing = [r for r in caplog.records if r.getMessage().startswith("Routing |")]
+        assert len(routing) == 1
+        assert "escalated_from=" not in routing[0].getMessage()

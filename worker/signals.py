@@ -12,6 +12,30 @@ SIGNAL_FILENAME = "_signal.json"
 OVERVIEW_FILENAME = "_overview.md"
 
 
+# Escalation triggers must be in BLOCKED_NEEDS and not in WORKER_NEEDS;
+# "human_decision" is in both on purpose, so it never escalates.
+BLOCKED_NEEDS = ("human_decision", "clarification", "error_resolution", "environment")
+WORKER_NEEDS = ("investigation", "human_decision")
+
+
+_MAX_OVERVIEW_REASON = 200
+
+
+def sanitize_overview_reason(
+    reason: str | None, *, max_length: int = _MAX_OVERVIEW_REASON
+) -> str:
+    """One bounded line for the flow log: a raw newline could forge a second
+    `Phase:` field or heading, and a leading `#`/`>` could forge structure."""
+    if not reason:
+        return ""
+    printable = "".join(ch if ch.isprintable() else " " for ch in reason)
+    collapsed = " ".join(printable.split())
+    collapsed = collapsed.lstrip("#>").strip()
+    if len(collapsed) > max_length:
+        collapsed = collapsed[: max_length - 1].rstrip() + "…"
+    return collapsed
+
+
 class SignalStatus(Enum):
     """Valid signal statuses for orchestrator control."""
 

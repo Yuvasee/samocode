@@ -9,6 +9,8 @@ This module is the single source of truth for:
 from dataclasses import dataclass
 from enum import Enum
 
+from .signals import BLOCKED_NEEDS, WORKER_NEEDS
+
 
 class Phase(Enum):
     """All valid workflow phases."""
@@ -37,6 +39,15 @@ class ApprovalGate:
 
 
 @dataclass(frozen=True)
+class EscalationPolicy:
+    """Escalate a blocked phase one rung when `Signal.needs` is in `trigger_needs`
+    (BLOCKED_NEEDS values the worker cannot resolve itself)."""
+
+    trigger_needs: frozenset[str]
+    max_attempts: int
+
+
+@dataclass(frozen=True)
 class PhaseConfig:
     """Configuration for a single phase."""
 
@@ -48,6 +59,8 @@ class PhaseConfig:
     default_profile: str  # Model-routing profile name; worker/routing.py resolves it
     allowed_waits: frozenset[str] = frozenset()
     approval_gate: ApprovalGate | None = None
+    escalation: EscalationPolicy | None = None
+    worktree_readonly: bool = False
 
     def can_transition_to(self, target: Phase) -> bool:
         """Check if transition to target phase is valid."""
@@ -123,7 +136,9 @@ PHASE_CONFIGS: dict[Phase, PhaseConfig] = {
         allowed_next=frozenset({Phase.QUALITY, Phase.PR_READINESS}),
         allowed_signals=frozenset({"continue", "blocked"}),
         max_iterations=20,
-        default_profile="standard",
+        default_profile="strong",
+        escalation=EscalationPolicy(frozenset({"environment"}), 1),
+        worktree_readonly=True,
     ),
     Phase.QUALITY: PhaseConfig(
         phase=Phase.QUALITY,
@@ -152,6 +167,35 @@ PHASE_CONFIGS: dict[Phase, PhaseConfig] = {
 }
 
 
+def _validate_escalation_policy(name: str, config: PhaseConfig) -> None:
+    """Raise on an inconsistent escalation policy for phase `name`."""
+    policy = config.escalation
+    if policy is None:
+        return
+
+    if "blocked" not in config.allowed_signals:
+        raise PhaseRegistryError(
+            f"Phase '{name}' declares an escalation policy but does not permit "
+            f"the 'blocked' signal"
+        )
+    if policy.max_attempts < 1:
+        raise PhaseRegistryError(
+            f"Phase '{name}' escalation max_attempts must be >= 1, "
+            f"got {policy.max_attempts}"
+        )
+    for need in sorted(policy.trigger_needs):
+        if need not in BLOCKED_NEEDS:
+            raise PhaseRegistryError(
+                f"Phase '{name}' escalation trigger need '{need}' "
+                f"is not a BLOCKED_NEEDS value {sorted(BLOCKED_NEEDS)}"
+            )
+        if need in WORKER_NEEDS:
+            raise PhaseRegistryError(
+                f"Phase '{name}' escalation trigger need '{need}' is "
+                f"worker-resolvable (in WORKER_NEEDS) and cannot escalate"
+            )
+
+
 def validate_phase_registry(configs: dict[Phase, PhaseConfig]) -> None:
     """Raise on the first inconsistent wait, gate, or transition declaration."""
     for phase, config in configs.items():
@@ -162,6 +206,8 @@ def validate_phase_registry(configs: dict[Phase, PhaseConfig]) -> None:
                 f"Phase '{name}' declares allowed_waits {sorted(config.allowed_waits)} "
                 f"but does not permit the 'waiting' signal"
             )
+
+        _validate_escalation_policy(name, config)
 
         gate = config.approval_gate
         if gate is None:

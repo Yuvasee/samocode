@@ -6,24 +6,42 @@ This module tests:
 - History file reading
 """
 
+import json
 from pathlib import Path
 
 import pytest
 
 from worker.phases import Phase
+from worker.routing import ExecutionProfileSource, ExecutionTarget
 from worker.signal_history import (
+    ESCALATION_STATUS,
     HistoryRecord,
     SignalHistoryEntry,
     count_source_phase_iterations,
     get_phase_iteration_count,
     read_history,
     read_signal_history,
+    record_escalation,
     record_processed_outcome,
     record_signal,
 )
 from worker.signals import Signal, SignalStatus
 from worker.workflow_event import RejectionReason
 from worker.workflow_state import ProcessedOutcome
+
+
+def _target(profile: str, model: str) -> ExecutionTarget:
+    return ExecutionTarget(
+        provider="claude",
+        profile=profile,
+        model=model,
+        effort=None,
+        executable=Path("claude"),
+        timeout=1800,
+        workflow_phase=Phase.TESTING,
+        plan_phase=None,
+        source=ExecutionProfileSource.PHASE_DEFAULT,
+    )
 
 
 def _accepted_transition(source: Phase, target: Phase) -> ProcessedOutcome:
@@ -512,3 +530,118 @@ class TestHistoryCompatibility:
         )
         with pytest.raises(AttributeError):
             rec.iteration = 2  # type: ignore[misc]
+
+
+class TestRecordEscalation:
+    def test_round_trips_new_fields(self, tmp_path: Path) -> None:
+        session = tmp_path / "s"
+        session.mkdir()
+        base = _target("strong", "claude-strong")
+        escalated = _target("max", "claude-max")
+
+        returned = record_escalation(
+            session,
+            Phase.TESTING,
+            iteration=7,
+            base=base,
+            escalated=escalated,
+            reason="environment",
+        )
+
+        [record] = read_history(session)
+        assert record == returned
+        assert record.schema_version == 2
+        assert record.source_phase is None
+        assert record.target_phase == "testing"
+        assert record.raw_status == ESCALATION_STATUS
+        assert record.outcome_kind == "escalation"
+        assert record.accepted is None
+        assert record.mutated is False
+        assert record.reason == "environment"
+        assert record.escalated_from_profile == "strong"
+        assert record.escalated_to_profile == "max"
+        assert record.escalated_from_model == "claude-strong"
+        assert record.escalated_to_model == "claude-max"
+
+    def test_invisible_to_source_phase_counting(self, tmp_path: Path) -> None:
+        session = tmp_path / "s"
+        session.mkdir()
+        record_escalation(
+            session,
+            Phase.TESTING,
+            1,
+            _target("strong", "claude-strong"),
+            _target("max", "claude-max"),
+            "environment",
+        )
+        assert count_source_phase_iterations(session, "testing") == 0
+
+    def test_to_dict_omits_unset_escalation_keys(self) -> None:
+        rec = HistoryRecord(
+            timestamp="t",
+            iteration=1,
+            source_phase="testing",
+            target_phase="testing",
+            raw_status="continue",
+            accepted=True,
+            validation_error=None,
+            outcome_kind="accepted_no_change",
+            mutated=False,
+        )
+        payload = rec.to_dict()
+        for key in (
+            "escalated_from_profile",
+            "escalated_to_profile",
+            "escalated_from_model",
+            "escalated_to_model",
+        ):
+            assert key not in payload
+
+    def test_non_escalation_row_json_keeps_shape(self, tmp_path: Path) -> None:
+        session = tmp_path / "s"
+        session.mkdir()
+        record_signal(
+            session, Signal(status=SignalStatus.CONTINUE, phase="testing"), iteration=1
+        )
+        payload = json.loads(
+            (session / "_signal_history.jsonl").read_text().splitlines()[0]
+        )
+        for key in (
+            "escalated_from_profile",
+            "escalated_to_profile",
+            "escalated_from_model",
+            "escalated_to_model",
+        ):
+            assert key not in payload
+
+    def test_escalation_row_serializes_only_set_keys(self, tmp_path: Path) -> None:
+        session = tmp_path / "s"
+        session.mkdir()
+        record_escalation(
+            session,
+            Phase.TESTING,
+            1,
+            _target("strong", "claude-strong"),
+            _target("max", "claude-max"),
+            "environment",
+        )
+        payload = json.loads(
+            (session / "_signal_history.jsonl").read_text().splitlines()[0]
+        )
+        assert payload["escalated_from_profile"] == "strong"
+        assert payload["escalated_to_profile"] == "max"
+        assert payload["escalated_from_model"] == "claude-strong"
+        assert payload["escalated_to_model"] == "claude-max"
+        assert payload["source_phase"] is None
+
+    def test_legacy_row_gains_no_escalation_fields(self, tmp_path: Path) -> None:
+        session = tmp_path / "s"
+        session.mkdir()
+        (session / "_signal_history.jsonl").write_text('{"phase": "testing"}\n')
+
+        rec = read_history(session)[0]
+        assert rec.schema_version == 1
+        assert rec.escalated_from_profile is None
+        assert rec.escalated_to_profile is None
+        assert rec.escalated_from_model is None
+        assert rec.escalated_to_model is None

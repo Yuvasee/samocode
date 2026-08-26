@@ -21,13 +21,14 @@ Tests the specific feature or bug fix implemented in the current session. NOT fu
    - Review implementation docs to identify what needs testing
    - Determine whether this is the post-quality regression run
 
-   **Post-quality regression invariant:** Final Comment Hygiene has already made the
-   last allowed project mutation. Before testing, record project `HEAD` and
-   `git status --porcelain`. Do not edit, generate, format, or commit project files;
-   put reports and screenshots under `SESSION_PATH` and use temporary or user-level
-   test configuration. After testing, require the same `HEAD` and status. If either
-   changed, do not proceed to PR readiness: document the mutation and return the
-   workflow to quality so Code Clarity and final Comment Hygiene run again.
+   **Worktree guard (every run):** The worker snapshots project `HEAD` and
+   `git status --porcelain` before and after each testing iteration. Never edit,
+   generate, format, or commit tracked project files; if a build touches a tracked file,
+   restore it before signaling (`git checkout -- <path>`). Only untracked, temporary, or
+   user-level configuration may change; put reports and screenshots under `SESSION_PATH`.
+   A mutated iteration is rejected as `workflow_error` — a mutation is a violation, never
+   a route. Non-git working dirs skip the guard with a notice. Final Comment Hygiene
+   already made the last allowed project mutation before the post-quality regression run.
 
 2. **Determine test strategy:**
    - Frontend changes -> Browser testing
@@ -53,7 +54,7 @@ Tests the specific feature or bug fix implemented in the current session. NOT fu
 4. **Start the application from THIS worktree:**
    - Read project's `.samocode` file or README for startup instructions.
    - **If the project uses a single named dev container that is currently mounted from another worktree, stop it and restart from this worktree.** Named dev containers are typically shared across sessions; it is EXPECTED that browser testing may disrupt another session and that is acceptable. Record in the test report which container (if any) was stopped.
-   - Verify app is running (ports, health endpoints). If fails to start after two retries, signal blocked.
+   - Verify app is running (ports, health endpoints). If it fails to start after two retries, signal `blocked` with `needs: "environment"` and cite the commands.
 
 5. **Execute feature tests:**
 
@@ -124,10 +125,19 @@ Tests the specific feature or bug fix implemented in the current session. NOT fu
     - First-run tests PASS -> signal `continue` to quality
     - Post-quality tests PASS with unchanged HEAD/status -> signal `continue` to
       PR readiness
-    - Tests FAIL -> signal `blocked` with failure details (don't auto-fix)
-    - Post-quality run changed project HEAD/status -> signal `continue` to quality,
-      not PR readiness
-    - **Do NOT signal `continue` if mandatory browser E2E was skipped.** If the app could not be brought up after two retries, or if both playwright-cli and Puppeteer are unavailable, signal `blocked` with `needs: "human_decision"` — never defer silently.
+    - Tests FAIL (product defect) -> signal `blocked` with `needs: "error_resolution"`
+      and failure details (don't auto-fix)
+    - **Environment blocker** (missing or broken test environment: app will not start
+      after two documented retries, a required browser binary is missing, both
+      playwright-cli and Puppeteer are unavailable, or a service is unusable) ->
+      signal `blocked` with `needs: "environment"` and cite the reproducible commands
+      that demonstrate it. An unavailable browser/app after documented retries is an
+      environment blocker, NOT `human_decision`, unless a genuine human choice is
+      required. The worker escalates testing once to the next semantic profile before
+      surfacing an environment blocker to a human.
+    - **Do NOT silently skip mandatory browser E2E** with an environmental excuse.
+      Classify a genuine environment failure as an `environment` blocker instead of
+      signaling `continue`.
     - A project without an automated suite still produces this report and completes
       applicable deterministic checks; lack of a suite never skips the phase.
 
@@ -175,8 +185,9 @@ Then signal `continue` to restart with new MCP.
 ## Edge Cases
 
 - Working Dir not in `_overview.md` -> Check project .samocode file for MAIN_REPO, or ask user
-- App fails to start -> Document in test report, signal blocked
-- playwright-cli unavailable or broken -> Fall back to Puppeteer via bash; state the reason in the test report
+- App fails to start after two documented retries -> environment blocker: signal
+  `blocked` with `needs: "environment"` and cite the reproducing commands
+- playwright-cli unavailable or broken -> Fall back to Puppeteer via bash; state the reason in the test report. Both unavailable -> environment blocker (`needs: "environment"`), never a silent skip
 - Can't determine what to test -> Review implementation docs, ask if unclear
 - No implementation phase completed -> Signal blocked (nothing to test)
 

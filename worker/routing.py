@@ -15,12 +15,18 @@ composition point: it combines `resolve_workflow_profile()`,
 never import each other or this module; only this module needs all vocabularies.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import Enum
 from pathlib import Path
 
 from worker.config import RuntimeConfig
-from worker.global_config import GlobalConfig, GlobalConfigError, Profile, Provider
+from worker.global_config import (
+    CANONICAL_PROFILES,
+    GlobalConfig,
+    GlobalConfigError,
+    Profile,
+    Provider,
+)
 from worker.phases import PHASE_CONFIGS, Phase
 from worker.plan_resolver import PlanPhaseSelection, resolve_plan_phase
 
@@ -130,6 +136,9 @@ class ExecutionProfileSource(Enum):
     (only PLAN_PHASE_EXPLICIT ever surfaces here; an omitted plan profile falls
     through to a ProfileSource-backed member) into one closed vocabulary a single
     log line or session-context field can switch on.
+
+    ESCALATION is stamped after resolution by escalate_execution_target, hence
+    absent from _WORKFLOW_SOURCE_MAP.
     """
 
     PLAN_PHASE_EXPLICIT = "plan_phase_explicit"
@@ -137,6 +146,7 @@ class ExecutionProfileSource(Enum):
     PHASE_DEFAULT = "phase_default"
     GLOBAL_DEFAULT = "global_default"
     LEGACY = "legacy"  # env-model synthesized target when global_config is absent
+    ESCALATION = "escalation"  # set by escalate_execution_target, not by resolution
 
 
 _WORKFLOW_SOURCE_MAP: dict[ProfileSource, ExecutionProfileSource] = {
@@ -165,6 +175,7 @@ class ExecutionTarget:
     workflow_phase: Phase
     plan_phase: PlanPhaseSelection | None  # None outside `implementation`
     source: ExecutionProfileSource
+    escalated_from: str | None = None  # prior rung when source is ESCALATION
 
 
 def resolve_execution_target(
@@ -261,3 +272,40 @@ def _resolve_path_and_timeout(
     if provider_name == "codex":
         return runtime.codex_path, runtime.codex_timeout
     return Path(provider.executable), DEFAULT_TIMEOUT_SECONDS
+
+
+# === Escalation ===
+
+
+def next_profile(name: str) -> str | None:
+    """Next rung of CANONICAL_PROFILES; None at `max` or for a non-ladder name
+    (nowhere to escalate either way)."""
+    try:
+        index = CANONICAL_PROFILES.index(name)
+    except ValueError:
+        return None
+    if index + 1 >= len(CANONICAL_PROFILES):
+        return None
+    return CANONICAL_PROFILES[index + 1]
+
+
+def escalate_execution_target(
+    target: ExecutionTarget, config: GlobalConfig
+) -> ExecutionTarget | None:
+    """`target` one rung up: only profile/model/effort change, everything else is
+    carried over. None (never raises) when there is no next rung or the provider
+    lacks it."""
+    next_name = next_profile(target.profile)
+    if next_name is None:
+        return None
+    profile = config.profile(target.provider, next_name)
+    if profile is None:
+        return None
+    return replace(
+        target,
+        profile=next_name,
+        model=profile.model,
+        effort=profile.effort,
+        source=ExecutionProfileSource.ESCALATION,
+        escalated_from=target.profile,
+    )

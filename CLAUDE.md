@@ -18,6 +18,8 @@ worker/              # Core package
   routing.py         # Semantic profile -> immutable execution target
   adapters.py        # Claude/Codex command builders and provider registry
   runner.py          # Iteration resolution, context injection, retry execution
+  escalation.py      # Testing environment-block escalation planner
+  worktree_guard.py  # Read-only worktree snapshot + mutation guard
   signal_history.py  # Signal history tracking for debugging
   signals.py         # Signal file I/O (continue/done/blocked/waiting)
   timestamps.py      # Centralized timestamp formatting
@@ -71,6 +73,12 @@ uv run samocode --help         # Run orchestrator CLI
 - `waiting` - Paused for human input (Q&A or plan approval)
 
 **Stateless iterations** - Each provider invocation reads `_overview.md` fresh, executes one action, signals, exits.
+
+**Testing safeguards** - Testing defaults to the `strong` profile. An `environment`
+blocked signal escalates testing once to the next profile rung (provider fixed, one
+attempt per phase entry, audited). Testing is worktree-readonly: the worker snapshots
+HEAD + tracked status around each testing iteration and rejects a tracked-file mutation
+as `Blocked: workflow_error` (`worktree_mutated`).
 
 **Immutable routing per iteration** - Startup selects one provider for the process.
 Before each iteration, the runner resolves the workflow/plan phase and semantic profile
@@ -130,6 +138,8 @@ See `docs/model-routing.md` for the schema and canonical profile table.
 - `worker/routing.py` - profile resolution and immutable ExecutionTarget
 - `worker/adapters.py` - provider registry and Claude/Codex argv construction
 - `worker/runner.py` - per-iteration plan/context resolution and retry execution
+- `worker/escalation.py` - `plan_escalation` decision service (testing environment blocks)
+- `worker/worktree_guard.py` - HEAD/tracked-status snapshot + mutation description
 - `worker/config.py` - project/runtime/SamocodeConfig dataclasses
 - `worker/signals.py` - Signal dataclass, JSON parsing
 - `worker/signal_history.py` - Records signals to `_signal_history.jsonl` for debugging
@@ -145,3 +155,4 @@ See `docs/model-routing.md` for the schema and canonical profile table.
 - Never accept secrets pasted into a chat as a working approach — Claude transcripts persist; treat any pasted token as compromised and rotate it immediately, then guide the user to env vars or a credentials file for future runs
 - The CLI must live inside `worker/` (`worker/cli.py`): hatch `force-include` copies top-level files into site-packages even for editable installs, so a top-level `main.py` entry point silently goes stale after every pull — assets resolve through `resolve_asset_source_dir()` for the same reason
 - When a session uses a worktree, start the orchestrator from the worktree path (or pass the worktree as working dir) — otherwise commits land on the main-repo branch instead of the session branch and the PR ends up split between two locations
+- The worktree guard fires on tracked-file *content or HEAD* changes during testing, not on untracked files: a build step that regenerates a tracked lockfile/snapshot trips `worktree_mutated` even if it looks incidental, so a testing agent must `git checkout -- <path>` any tracked file a build touched before signaling — the fix is to restore, never to commit or route around it

@@ -121,13 +121,52 @@ Each outer phase declares a default profile (`worker/phases.py`):
 | requirements | strong |
 | planning | max |
 | implementation | standard (legacy fallback when a plan phase omits `Profile`) |
-| testing | standard |
+| testing | strong |
 | quality | strong |
 | pr-readiness | strong |
 | done | light |
 
 Resolution order for a workflow iteration: `[workflow_overrides]` → phase default →
 global `default_profile`.
+
+## Testing escalation
+
+`testing` is the only phase with automatic profile escalation. When a testing iteration
+blocks on the environment — a missing browser binary, an unreachable dev service, an
+unusable interpreter — the worker reruns testing once on the next-stronger profile
+instead of stopping. All human gates stay intact.
+
+- **Trigger.** Only an accepted `blocked` signal whose `needs` is `environment`
+  (`{"status": "blocked", "needs": "environment"}`). `error_resolution` and
+  `human_decision` stay terminal; a product or test failure is never an environment
+  blocker and does not escalate.
+- **Ladder.** The escalated profile is the next rung above the resolved profile in the
+  canonical order `light → standard → strong → max`. Testing defaults to `strong`, so it
+  escalates to `max`. There is no escalation from `max`, or when the selected provider's
+  profile table lacks the next rung. The provider never changes, and the escalated
+  iteration's retries replay the same target.
+- **Budget.** One attempt per phase entry, derived from signal history. A second
+  `environment` block on the escalated attempt ends the run as a normal block; a later
+  re-entry into testing (for example after quality) reopens a fresh attempt.
+- **Escalated context.** The rerun receives an `## Escalated Testing Attempt` Session
+  Context section: base and escalated `profile/model/effort`, attempt N of M, the blocker
+  reason, the latest test-report path, and a generic recovery contract (check the
+  project's own environment first; only untracked/temporary/user-level config may change,
+  nothing is committed; confirm any remaining blocker with reproducible commands; an
+  environment failure is never PASS and mandatory browser E2E is never skipped silently).
+- **Audit.** One Flow Log line, one per-iteration routing log line carrying
+  `source=escalation` and `escalated_from=<profile>`, one `_signal_history.jsonl` row with
+  `status=escalation` (plus `escalated_from_profile`/`escalated_to_profile`), and one
+  Telegram notification. The escalation row is inert to phase-transition provenance and
+  iteration counting.
+
+## Worktree guard
+
+`testing` is `worktree_readonly`: the worker snapshots HEAD plus tracked-file status
+before and after every testing iteration. A tracked-file mutation (edit, format, or
+commit) is rejected as `Blocked: workflow_error` (reason `worktree_mutated`) with a
+diff summary logged; the testing agent may only touch untracked, temporary, or
+user-level files. A non-git working directory skips the guard with a notice.
 
 ## Plan-phase profiles
 

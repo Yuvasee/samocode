@@ -12,6 +12,8 @@ from pathlib import Path
 
 
 from worker.signals import (
+    BLOCKED_NEEDS,
+    WORKER_NEEDS,
     Signal,
     SignalStatus,
     clear_signal_file,
@@ -32,6 +34,35 @@ class TestSignalStatus:
     def test_status_count(self) -> None:
         """Exactly 4 status values exist."""
         assert len(SignalStatus) == 4
+
+
+class TestNeedsVocabularies:
+    """Tests for BLOCKED_NEEDS / WORKER_NEEDS escalation vocabularies."""
+
+    def test_blocked_needs_values(self) -> None:
+        assert BLOCKED_NEEDS == (
+            "human_decision",
+            "clarification",
+            "error_resolution",
+            "environment",
+        )
+
+    def test_worker_needs_values(self) -> None:
+        assert WORKER_NEEDS == ("investigation", "human_decision")
+
+    def test_environment_is_escalating(self) -> None:
+        """environment triggers escalation: in BLOCKED_NEEDS, not worker-resolvable."""
+        assert "environment" in BLOCKED_NEEDS
+        assert "environment" not in WORKER_NEEDS
+
+    def test_human_decision_overlap_is_non_escalating(self) -> None:
+        """human_decision is intentionally in both, so it cannot arm an escalation."""
+        assert "human_decision" in BLOCKED_NEEDS
+        assert "human_decision" in WORKER_NEEDS
+
+    def test_investigation_is_worker_only(self) -> None:
+        assert "investigation" in WORKER_NEEDS
+        assert "investigation" not in BLOCKED_NEEDS
 
 
 class TestSignalToDict:

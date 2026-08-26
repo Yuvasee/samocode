@@ -19,6 +19,11 @@ from .config import (
     parse_samocode_file,
     resolve_session_path,
 )
+from .escalation import (
+    EscalationDecision,
+    EscalationSkip,
+    plan_escalation,
+)
 from .final_polish import (
     FinalPolishCheck,
     validate_final_polish,
@@ -48,6 +53,7 @@ from .lifecycle import (
     LifecycleIssueCode,
     RecoveryAnchor,
     count_epoch_source_phase_runs_including_current,
+    count_escalations_since_phase_entry,
     latest_applied_recovery_anchor,
     recovery_commit_marker,
     scoped_history,
@@ -55,10 +61,17 @@ from .lifecycle import (
     validate_phase_provenance,
 )
 from .logging import add_session_handler, setup_logging
-from .notifications import notify_blocked, notify_complete, notify_error, notify_waiting
+from .notifications import (
+    notify_blocked,
+    notify_complete,
+    notify_error,
+    notify_escalation,
+    notify_waiting,
+)
 from .phases import (
     PHASE_CONFIGS,
     ApprovalGate,
+    EscalationPolicy,
     Phase,
     PhaseConfig,
     PhaseRegistryError,
@@ -93,17 +106,20 @@ from .routing import (
     validate_workflow_overrides,
 )
 from .runner import (
+    EscalationContext,
     ExecutionResult,
     ExecutionStatus,
     extract_phase,
     extract_total_iterations,
     increment_total_iterations,
+    latest_test_report,
     resolve_working_dir,
     run_ai_with_retry,
     run_claude_with_retry,
     validate_session_structure,
 )
 from .signal_history import (
+    ESCALATION_STATUS,
     HistoryRecord,
     SignalHistoryEntry,
     count_source_phase_iterations,
@@ -111,16 +127,20 @@ from .signal_history import (
     get_phase_iteration_count,
     read_history,
     read_signal_history,
+    record_escalation,
     record_processed_outcome,
     record_signal,
 )
 from .signals import (
+    BLOCKED_NEEDS,
     OVERVIEW_FILENAME,
     SIGNAL_FILENAME,
+    WORKER_NEEDS,
     Signal,
     SignalStatus,
     clear_signal_file,
     read_signal_file,
+    sanitize_overview_reason,
 )
 from .startup import (
     LEGACY_DEFAULT_PROVIDER,
@@ -144,6 +164,12 @@ from .workflow_event import (
     WorkflowEvent,
     WorkflowEventResult,
     validate_workflow_event,
+)
+from .worktree_guard import (
+    WorktreeSnapshot,
+    changed_tracked_paths,
+    describe_worktree_mutation,
+    snapshot_worktree,
 )
 from .workflow_state import (
     OutcomeKind,
@@ -206,6 +232,7 @@ __all__ = [
     "LifecycleIssueCode",
     "RecoveryAnchor",
     "count_epoch_source_phase_runs_including_current",
+    "count_escalations_since_phase_entry",
     "latest_applied_recovery_anchor",
     "scoped_history",
     "recovery_commit_marker",
@@ -231,9 +258,15 @@ __all__ = [
     "notify_blocked",
     "notify_complete",
     "notify_error",
+    "notify_escalation",
     "notify_waiting",
+    # Escalation
+    "EscalationDecision",
+    "EscalationSkip",
+    "plan_escalation",
     # Phases
     "ApprovalGate",
+    "EscalationPolicy",
     "Phase",
     "PhaseConfig",
     "PhaseRegistryError",
@@ -252,16 +285,19 @@ __all__ = [
     "resolve_workflow_profile",
     "validate_workflow_overrides",
     # Runner
+    "EscalationContext",
     "ExecutionResult",
     "ExecutionStatus",
     "extract_phase",
     "extract_total_iterations",
     "increment_total_iterations",
+    "latest_test_report",
     "run_ai_with_retry",
     "run_claude_with_retry",
     "resolve_working_dir",
     "validate_session_structure",
     # Signal history
+    "ESCALATION_STATUS",
     "HistoryRecord",
     "SignalHistoryEntry",
     "count_source_phase_iterations",
@@ -269,20 +305,29 @@ __all__ = [
     "get_phase_iteration_count",
     "read_history",
     "read_signal_history",
+    "record_escalation",
     "record_processed_outcome",
     "record_signal",
     # Signals
+    "BLOCKED_NEEDS",
     "OVERVIEW_FILENAME",
     "SIGNAL_FILENAME",
+    "WORKER_NEEDS",
     "Signal",
     "SignalStatus",
     "clear_signal_file",
     "read_signal_file",
+    "sanitize_overview_reason",
     # Workflow events
     "RejectionReason",
     "WorkflowEvent",
     "WorkflowEventResult",
     "validate_workflow_event",
+    # Worktree guard
+    "WorktreeSnapshot",
+    "changed_tracked_paths",
+    "describe_worktree_mutation",
+    "snapshot_worktree",
     # Workflow state
     "OutcomeKind",
     "OverviewParseError",
