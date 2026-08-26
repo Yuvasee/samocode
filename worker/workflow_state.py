@@ -13,6 +13,11 @@ from enum import Enum
 from pathlib import Path
 
 from .final_polish import validate_final_polish
+from .lifecycle import (
+    accepted_transitions,
+    has_final_polish_prerequisites,
+    scoped_history,
+)
 from .phases import Phase
 from .signals import OVERVIEW_FILENAME, Signal, SignalStatus
 from .timestamps import iteration_timestamp
@@ -693,6 +698,29 @@ def apply_workflow_event(
                 result.target_phase,
                 RejectionReason.FINAL_POLISH_INVALID,
                 "Final-polish provenance invalid: " + "; ".join(final_polish.errors),
+            )
+
+    if (
+        result.source_phase is Phase.TESTING
+        and result.target_phase is Phase.PR_READINESS
+    ):
+        history, anchor_errors = scoped_history(session_path)
+        if anchor_errors:
+            return ProcessedOutcome.rejected_validation(
+                result.source_phase,
+                result.target_phase,
+                RejectionReason.RECOVERY_ANCHOR_INVALID,
+                "Cannot verify final-polish prerequisites: " + "; ".join(anchor_errors),
+            )
+        if not has_final_polish_prerequisites(accepted_transitions(history)):
+            return ProcessedOutcome.rejected_validation(
+                result.source_phase,
+                result.target_phase,
+                RejectionReason.TESTING_PREREQUISITES_MISSING,
+                "Cannot transition testing -> pr-readiness: final-polish prerequisites "
+                "(implementation -> testing -> quality -> testing) are not yet satisfied "
+                "in this epoch. This is the first testing run; signal 'continue' with "
+                "target phase 'quality' instead.",
             )
 
     entry = (

@@ -20,6 +20,7 @@ class RejectionReason(Enum):
     TRANSITION_REQUIRES_APPROVAL = "transition_requires_approval"
     DONE_ONLY_IN_TERMINAL = "done_only_in_terminal"
     FINAL_POLISH_INVALID = "final_polish_invalid"
+    TESTING_PREREQUISITES_MISSING = "testing_prerequisites_missing"
     RECOVERY_ANCHOR_INVALID = "recovery_anchor_invalid"
     WORKTREE_MUTATED = "worktree_mutated"
     WORKTREE_UNVERIFIABLE = "worktree_unverifiable"

@@ -6,7 +6,9 @@ from pathlib import Path
 import pytest
 
 import worker.workflow_state as ws
+from worker.lifecycle import validate_phase_provenance
 from worker.phases import Phase
+from worker.signal_history import record_processed_outcome
 from worker.signals import Signal, SignalStatus
 from worker.workflow_event import RejectionReason
 from worker.workflow_state import (
@@ -599,3 +601,108 @@ class TestProcessWorkflowEvent:
         )
         assert outcome.kind is OutcomeKind.REJECTED_MUTATION
         assert outcome.parse_error is OverviewParseError.MISSING_FLOW_LOG
+
+
+def _record_transition(
+    session: Path, source: Phase, target: Phase, iteration: int
+) -> None:
+    record_processed_outcome(
+        session,
+        Signal(status=SignalStatus.CONTINUE, phase=target.value),
+        iteration,
+        ProcessedOutcome.accepted_transition(source, target),
+    )
+
+
+class TestTestingPrerequisitesGate:
+    def test_first_run_rejected_before_prerequisites(self, temp_session: Path) -> None:
+        before = _write_overview(temp_session, phase="testing").read_text()
+        outcome = apply_workflow_event(
+            temp_session,
+            _signal(SignalStatus.CONTINUE, "pr-readiness"),
+            "testing",
+            1,
+            2,
+        )
+        assert outcome.kind is OutcomeKind.REJECTED_VALIDATION
+        assert outcome.rejection_reason is RejectionReason.TESTING_PREREQUISITES_MISSING
+        assert outcome.rejection_message is not None
+        assert "quality" in outcome.rejection_message
+        assert not outcome.mutated
+        assert (temp_session / "_overview.md").read_text() == before
+
+    def test_full_prerequisite_chain_accepted_and_mutates(
+        self, temp_session: Path
+    ) -> None:
+        _record_transition(temp_session, Phase.IMPLEMENTATION, Phase.TESTING, 1)
+        _record_transition(temp_session, Phase.TESTING, Phase.QUALITY, 2)
+        _record_transition(temp_session, Phase.QUALITY, Phase.TESTING, 3)
+        _write_overview(temp_session, phase="testing")
+
+        outcome = apply_workflow_event(
+            temp_session,
+            _signal(SignalStatus.CONTINUE, "pr-readiness"),
+            "testing",
+            1,
+            4,
+        )
+        assert outcome.kind is OutcomeKind.ACCEPTED_TRANSITION
+        assert outcome.mutated
+        text = (temp_session / "_overview.md").read_text()
+        assert "Phase: pr-readiness\n" in text
+        assert "Phase transition: testing -> pr-readiness" in text
+
+    def test_partial_chain_still_rejected(self, temp_session: Path) -> None:
+        _record_transition(temp_session, Phase.IMPLEMENTATION, Phase.TESTING, 1)
+        _write_overview(temp_session, phase="testing")
+
+        outcome = apply_workflow_event(
+            temp_session,
+            _signal(SignalStatus.CONTINUE, "pr-readiness"),
+            "testing",
+            1,
+            2,
+        )
+        assert outcome.rejection_reason is RejectionReason.TESTING_PREREQUISITES_MISSING
+        assert not outcome.mutated
+
+    def test_recovery_anchor_error_surfaces_as_rejection(
+        self, temp_session: Path
+    ) -> None:
+        _write_overview(
+            temp_session,
+            phase="testing",
+            extra_flow="- [002 @ 08-26 09:00] [samocode-recovery:abcdef012345]",
+        )
+        (temp_session / "_signal_history.jsonl").write_text("")
+
+        outcome = apply_workflow_event(
+            temp_session,
+            _signal(SignalStatus.CONTINUE, "pr-readiness"),
+            "testing",
+            1,
+            3,
+        )
+        assert outcome.kind is OutcomeKind.REJECTED_VALIDATION
+        assert outcome.rejection_reason is RejectionReason.RECOVERY_ANCHOR_INVALID
+        assert not outcome.mutated
+
+    def test_gate_agrees_with_provenance_preflight(self, temp_session: Path) -> None:
+        """R4's transition-time gate and R6's phase-entry preflight must never
+        disagree: both call has_final_polish_prerequisites over the same history."""
+        _record_transition(temp_session, Phase.IMPLEMENTATION, Phase.TESTING, 1)
+        _record_transition(temp_session, Phase.TESTING, Phase.QUALITY, 2)
+        _record_transition(temp_session, Phase.QUALITY, Phase.TESTING, 3)
+        _write_overview(temp_session, phase="testing")
+
+        gate_outcome = apply_workflow_event(
+            temp_session,
+            _signal(SignalStatus.CONTINUE, "pr-readiness"),
+            "testing",
+            1,
+            4,
+        )
+        assert gate_outcome.accepted
+
+        _record_transition(temp_session, Phase.TESTING, Phase.PR_READINESS, 4)
+        assert validate_phase_provenance(temp_session, Phase.PR_READINESS).ok

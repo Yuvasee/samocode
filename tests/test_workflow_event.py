@@ -189,6 +189,16 @@ class TestContinue:
         assert result.accepted
         assert result.target_phase is Phase.PLANNING
 
+    def test_testing_to_pr_readiness_has_no_pure_layer_gate(self) -> None:
+        """R4's final-polish prerequisite gate is I/O-layer only (apply_workflow_event);
+        the pure layer must keep allowing this transition unconditionally so the two
+        layers never enforce conflicting rules."""
+        result = validate_workflow_event(
+            _event("testing", SignalStatus.CONTINUE, target="pr-readiness")
+        )
+        assert result.accepted
+        assert result.target_phase is Phase.PR_READINESS
+
 
 class TestDone:
     def test_done_in_done_accepts(self) -> None:
