@@ -11,12 +11,16 @@ from worker import workflow_state
 from worker.approval import ApprovalOutcome, approve_session
 from worker.config import ProjectConfig, RuntimeConfig, SamocodeConfig
 from worker.phases import Phase
-from worker.runner import ExecutionResult, ExecutionStatus
+from worker.global_config import default_config
+from worker.routing import ExecutionProfileSource, ExecutionTarget
+from worker.runner import EscalationContext, ExecutionResult, ExecutionStatus
 from worker.signals import Signal, SignalStatus
 from worker.startup import StartupComposition
 from worker.workflow_event import RejectionReason
 from worker.workflow_state import (
     OverviewParseError,
+    OverviewWriteError,
+    OverviewWriteFailure,
     OverviewWriteResult,
     read_overview_state,
 )
@@ -829,3 +833,392 @@ class TestWorktreeGuardOrchestrator:
         rows = _history_rows(session)
         assert rows[-1]["rejection_reason"] == "worktree_mutated"
         assert rows[-1]["accepted"] is False
+
+
+def _exec_target(profile: str, model: str, effort: str | None) -> ExecutionTarget:
+    return ExecutionTarget(
+        provider="codex",
+        profile=profile,
+        model=model,
+        effort=effort,
+        executable=Path("codex"),
+        timeout=1800,
+        workflow_phase=Phase.TESTING,
+        plan_phase=None,
+        source=ExecutionProfileSource.PHASE_DEFAULT,
+    )
+
+
+def _seed_testing_provenance(session: Path) -> None:
+    """Latest accepted transition into testing = implementation -> testing.
+
+    Required by enforce_lifecycle_preflight before the loop reaches the provider.
+    """
+    (session / "_signal_history.jsonl").write_text(
+        json.dumps(
+            {
+                "v": 2,
+                "timestamp": "2026-08-26 09:00:00",
+                "iteration": 1,
+                "source_phase": "implementation",
+                "target_phase": "testing",
+                "status": "continue",
+                "accepted": True,
+                "validation_error": None,
+                "rejection_reason": None,
+                "outcome_kind": "accepted_transition",
+                "mutated": True,
+            }
+        )
+        + "\n"
+    )
+
+
+def _append_escalation_row(session: Path) -> None:
+    """Append one prior testing escalation, spending the attempt budget."""
+    with (session / "_signal_history.jsonl").open("a", encoding="utf-8") as handle:
+        handle.write(
+            json.dumps(
+                {
+                    "v": 2,
+                    "timestamp": "2026-08-26 09:05:00",
+                    "iteration": 1,
+                    "source_phase": None,
+                    "target_phase": "testing",
+                    "status": "escalation",
+                    "accepted": None,
+                    "validation_error": None,
+                    "rejection_reason": None,
+                    "outcome_kind": "escalation",
+                    "mutated": False,
+                    "reason": "environment",
+                    "escalated_from_profile": "strong",
+                    "escalated_to_profile": "max",
+                    "escalated_from_model": "gpt-5.6-sol",
+                    "escalated_to_model": "gpt-5.6-sol",
+                }
+            )
+            + "\n"
+        )
+
+
+def _escalation_config(tmp_path: Path, session: Path) -> tuple[SamocodeConfig, Path]:
+    """Codex provider + the real built-in GlobalConfig (testing strong -> max)."""
+    main_repo = tmp_path / "repo"
+    worktrees = tmp_path / "worktrees"
+    for directory in (main_repo, worktrees):
+        directory.mkdir()
+    config_path = tmp_path / ".samocode"
+    config_path.write_text(
+        f"MAIN_REPO={main_repo}\nWORKTREES={worktrees}\nSESSIONS={session.parent}\n"
+    )
+    config = SamocodeConfig(
+        project=ProjectConfig.from_file(config_path),
+        runtime=RuntimeConfig(ai_provider="codex"),
+        session_path=session,
+        provider="codex",
+        global_config=default_config(),
+    )
+    return config, config_path
+
+
+def _write_blocked(needs: str, reason: str = "playwright missing"):
+    def step(session: Path) -> None:
+        (session / "_signal.json").write_text(
+            json.dumps({"status": "blocked", "needs": needs, "reason": reason})
+        )
+
+    return step
+
+
+def _write_continue(phase: str | None = None):
+    def step(session: Path) -> None:
+        payload: dict[str, str] = {"status": "continue"}
+        if phase is not None:
+            payload["phase"] = phase
+        (session / "_signal.json").write_text(json.dumps(payload))
+
+    return step
+
+
+class TestEscalationOrchestrator:
+    def _drive(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        session: Path,
+        script: list,
+        *,
+        once: bool = False,
+    ) -> tuple[list[object], dict[str, int]]:
+        config, config_path = _escalation_config(tmp_path, session)
+        steps = list(script)
+        calls: list[object] = []
+        counts = {"escalation": 0, "blocked": 0}
+
+        monkeypatch.setattr(
+            main, "compose_startup", lambda **_k: StartupComposition(config, (), ())
+        )
+        monkeypatch.setattr(
+            main,
+            "notify_blocked",
+            lambda *_a, **_k: counts.__setitem__("blocked", counts["blocked"] + 1),
+        )
+        monkeypatch.setattr(
+            main,
+            "notify_escalation",
+            lambda *_a, **_k: counts.__setitem__(
+                "escalation", counts["escalation"] + 1
+            ),
+        )
+
+        def stub_run(
+            *_a: object, escalation: object = None, **_k: object
+        ) -> ExecutionResult:
+            if not steps:
+                raise KeyboardInterrupt
+            step = steps.pop(0)
+            calls.append(escalation)
+            step(session)
+            return ExecutionResult(
+                status=ExecutionStatus.SUCCESS,
+                stdout="",
+                stderr="",
+                returncode=0,
+                attempt=1,
+            )
+
+        monkeypatch.setattr(main, "run_ai_with_retry", stub_run)
+
+        try:
+            main.run_orchestrator(
+                Namespace(
+                    config=str(config_path),
+                    session="task",
+                    provider=None,
+                    timeout=None,
+                    dive=None,
+                    task=None,
+                    once=once,
+                )
+            )
+        except SystemExit:
+            pass
+        return calls, counts
+
+    @staticmethod
+    def _escalation_rows(session: Path) -> list[dict[str, object]]:
+        return [r for r in _history_rows(session) if r["status"] == "escalation"]
+
+    def test_escalates_then_advances(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        session = _session(tmp_path, "testing")
+        _seed_testing_provenance(session)
+
+        calls, counts = self._drive(
+            tmp_path,
+            monkeypatch,
+            session,
+            [_write_blocked("environment"), _write_continue("quality")],
+        )
+
+        assert len(calls) == 2
+        assert calls[0] is None
+        assert isinstance(calls[1], EscalationContext)
+        assert calls[1].base.profile == "strong"
+        assert calls[1].target.profile == "max"
+
+        rows = self._escalation_rows(session)
+        assert len(rows) == 1
+        assert rows[0]["escalated_from_profile"] == "strong"
+        assert rows[0]["escalated_to_profile"] == "max"
+
+        assert counts["escalation"] == 1
+        assert _overview_phase(session) is Phase.QUALITY
+
+        overview = (session / "_overview.md").read_text()
+        assert (
+            "Escalation: testing strong (gpt-5.6-sol/medium) -> "
+            "max (gpt-5.6-sol/xhigh); blocker: playwright missing"
+        ) in overview
+
+    def test_second_environment_block_exhausts_budget(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        session = _session(tmp_path, "testing")
+        _seed_testing_provenance(session)
+
+        calls, counts = self._drive(
+            tmp_path,
+            monkeypatch,
+            session,
+            [_write_blocked("environment"), _write_blocked("environment")],
+        )
+
+        assert len(calls) == 2
+        assert isinstance(calls[1], EscalationContext)
+        assert len(self._escalation_rows(session)) == 1
+        assert counts["escalation"] == 1
+        assert counts["blocked"] == 1
+        assert _overview_phase(session) is Phase.TESTING
+
+    def test_non_trigger_need_does_not_escalate(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        session = _session(tmp_path, "testing")
+        _seed_testing_provenance(session)
+
+        calls, counts = self._drive(
+            tmp_path, monkeypatch, session, [_write_blocked("error_resolution")]
+        )
+
+        assert len(calls) == 1
+        assert self._escalation_rows(session) == []
+        assert counts["escalation"] == 0
+        assert counts["blocked"] == 1
+
+    def test_once_mode_disables_escalation(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        session = _session(tmp_path, "testing")
+        _seed_testing_provenance(session)
+
+        calls, counts = self._drive(
+            tmp_path,
+            monkeypatch,
+            session,
+            [_write_blocked("environment")],
+            once=True,
+        )
+
+        assert len(calls) == 1
+        assert self._escalation_rows(session) == []
+        assert counts["escalation"] == 0
+        assert counts["blocked"] == 1
+
+    def test_preexisting_escalation_row_blocks_new_escalation(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        session = _session(tmp_path, "testing")
+        _seed_testing_provenance(session)
+        _append_escalation_row(session)
+
+        calls, counts = self._drive(
+            tmp_path, monkeypatch, session, [_write_blocked("environment")]
+        )
+
+        assert len(calls) == 1
+        assert len(self._escalation_rows(session)) == 1
+        assert counts["escalation"] == 0
+        assert counts["blocked"] == 1
+
+    def test_reentry_after_quality_resets_budget(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        session = _session(tmp_path, "testing")
+        _seed_testing_provenance(session)
+
+        calls, counts = self._drive(
+            tmp_path,
+            monkeypatch,
+            session,
+            [
+                _write_blocked("environment"),
+                _write_continue("quality"),
+                _write_continue("testing"),
+                _write_blocked("environment"),
+            ],
+        )
+
+        assert len(calls) == 4
+        assert isinstance(calls[1], EscalationContext)
+        assert len(self._escalation_rows(session)) == 2
+        assert counts["escalation"] == 2
+
+
+class TestEscalationHelpers:
+    def test_effort_label_none_is_default(self) -> None:
+        assert main._effort_label(None) == "default"
+
+    def test_effort_label_passes_through(self) -> None:
+        assert main._effort_label("xhigh") == "xhigh"
+
+    def test_flow_log_line_format(self) -> None:
+        context = EscalationContext(
+            base=_exec_target("strong", "m-strong", "medium"),
+            target=_exec_target("max", "m-max", "xhigh"),
+            blocker_reason="playwright missing",
+            previous_report=None,
+            attempt=1,
+            max_attempts=1,
+        )
+        line = main._escalation_flow_log_line(Phase.TESTING, context, 7)
+        assert line.startswith("- [007 @ ")
+        assert line.endswith(
+            "Escalation: testing strong (m-strong/medium) -> "
+            "max (m-max/xhigh); blocker: playwright missing"
+        )
+
+    def test_flow_log_line_renders_none_effort(self) -> None:
+        context = EscalationContext(
+            base=_exec_target("strong", "m-strong", None),
+            target=_exec_target("max", "m-max", None),
+            blocker_reason="boom",
+            previous_report=None,
+            attempt=1,
+            max_attempts=1,
+        )
+        line = main._escalation_flow_log_line(Phase.TESTING, context, 2)
+        assert "strong (m-strong/default) -> max (m-max/default)" in line
+
+    def test_apply_escalation_write_failure_falls_through(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        session = _session(tmp_path, "testing")
+        _seed_testing_provenance(session)
+        config, _ = _escalation_config(tmp_path, session)
+
+        monkeypatch.setattr(
+            main,
+            "notify_escalation",
+            lambda *_a, **_k: pytest.fail("must not notify when the write fails"),
+        )
+        failure = OverviewWriteResult(
+            failure=OverviewWriteFailure(OverviewWriteError.WRITE_FAILED, "disk full")
+        )
+        monkeypatch.setattr(
+            main, "apply_overview_transition", lambda *_a, **_k: failure
+        )
+
+        signal = Signal(status=SignalStatus.BLOCKED, needs="environment", reason="boom")
+        result = main._apply_escalation(
+            "testing",
+            signal,
+            session,
+            "task",
+            3,
+            config,
+            _logger(),
+            once=False,
+        )
+
+        assert result is None
+        assert any(r["status"] == "escalation" for r in _history_rows(session))
+
+    def test_apply_escalation_skips_unknown_phase(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        session = _session(tmp_path, "testing")
+        config, _ = _escalation_config(tmp_path, session)
+        monkeypatch.setattr(
+            main,
+            "notify_escalation",
+            lambda *_a, **_k: pytest.fail("must not notify for an unknown phase"),
+        )
+        signal = Signal(status=SignalStatus.BLOCKED, needs="environment")
+        result = main._apply_escalation(
+            None, signal, session, "task", 1, config, _logger(), once=False
+        )
+        assert result is None
+        assert _history_rows(session) == []

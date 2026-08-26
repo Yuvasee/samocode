@@ -15,6 +15,8 @@ from pathlib import Path
 from . import (
     OVERVIEW_FILENAME,
     ApprovalOutcome,
+    EscalationContext,
+    EscalationSkip,
     ExecutionResolutionError,
     ExecutionStatus,
     GlobalConfigError,
@@ -28,6 +30,7 @@ from . import (
     ProcessLeaseState,
     RecoveryOutcome,
     RejectionReason,
+    SamocodeConfig,
     Signal,
     SignalStatus,
     WorktreeSnapshot,
@@ -48,12 +51,16 @@ from . import (
     increment_total_iterations,
     inspect_final_polish_recovery,
     install,
+    iteration_timestamp,
     notify_blocked,
     notify_complete,
     notify_error,
+    notify_escalation,
     notify_waiting,
+    plan_escalation,
     read_overview_state,
     read_signal_file,
+    record_escalation,
     record_processed_outcome,
     recover_final_polish,
     recovery_exit_code,
@@ -605,6 +612,120 @@ def _snapshot_readonly_worktree(
     return snapshot
 
 
+def _effort_label(effort: str | None) -> str:
+    """Render a profile's optional reasoning effort for a one-line log entry."""
+    return effort or "default"
+
+
+def _escalation_flow_log_line(
+    phase: Phase, context: EscalationContext, iteration: int
+) -> str:
+    """Render the single flow-log line recording a profile-ladder escalation.
+
+    Shaped like apply_workflow_event's transition line: "- <iteration_timestamp>
+    Escalation: <phase> <base rung> -> <escalated rung>; blocker: <reason>", where
+    a rung is "profile (model/effort)". Built once and reused for both the log call
+    and the OverviewTransition flow_log_entry so the two can never drift.
+    """
+    base = context.base
+    escalated = context.target
+    return (
+        f"- {iteration_timestamp(iteration)} Escalation: {phase.value} "
+        f"{base.profile} ({base.model}/{_effort_label(base.effort)}) -> "
+        f"{escalated.profile} ({escalated.model}/{_effort_label(escalated.effort)}); "
+        f"blocker: {context.blocker_reason}"
+    )
+
+
+def _apply_escalation(
+    phase: str | None,
+    signal: Signal,
+    session_path: Path,
+    session_display_name: str,
+    iteration: int,
+    config: SamocodeConfig,
+    logger: logging.Logger,
+    *,
+    once: bool,
+) -> EscalationContext | None:
+    """Escalate a blocked phase one profile rung, or return None to fall through.
+
+    Owns every escalation side effect - audit row, overview transition, log line,
+    notification - so the loop's BLOCKED branch stays linear, mirroring
+    _persist_workflow_rejection and _signal_for_outcome. Returns the ready-to-run
+    EscalationContext when the iteration was escalated (the caller stashes it as
+    pending_escalation and continues), or None when escalation was skipped or its
+    overview write failed (the caller falls through to the existing blocked
+    handling).
+
+    The Phase to escalate is derived from `phase`, the source phase captured before
+    the run; an unknown/absent phase is not escalatable and falls through. Never
+    raises: plan_escalation is pure, and a failed overview write degrades to a
+    logged fall-through.
+    """
+    try:
+        phase_enum = Phase((phase or "").lower())
+    except ValueError:
+        logger.info("Escalation skipped: no known phase to escalate from")
+        return None
+
+    decision = plan_escalation(session_path, phase_enum, signal, config, once=once)
+    if isinstance(decision, EscalationSkip):
+        logger.info(f"Escalation skipped: {decision.reason}")
+        return None
+
+    context = decision.context
+    base = context.base
+    escalated = context.target
+    flow_log_line = _escalation_flow_log_line(phase_enum, context, iteration)
+
+    record_escalation(
+        session_path,
+        phase_enum,
+        iteration,
+        base,
+        escalated,
+        context.blocker_reason,
+    )
+
+    write = apply_overview_transition(
+        session_path,
+        OverviewTransition(
+            target_phase=phase_enum,
+            blocked="no",
+            last_action=(
+                f"Testing blocked on {signal.needs}; "
+                f"escalating {base.profile} -> {escalated.profile}"
+            ),
+            next_action=(
+                f"Escalated testing attempt {context.attempt}/{context.max_attempts}"
+            ),
+            flow_log_entry=flow_log_line,
+        ),
+        expected_source=phase_enum,
+    )
+    if not write.ok:
+        logger.error(
+            "Could not persist escalation transition in overview: %s",
+            write.message or "unknown overview write failure",
+        )
+        return None
+
+    logger.info(flow_log_line)
+    notify_escalation(
+        session_display_name,
+        phase_enum.value,
+        base.profile,
+        escalated.profile,
+        base.model,
+        escalated.model,
+        context.blocker_reason,
+        config.telegram_bot_token,
+        config.telegram_chat_id,
+    )
+    return context
+
+
 def run_orchestrator(args: argparse.Namespace) -> None:
     """Run the autonomous orchestrator loop (the `run` command)."""
     samocode_dir = resolve_asset_source_dir()
@@ -674,9 +795,15 @@ def run_orchestrator(args: argparse.Namespace) -> None:
     initial_dive = args.dive
     initial_task = args.task
     session_handler = None
+    pending_escalation: EscalationContext | None = None
 
     try:
         while True:
+            # Consume the previous iteration's planned escalation for exactly this
+            # run and clear it, so a normal iteration never inherits a stale one.
+            escalation = pending_escalation
+            pending_escalation = None
+
             preflight_error = enforce_lifecycle_preflight(session_path)
             if preflight_error:
                 logger.error(f"Lifecycle preflight failed: {preflight_error}")
@@ -731,6 +858,7 @@ def run_orchestrator(args: argparse.Namespace) -> None:
                     config,
                     initial_dive if iteration == 1 else None,
                     initial_task if iteration == 1 else None,
+                    escalation=escalation,
                 )
             except (
                 PlanResolutionError,
@@ -798,6 +926,20 @@ def run_orchestrator(args: argparse.Namespace) -> None:
                 break
 
             if signal.status == SignalStatus.BLOCKED:
+                pending_escalation = _apply_escalation(
+                    phase,
+                    signal,
+                    session_path,
+                    session_display_name,
+                    iteration,
+                    config,
+                    logger,
+                    once=args.once,
+                )
+                if pending_escalation is not None:
+                    logger.info("Escalating: replaying iteration on a stronger profile")
+                    continue
+
                 logger.warning(f"Blocked: {signal.reason}")
                 logger.warning(f"Needs: {signal.needs}")
                 notify_blocked(
