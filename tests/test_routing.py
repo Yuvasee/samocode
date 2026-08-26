@@ -28,7 +28,10 @@ from worker.routing import (
     DEFAULT_TIMEOUT_SECONDS,
     ExecutionProfileSource,
     ExecutionResolutionError,
+    ExecutionTarget,
     ProfileSource,
+    escalate_execution_target,
+    next_profile,
     resolve_execution_target,
     resolve_workflow_profile,
 )
@@ -385,3 +388,104 @@ class TestExecutionTargetImmutability:
         )
         with pytest.raises(dataclasses.FrozenInstanceError):
             target.profile = "other"  # type: ignore[misc]
+
+
+# === Phase 2: escalation ladder ===
+
+
+def _base_target(
+    cfg: GlobalConfig,
+    workflow_phase: Phase = Phase.DONE,
+    provider: str = "claude",
+) -> ExecutionTarget:
+    return resolve_execution_target(
+        provider_name=provider,
+        workflow_phase=workflow_phase,
+        session_dir=Path("/nonexistent"),
+        config=cfg,
+        runtime=RuntimeConfig(),
+    )
+
+
+class TestNextProfile:
+    def test_ladder_steps(self) -> None:
+        assert next_profile("light") == "standard"
+        assert next_profile("standard") == "strong"
+        assert next_profile("strong") == "max"
+
+    def test_max_returns_none(self) -> None:
+        assert next_profile("max") is None
+
+    def test_unknown_profile_returns_none(self) -> None:
+        assert next_profile("nightly") is None
+
+
+class TestEscalateExecutionTarget:
+    def test_escalates_each_rung_then_stops_at_max(self) -> None:
+        cfg = _config()
+        target = _base_target(cfg, Phase.DONE)  # light
+        assert target.profile == "light"
+
+        step1 = escalate_execution_target(target, cfg)
+        assert step1 is not None
+        assert step1.profile == "standard"
+        standard = cfg.profile("claude", "standard")
+        assert standard is not None
+        assert step1.model == standard.model
+        assert step1.effort == standard.effort
+        assert step1.source is ExecutionProfileSource.ESCALATION
+        assert step1.escalated_from == "light"
+        assert step1.provider == target.provider
+        assert step1.executable == target.executable
+        assert step1.timeout == target.timeout
+        assert step1.workflow_phase == target.workflow_phase
+        assert step1.plan_phase == target.plan_phase
+
+        step2 = escalate_execution_target(step1, cfg)
+        assert step2 is not None
+        assert step2.profile == "strong"
+        assert step2.escalated_from == "standard"
+
+        step3 = escalate_execution_target(step2, cfg)
+        assert step3 is not None
+        assert step3.profile == "max"
+        assert step3.escalated_from == "strong"
+
+        assert escalate_execution_target(step3, cfg) is None
+
+    def test_max_base_returns_none(self) -> None:
+        cfg = _config()
+        target = _base_target(cfg, Phase.PLANNING)  # planning default is "max"
+        assert target.profile == "max"
+        assert escalate_execution_target(target, cfg) is None
+
+    def test_missing_next_provider_profile_returns_none(self) -> None:
+        # gemini ships "strong" but not "max"; escalating from strong finds no rung.
+        cfg = _config(
+            '\n[providers.gemini]\nexecutable = "gemini"\n'
+            '[providers.gemini.profiles.strong]\nmodel = "gemini-strong"\n'
+        )
+        target = _base_target(cfg, Phase.TESTING, provider="gemini")  # strong
+        assert target.profile == "strong"
+        assert escalate_execution_target(target, cfg) is None
+
+    def test_override_base_escalates_to_next_rung(self) -> None:
+        cfg = _config('\n[workflow_overrides]\ntesting = "standard"\n')
+        target = _base_target(cfg, Phase.TESTING)
+        assert target.profile == "standard"
+        assert target.source is ExecutionProfileSource.WORKFLOW_OVERRIDE
+
+        escalated = escalate_execution_target(target, cfg)
+        assert escalated is not None
+        assert escalated.profile == "strong"
+        assert escalated.escalated_from == "standard"
+        assert escalated.source is ExecutionProfileSource.ESCALATION
+
+    def test_original_target_unchanged(self) -> None:
+        cfg = _config()
+        target = _base_target(cfg, Phase.DONE)  # light, PHASE_DEFAULT
+        escalated = escalate_execution_target(target, cfg)
+        assert escalated is not None
+        assert target.profile == "light"
+        assert target.source is ExecutionProfileSource.PHASE_DEFAULT
+        assert target.escalated_from is None
