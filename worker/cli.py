@@ -87,6 +87,16 @@ _WORKTREE_READONLY_REJECTION = (
 )
 
 
+# A post-run snapshot that could not run mutated nothing; the guard just cannot
+# prove the dir is unchanged, so the remediation is to repair git, not to revert.
+_WORKTREE_UNVERIFIABLE_REJECTION = (
+    "Phase '{phase}' is read-only, but the post-run git snapshot failed, so the "
+    "read-only guard cannot verify the working directory is unchanged. Nothing was "
+    "necessarily modified — confirm the working directory is a healthy git checkout "
+    "(repair git / restore the repo), then rerun the phase."
+)
+
+
 @dataclass(frozen=True)
 class ReadonlyRejection:
     """A read-only guard rejection paired with the reason to audit it under.
@@ -95,7 +105,8 @@ class ReadonlyRejection:
     snapshot that could not run (git broke on a dir that was a valid repo) mutated
     nothing but left the guard unable to verify, so it audits as WORKTREE_UNVERIFIABLE
     — distinct so history filtered by reason never misattributes an unverifiable run
-    as a mutation. Both still block with the same human_decision routing and text.
+    as a mutation. Both block with the same human_decision routing, but each surfaces
+    its own remediation text: revert the tracked change vs. repair git and rerun.
     """
 
     reason: RejectionReason
@@ -125,18 +136,14 @@ def _detect_readonly_worktree_mutation(
     if after is None:
         return ReadonlyRejection(
             RejectionReason.WORKTREE_UNVERIFIABLE,
-            _WORKTREE_READONLY_REJECTION.format(
-                phase=source_phase,
-                mutation=(
-                    "post-run git snapshot failed, so the read-only guard cannot "
-                    "verify the working directory is unchanged"
-                ),
-            ),
+            _WORKTREE_UNVERIFIABLE_REJECTION.format(phase=source_phase),
         )
     mutation = describe_worktree_mutation(worktree_before, after)
     if mutation is None:
         return None
-    restore = _restore_command(working_dir, changed_tracked_paths(worktree_before, after))
+    restore = _restore_command(
+        working_dir, changed_tracked_paths(worktree_before, after)
+    )
     delta = f"{mutation}; {restore}" if restore else mutation
     return ReadonlyRejection(
         RejectionReason.WORKTREE_MUTATED,

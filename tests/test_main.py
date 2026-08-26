@@ -685,6 +685,11 @@ class TestDetectReadonlyWorktreeMutation:
         assert rejection is not None
         assert rejection.reason is RejectionReason.WORKTREE_UNVERIFIABLE
         assert "post-run git snapshot failed" in rejection.message
+        # An unverifiable run mutated nothing; remediation is to repair git, not
+        # to revert a change the guard never actually detected.
+        assert "healthy git checkout" in rejection.message
+        assert "changed during" not in rejection.message
+        assert "Revert the change" not in rejection.message
 
 
 class TestWorktreeGuardApplySignal:
@@ -752,9 +757,7 @@ class TestWorktreeGuardApplySignal:
 
         assert result.status is SignalStatus.BLOCKED
         assert result.needs == "human_decision"
-        assert (
-            _history_rows(session)[-1]["rejection_reason"] == "worktree_unverifiable"
-        )
+        assert _history_rows(session)[-1]["rejection_reason"] == "worktree_unverifiable"
 
 
 class TestWorktreeGuardOrchestrator:
