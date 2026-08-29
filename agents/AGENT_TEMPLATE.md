@@ -1,5 +1,7 @@
 ---
-name: [phase]-agent
+# Uncomment and fill in `name` when copying this template.
+# While `name` is absent the file is treated as a doc, not a loadable agent.
+# name: [phase]-agent
 description: [Brief description]. Use during [phase] phase of samocode workflow.
 tools: Read, Write, Edit, Bash, Glob, Grep, Task
 model: inherit
