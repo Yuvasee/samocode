@@ -255,6 +255,8 @@ Result: clean | findings
 Disposition: pending | settled
 ```
 
+`Reviewed HEAD` must be the plain, full 40-character SHA with no Markdown backticks.
+
 The final Comment Hygiene report contains:
 
 ```markdown
@@ -267,6 +269,9 @@ Comments reworded: [count]
 Comments kept: [count]
 Stale comments fixed: [count]
 ```
+
+`Input HEAD` and `Output HEAD` must be plain, full 40-character SHAs with no
+Markdown backticks.
 
 ## State Updates
 

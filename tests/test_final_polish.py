@@ -66,6 +66,7 @@ def _evidence(
     disposition: str = "settled",
     safety: str = "PASS",
     regression_result: str = "PASS",
+    run: str = "2nd (post-quality)",
 ) -> None:
     session.mkdir()
     (session / "01-code-clarity.md").write_text(
@@ -75,7 +76,7 @@ def _evidence(
         f"Input HEAD: {reviewed}\nOutput HEAD: {output}\nSafety check: {safety}\n"
     )
     (session / "03-test-report.md").write_text(
-        f"Run: 2nd (post-quality)\nResult: {regression_result}\nTested HEAD: {output}\n"
+        f"Run: {run}\nResult: {regression_result}\nTested HEAD: {output}\n"
     )
     _history(session)
 
@@ -101,6 +102,32 @@ def test_accepts_hygiene_commit_between_review_and_regression(tmp_path: Path) ->
     _evidence(session, reviewed=reviewed, output=output)
 
     assert validate_final_polish(session, project).ok
+
+
+def test_accepts_markdown_code_sha_and_descriptive_post_quality_run(
+    tmp_path: Path,
+) -> None:
+    project, head = _project(tmp_path)
+    session = tmp_path / "session"
+    _evidence(
+        session,
+        reviewed=f"`{head}`",
+        output=f"`{head}`",
+        run="2nd (post-quality regression, final-polish recovery)",
+    )
+
+    assert validate_final_polish(session, project).ok
+
+
+@pytest.mark.parametrize("run", ["1st (post-quality)", "2nd (post-implementation)"])
+def test_rejects_non_post_quality_run(tmp_path: Path, run: str) -> None:
+    project, head = _project(tmp_path)
+    session = tmp_path / "session"
+    _evidence(session, reviewed=head, output=head, run=run)
+
+    check = validate_final_polish(session, project)
+
+    assert "Latest test report is not the post-quality regression run" in check.errors
 
 
 @pytest.mark.parametrize(

@@ -125,6 +125,9 @@ Tested HEAD: [sha, required for the 2nd run]
 [Proceed / Needs fixes]
 ```
 
+Use exactly one listed `Run` value with no added qualifier. `Tested HEAD` must be
+the plain, full 40-character SHA with no Markdown backticks.
+
 ## State Updates
 
 Edit `_overview.md`:

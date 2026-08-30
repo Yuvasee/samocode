@@ -115,6 +115,9 @@ Tests the specific feature or bug fix implemented in the current session. NOT fu
    [None or list of issues]
    ```
 
+   Use exactly one listed `Run` value with no added qualifier. `Tested HEAD` must
+   be the plain, full 40-character SHA with no Markdown backticks.
+
 8. **Update session:**
    - Edit `_overview.md`:
      - Flow Log: `- [TIMESTAMP_ITERATION] Feature tested: [result] -> [filename].md`
