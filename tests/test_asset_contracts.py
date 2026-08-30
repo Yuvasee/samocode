@@ -123,6 +123,17 @@ def test_post_quality_pipeline_preserves_final_hygiene_boundary() -> None:
     )
     assert "provenance is never `NOT APPLICABLE`" in readiness_agent_normalized
     assert '{"status": "continue", "phase": "quality"}' in readiness_agent
+    assert "Quality Step: clarity-review" in readiness_agent
+    assert (
+        "do not repeat ordinary cleanup and multi-review" in readiness_agent_normalized
+    )
+
+    quality_agent = (ROOT / "agents" / "quality-agent.md").read_text()
+    quality_agent_normalized = " ".join(quality_agent.split())
+    assert "`pr-readiness -> quality` is a recovery-compatible re-entry" in (
+        quality_agent_normalized
+    )
+    assert "Do not repeat ordinary cleanup and multi-review" in quality_agent_normalized
 
 
 def test_planning_assets_keep_outer_lifecycle_outside_implementation() -> None:

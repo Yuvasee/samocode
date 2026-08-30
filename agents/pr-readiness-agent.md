@@ -62,6 +62,9 @@ Session context is provided via --append-system-prompt by the orchestrator:
 
 5. **If readiness fails because final-polish provenance is missing, stale, or the
    project changed after hygiene:**
+   - Set `Quality Step: clarity-review`, remove stale `Quality Iteration` and
+     `Clarity Iteration` fields, and set `Blocked: no`. This resumes at the final
+     polish tail; do not repeat ordinary cleanup and multi-review.
    - Update `_overview.md` with `Last Action: PR readiness returned to quality`
    - Add Flow Log entry and commit session files
    - Signal `continue` with `phase: quality` so Code Clarity, final Comment Hygiene,

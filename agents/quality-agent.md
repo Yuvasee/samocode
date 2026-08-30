@@ -31,8 +31,12 @@ failing with connection errors and the run exceeds its time limit. One step per
 run keeps every process short and its context small — the orchestrator loops
 you until the phase completes.
 
-Dispatch on the `Quality Step` field in the Status section of `_overview.md`
-(field absent → step 1):
+Dispatch on the `Quality Step` field in the Status section of `_overview.md`.
+When the field is absent, inspect the latest accepted transition in
+`_signal_history.jsonl`: `pr-readiness -> quality` is a recovery-compatible re-entry
+at step 5 (`clarity-review`); every other entry starts at step 1. On that re-entry,
+set `Blocked: no` while recording the step result. Do not repeat ordinary cleanup
+and multi-review merely because older PR-readiness agents omitted `Quality Step`.
 
 ### Step 1 — Cleanup (no `Quality Step` field yet)
 
