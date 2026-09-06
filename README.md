@@ -322,6 +322,32 @@ phase to completed implementation. The next normal run must record a fresh
 an AI provider. Never hand-edit `_overview.md`, `_signal.json`, or
 `_signal_history.jsonl` to bypass that check.
 
+### Recover a completed quality step rejected by the iteration limit
+
+```bash
+samocode recover phase-limit --config ~/project/.samocode --session my-task --check
+samocode recover phase-limit --config ~/project/.samocode --session my-task --apply
+samocode run --config ~/project/.samocode --session my-task
+```
+
+Use the updated samocode version for both recovery and subsequent runs. This recovery
+supports only `quality -> testing` with `Blocked: workflow_error`, a retained
+`continue -> testing` signal, and a latest `iteration_limit_exceeded` rejection.
+It requires an exceeded quality count, valid incoming lifecycle provenance, a completed
+implementation plan, settled Code Clarity, passing Comment Hygiene at the clean current
+HEAD, and resolved review debt. It does not require a regression report that has not run yet.
+
+Apply takes the process lease and session lock, revalidates the state, and saves control
+files plus quality evidence under `_recovery/`. An atomic overview marker commits the
+receipt-backed transition to testing. The original history remains byte-identical;
+lifecycle validation incorporates the audited transition without resetting the epoch or
+iteration counts. A crash before that marker leaves an inert snapshot; after it, the
+transition is committed even if clearing the stale signal fails (exit 5). Repeating apply
+after success is rejected. Missing or inconsistent committed receipts block startup.
+
+Other phase-limit cases remain blocked; this command cannot skip incomplete work,
+raise limits, bypass approval, or mark a session done.
+
 ## Session Structure
 
 ```

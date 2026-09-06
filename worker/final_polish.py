@@ -37,6 +37,18 @@ def validate_final_polish_evidence(
     session_path: Path, working_dir: Path
 ) -> FinalPolishCheck:
     """Validate final artifacts and repository state without lifecycle history."""
+    return _validate_evidence(session_path, working_dir, require_regression=True)
+
+
+def validate_quality_evidence(
+    session_path: Path, working_dir: Path
+) -> FinalPolishCheck:
+    return _validate_evidence(session_path, working_dir, require_regression=False)
+
+
+def _validate_evidence(
+    session_path: Path, working_dir: Path, *, require_regression: bool
+) -> FinalPolishCheck:
     errors: list[str] = []
     clarity = _latest_metadata(
         session_path,
@@ -52,12 +64,16 @@ def validate_final_polish_evidence(
         "Comment Hygiene",
         errors,
     )
-    regression = _latest_metadata(
-        session_path,
-        "*-test-report.md",
-        ("Run", "Result", "Tested HEAD"),
-        "post-quality regression",
-        errors,
+    regression = (
+        _latest_metadata(
+            session_path,
+            "*-test-report.md",
+            ("Run", "Result", "Tested HEAD"),
+            "post-quality regression",
+            errors,
+        )
+        if require_regression
+        else None
     )
 
     current_head = _git_output(working_dir, ("rev-parse", "HEAD"), errors)

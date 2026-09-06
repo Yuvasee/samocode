@@ -77,6 +77,7 @@ from . import (
     validate_phase_provenance,
 )
 from .installer import resolve_asset_source_dir
+from .recovery import inspect_phase_limit_recovery, recover_phase_limit
 
 
 _WORKTREE_READONLY_REJECTION = (
@@ -611,6 +612,15 @@ Examples:
     recovery_mode.add_argument(
         "--apply", action="store_true", help="Apply the validated recovery"
     )
+    phase_limit_parser = recover_subparsers.add_parser(
+        "phase-limit",
+        help="Recover completed quality -> testing rejected by iteration limit",
+    )
+    phase_limit_parser.add_argument("--config", required=True)
+    phase_limit_parser.add_argument("--session", required=True)
+    phase_limit_mode = phase_limit_parser.add_mutually_exclusive_group(required=True)
+    phase_limit_mode.add_argument("--check", action="store_true")
+    phase_limit_mode.add_argument("--apply", action="store_true")
 
     check_parser = subparsers.add_parser(
         "check",
@@ -1089,11 +1099,17 @@ def cmd_approve(args: argparse.Namespace) -> None:
 
 
 def cmd_recover(args: argparse.Namespace) -> None:
-    if args.recovery_kind != "final-polish":
+    if args.recovery_kind not in {"final-polish", "phase-limit"}:
         build_parser().print_help()
         sys.exit(2)
     config_path = Path(args.config).expanduser().resolve()
-    if args.check:
+    if args.recovery_kind == "phase-limit":
+        result = (
+            inspect_phase_limit_recovery(config_path, args.session)
+            if args.check
+            else recover_phase_limit(config_path, args.session)
+        )
+    elif args.check:
         result = inspect_final_polish_recovery(config_path, args.session)
     else:
         result = recover_final_polish(config_path, args.session)

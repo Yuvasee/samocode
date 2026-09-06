@@ -21,6 +21,7 @@ from .signals import OVERVIEW_FILENAME
 RECOVERY_DIRNAME = "_recovery"
 RECOVERY_RECEIPT_FILENAME = "receipt.json"
 _RECOVERY_COMMIT_MARKER = re.compile(r"\[samocode-recovery:([0-9a-f]{12})\]")
+_PHASE_LIMIT_MARKER = re.compile(r"\[samocode-phase-limit:([0-9a-f]{12})\]")
 
 REQUIRED_FINAL_POLISH_TRANSITIONS = (
     ("implementation", "testing"),
@@ -142,7 +143,7 @@ def scoped_history(session_path: Path) -> tuple[list[HistoryRecord], tuple[str, 
     if resolution_errors:
         return [], resolution_errors
     if anchor is None:
-        return history, ()
+        return _include_phase_limit_recoveries(session_path, history, 0)
 
     history_path = session_path / HISTORY_FILENAME
     try:
@@ -156,7 +157,84 @@ def scoped_history(session_path: Path) -> tuple[list[HistoryRecord], tuple[str, 
         return [], ("Signal history before the applied recovery anchor was modified",)
     if len(history) < anchor.history_rows_before:
         return [], ("Signal history has fewer rows than the applied recovery anchor",)
-    return history[anchor.history_rows_before :], ()
+    return _include_phase_limit_recoveries(
+        session_path, history, anchor.history_rows_before
+    )
+
+
+def _include_phase_limit_recoveries(
+    session_path: Path, history: list[HistoryRecord], start_row: int
+) -> tuple[list[HistoryRecord], tuple[str, ...]]:
+    # The overview marker commits the receipt without rewriting rejected history.
+    try:
+        overview_path = session_path / OVERVIEW_FILENAME
+        if not overview_path.exists():
+            return history[start_row:], ()
+        ids = _PHASE_LIMIT_MARKER.findall(overview_path.read_text())
+        if not ids:
+            return history[start_row:], ()
+        raw = (session_path / HISTORY_FILENAME).read_bytes()
+        additions: dict[int, HistoryRecord] = {}
+        for recovery_id in ids:
+            paths = list(
+                (session_path / RECOVERY_DIRNAME).glob(
+                    f"*-phase-limit-{recovery_id}/{RECOVERY_RECEIPT_FILENAME}"
+                )
+            )
+            if len(paths) != 1:
+                raise ValueError(
+                    f"Recovery {recovery_id} must have exactly one receipt"
+                )
+            payload = json.loads(paths[0].read_text())
+            boundary = payload["history_bytes_before"]
+            row = payload["history_rows_before"]
+            if (
+                payload["schema"] != 1
+                or payload["recovery_id"] != recovery_id
+                or payload["reason"] != "phase_iteration_limit_completed"
+                or payload["source_phase"] != "quality"
+                or payload["target_phase"] != "testing"
+                or type(boundary) is not int
+                or not 0 < boundary <= len(raw)
+                or type(row) is not int
+                or not 0 < row <= len(history)
+                or hashlib.sha256(raw[:boundary]).hexdigest()
+                != payload["history_sha256_before"]
+                or len(raw[:boundary].splitlines()) != row
+                or row in additions
+            ):
+                raise ValueError(f"Invalid phase-limit recovery receipt {recovery_id}")
+            rejected = history[row - 1]
+            if not (
+                rejected.source_phase == "quality"
+                and rejected.accepted is False
+                and rejected.mutated is False
+                and rejected.rejection_reason == "iteration_limit_exceeded"
+            ):
+                raise ValueError(
+                    f"Recovery {recovery_id} does not follow an iteration-limit rejection"
+                )
+            additions[row] = HistoryRecord(
+                timestamp=payload["created_at"],
+                iteration=0,
+                source_phase="quality",
+                target_phase="testing",
+                raw_status="recovery",
+                accepted=True,
+                mutated=True,
+                validation_error=None,
+                outcome_kind="accepted_transition",
+                reason=f"phase-limit recovery {recovery_id}",
+            )
+        combined: list[HistoryRecord] = []
+        for row in range(start_row, len(history) + 1):
+            if row > start_row and row in additions:
+                combined.append(additions[row])
+            if row < len(history):
+                combined.append(history[row])
+        return combined, ()
+    except (OSError, UnicodeError, ValueError, KeyError, TypeError) as exc:
+        return [], (f"Cannot validate phase-limit recovery: {exc}",)
 
 
 def validate_final_polish_lifecycle(session_path: Path) -> LifecycleCheck:
@@ -248,7 +326,9 @@ def count_epoch_source_phase_runs_including_current(
     completed_runs = sum(
         1
         for record in history
-        if record.source_phase and record.source_phase.lower() == wanted
+        if record.source_phase
+        and record.source_phase.lower() == wanted
+        and record.raw_status != "recovery"
     )
     return EpochPhaseRunCount(count=completed_runs + 1)
 

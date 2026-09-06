@@ -15,7 +15,7 @@ from enum import Enum
 from pathlib import Path
 
 from .config import ProjectConfig, resolve_project_working_dir, resolve_session_path
-from .final_polish import validate_final_polish_evidence
+from .final_polish import validate_final_polish_evidence, validate_quality_evidence
 from .lifecycle import (
     RECOVERY_DIRNAME,
     RECOVERY_RECEIPT_FILENAME,
@@ -23,8 +23,10 @@ from .lifecycle import (
     latest_applied_recovery_anchor,
     recovery_commit_marker,
     validate_final_polish_lifecycle,
+    validate_phase_provenance,
+    scoped_history,
 )
-from .phases import Phase
+from .phases import Phase, is_iteration_limit_exceeded
 from .plan_resolver import PlanResolutionError, resolve_plan_phase
 from .process_lease import ProcessLeaseState, acquire_process_lease
 from .signal_history import HISTORY_FILENAME, read_history
@@ -77,6 +79,7 @@ class RecoveryInspection:
     history_bytes: bytes
     plan_bytes: bytes
     head: str
+    evidence_bytes: tuple[tuple[str, bytes], ...] = ()
 
     @property
     def state_fingerprint(self) -> RecoveryStateFingerprint:
@@ -90,6 +93,7 @@ class RecoveryInspection:
             history_bytes=self.history_bytes,
             plan_bytes=self.plan_bytes,
             head=self.head,
+            evidence_bytes=self.evidence_bytes,
         )
 
 
@@ -104,6 +108,7 @@ class RecoveryStateFingerprint:
     history_bytes: bytes
     plan_bytes: bytes
     head: str
+    evidence_bytes: tuple[tuple[str, bytes], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -138,7 +143,35 @@ def inspect_final_polish_recovery(
 def recover_final_polish(
     config_path: Path, session_name: str, now: datetime | None = None
 ) -> RecoveryResult:
-    preflight = inspect_final_polish_recovery(config_path, session_name)
+    return _recover(config_path, session_name, now, phase_limit=False)
+
+
+def recover_phase_limit(
+    config_path: Path, session_name: str, now: datetime | None = None
+) -> RecoveryResult:
+    return _recover(config_path, session_name, now, phase_limit=True)
+
+
+def inspect_phase_limit_recovery(
+    config_path: Path, session_name: str
+) -> RecoveryResult:
+    try:
+        project = ProjectConfig.from_file(config_path)
+        errors = project.validate()
+        if errors:
+            return _rejected(RecoveryRejection.CONFIG_INVALID, "; ".join(errors))
+        return _inspect_phase_limit_project(project, session_name)
+    except (OSError, UnicodeError, ValueError) as exc:
+        return _rejected(RecoveryRejection.CONFIG_INVALID, str(exc))
+
+
+def _recover(
+    config_path: Path, session_name: str, now: datetime | None, *, phase_limit: bool
+) -> RecoveryResult:
+    inspector = (
+        inspect_phase_limit_recovery if phase_limit else inspect_final_polish_recovery
+    )
+    preflight = inspector(config_path, session_name)
     if preflight.inspection is None:
         return preflight
     expected = preflight.inspection
@@ -167,7 +200,11 @@ def recover_final_polish(
                     lock.message or "Cannot acquire the session lock",
                 )
 
-            locked = _inspect_project(expected.project, session_name)
+            locked = (
+                _inspect_phase_limit_project(expected.project, session_name)
+                if phase_limit
+                else _inspect_project(expected.project, session_name)
+            )
             if locked.inspection is None:
                 return locked
             authoritative = locked.inspection
@@ -176,7 +213,7 @@ def recover_final_polish(
                     RecoveryRejection.STATE_CHANGED,
                     "Workflow state changed after recovery inspection; run --check again",
                 )
-            return _apply_recovery(authoritative, now)
+            return _apply_recovery(authoritative, now, phase_limit=phase_limit)
     finally:
         lease.release()
 
@@ -336,20 +373,153 @@ def _inspect_project(project: ProjectConfig, session_name: str) -> RecoveryResul
     )
 
 
+def _inspect_phase_limit_project(
+    project: ProjectConfig, session_name: str
+) -> RecoveryResult:
+    session = resolve_session_path(project.sessions, session_name)
+    if not session.is_dir():
+        return _rejected(
+            RecoveryRejection.SESSION_NOT_FOUND, f"Session not found: {session}"
+        )
+    parsed = read_overview_state(session)
+    if parsed.state is None:
+        return _rejected(
+            RecoveryRejection.OVERVIEW_INVALID, parsed.message or "Invalid overview"
+        )
+    if (
+        parsed.state.phase is not Phase.QUALITY
+        or parsed.state.blocked != "workflow_error"
+    ):
+        return _rejected(
+            RecoveryRejection.STATE_NOT_RECOVERABLE,
+            "Phase-limit recovery supports only blocked quality -> testing completion",
+        )
+    try:
+        overview_bytes = (session / OVERVIEW_FILENAME).read_bytes()
+        signal_bytes = (session / SIGNAL_FILENAME).read_bytes()
+        history_bytes = (session / HISTORY_FILENAME).read_bytes()
+        raw_signal = json.loads(signal_bytes)
+        if (
+            not isinstance(raw_signal, dict)
+            or raw_signal.get("status") != "continue"
+            or raw_signal.get("phase") != "testing"
+        ):
+            return _rejected(
+                RecoveryRejection.SIGNAL_MISMATCH,
+                "Retained signal must be continue -> testing",
+            )
+        raw_rows = [json.loads(line) for line in history_bytes.splitlines()]
+        history = read_history(session)
+        if len(raw_rows) != len(history) or not history:
+            return _rejected(
+                RecoveryRejection.HISTORY_MISMATCH,
+                "History must be complete and well formed",
+            )
+        latest = history[-1]
+        if not (
+            latest.schema_version == 2
+            and latest.source_phase == "quality"
+            and latest.target_phase in (None, "testing")
+            and latest.raw_status == "continue"
+            and latest.accepted is False
+            and latest.mutated is False
+            and latest.outcome_kind == "rejected_validation"
+            and latest.rejection_reason == "iteration_limit_exceeded"
+        ):
+            return _rejected(
+                RecoveryRejection.HISTORY_MISMATCH,
+                "Latest event must be the rejected quality iteration-limit signal",
+            )
+        scoped, errors = scoped_history(session)
+        if errors:
+            return _rejected(RecoveryRejection.HISTORY_MISMATCH, "; ".join(errors))
+        runs = sum(
+            row.source_phase == "quality" and row.raw_status != "recovery"
+            for row in scoped
+        )
+        if not is_iteration_limit_exceeded("quality", runs)[0]:
+            return _rejected(
+                RecoveryRejection.HISTORY_MISMATCH,
+                "Quality phase limit was not exceeded",
+            )
+        provenance = validate_phase_provenance(session, Phase.QUALITY)
+        if not provenance.ok:
+            return _rejected(
+                RecoveryRejection.HISTORY_MISMATCH, "; ".join(provenance.errors)
+            )
+        plan = resolve_plan_phase(session)
+        if not plan.all_complete:
+            return _rejected(
+                RecoveryRejection.PLAN_INCOMPLETE, "Implementation plan is incomplete"
+            )
+        working_dir = resolve_project_working_dir(project, session)
+        evidence_paths = sorted(
+            {
+                path
+                for pattern in (
+                    "*-code-clarity*.md",
+                    "*-comment-hygiene.md",
+                    "_review_debt.md",
+                )
+                for path in session.glob(pattern)
+            }
+        )
+        evidence_bytes = tuple(
+            (path.name, path.read_bytes()) for path in evidence_paths
+        )
+        evidence = validate_quality_evidence(session, working_dir)
+        if not evidence.ok:
+            return _rejected(
+                RecoveryRejection.EVIDENCE_INVALID, "; ".join(evidence.errors)
+            )
+        head = _git_output(working_dir, "rev-parse", "HEAD")
+        if head is None:
+            return _rejected(
+                RecoveryRejection.EVIDENCE_INVALID, "Cannot resolve project HEAD"
+            )
+        inspection = RecoveryInspection(
+            project=project,
+            session_path=session,
+            working_dir=working_dir,
+            plan_path=plan.plan_path,
+            source_phase=Phase.QUALITY,
+            overview_bytes=overview_bytes,
+            signal_bytes=signal_bytes,
+            history_bytes=history_bytes,
+            plan_bytes=plan.plan_path.read_bytes(),
+            head=head,
+            evidence_bytes=evidence_bytes,
+        )
+        return RecoveryResult(
+            RecoveryOutcome.RECOVERABLE,
+            "Completed quality step is recoverable: preserve history and admit post-quality testing",
+            inspection=inspection,
+        )
+    except PlanResolutionError as exc:
+        return _rejected(RecoveryRejection.PLAN_INCOMPLETE, str(exc))
+    except (OSError, UnicodeError, ValueError, TypeError, AttributeError) as exc:
+        return _rejected(RecoveryRejection.STATE_NOT_RECOVERABLE, str(exc))
+
+
 def _apply_recovery(
-    inspection: RecoveryInspection, now: datetime | None
+    inspection: RecoveryInspection, now: datetime | None, *, phase_limit: bool = False
 ) -> RecoveryResult:
     now = now or datetime.now().astimezone()
     recovery_id = uuid.uuid4().hex[:12]
-    dirname = f"{now.strftime('%Y%m%dT%H%M%S')}-final-polish-{recovery_id}"
+    kind = "phase-limit" if phase_limit else "final-polish"
+    dirname = f"{now.strftime('%Y%m%dT%H%M%S')}-{kind}-{recovery_id}"
     recovery_root = inspection.session_path / RECOVERY_DIRNAME
     final_dir = recovery_root / dirname
     receipt = {
         "schema": 1,
         "recovery_id": recovery_id,
-        "reason": "legacy_final_polish_history_missing",
+        "reason": "phase_iteration_limit_completed"
+        if phase_limit
+        else "legacy_final_polish_history_missing",
         "source_phase": inspection.source_phase.value,
-        "target_phase": Phase.IMPLEMENTATION.value,
+        "target_phase": Phase.TESTING.value
+        if phase_limit
+        else Phase.IMPLEMENTATION.value,
         "working_dir": str(inspection.working_dir),
         "head": inspection.head,
         "history_rows_before": len(read_history(inspection.session_path)),
@@ -360,6 +530,9 @@ def _apply_recovery(
         "plan": inspection.plan_path.name,
         "plan_sha256_before": _digest(inspection.plan_bytes),
         "created_at": now.isoformat(),
+        "evidence_sha256": {
+            name: _digest(content) for name, content in inspection.evidence_bytes
+        },
     }
     temp_dir: Path | None = None
     try:
@@ -369,6 +542,11 @@ def _apply_recovery(
         _write_sync(temp_dir / "_signal.before.json", inspection.signal_bytes)
         _write_sync(temp_dir / "_signal_history.before.jsonl", inspection.history_bytes)
         _write_sync(temp_dir / "plan.before.md", inspection.plan_bytes)
+        if inspection.evidence_bytes:
+            evidence_dir = temp_dir / "evidence"
+            evidence_dir.mkdir()
+            for name, content in inspection.evidence_bytes:
+                _write_sync(evidence_dir / name, content)
         _write_sync(
             temp_dir / RECOVERY_RECEIPT_FILENAME,
             (json.dumps(receipt, indent=2, sort_keys=True) + "\n").encode(),
@@ -385,7 +563,12 @@ def _apply_recovery(
 
     receipt_relative = final_dir.relative_to(inspection.session_path)
     return _commit_recovery_overview(
-        inspection, now, recovery_id, final_dir, receipt_relative
+        inspection,
+        now,
+        recovery_id,
+        final_dir,
+        receipt_relative,
+        phase_limit=phase_limit,
     )
 
 
@@ -395,20 +578,35 @@ def _commit_recovery_overview(
     recovery_id: str,
     receipt_dir: Path,
     receipt_relative: Path,
+    *,
+    phase_limit: bool = False,
 ) -> RecoveryResult:
     """The overview marker is the commit point that activates the receipt anchor."""
+    target = Phase.TESTING if phase_limit else Phase.IMPLEMENTATION
+    marker = (
+        f"[samocode-phase-limit:{recovery_id}]"
+        if phase_limit
+        else recovery_commit_marker(recovery_id)
+    )
     transition = OverviewTransition(
-        target_phase=Phase.IMPLEMENTATION,
+        target_phase=target,
         blocked="no",
         last_action=(
-            "Recovered legacy final-polish provenance gap; "
-            f"audit receipt {receipt_relative}"
+            (
+                "Recovered completed quality step after iteration limit; "
+                if phase_limit
+                else "Recovered legacy final-polish provenance gap; "
+            )
+            + f"audit receipt {receipt_relative}"
         ),
-        next_action="Repeat the outer lifecycle from completed implementation",
+        next_action="Run post-quality regression"
+        if phase_limit
+        else "Repeat the outer lifecycle from completed implementation",
         flow_log_entry=(
             f"- [recover @ {log_timestamp(now)}] "
-            f"{recovery_commit_marker(recovery_id)} Recovery {recovery_id}: "
-            "pr-readiness -> implementation; signal history preserved"
+            f"{marker} "
+            f"Recovery {recovery_id}: "
+            f"{inspection.source_phase.value} -> {target.value}; signal history preserved"
         ),
     )
     write = apply_overview_transition_locked(
@@ -434,7 +632,9 @@ def _commit_recovery_overview(
         )
     return RecoveryResult(
         RecoveryOutcome.RECOVERED,
-        "Recovery committed; restart Samocode to replay the full final-polish lifecycle",
+        "Recovery committed; restart Samocode for post-quality regression"
+        if phase_limit
+        else "Recovery committed; restart Samocode to replay the full final-polish lifecycle",
         receipt_path=receipt_dir / RECOVERY_RECEIPT_FILENAME,
     )
 
