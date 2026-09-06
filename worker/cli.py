@@ -1106,7 +1106,6 @@ def cmd_recover(args: argparse.Namespace) -> None:
 
 
 def cmd_check(args: argparse.Namespace) -> None:
-    """Read-only re-run of the final-polish gate: no lock, no writes, no precondition."""
     if args.check_kind != "final-polish":
         build_parser().print_help()
         sys.exit(2)

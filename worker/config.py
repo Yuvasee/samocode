@@ -312,7 +312,6 @@ def resolve_session_path(sessions_dir: Path, session_name: str) -> Path:
 
 
 def resolve_project_working_dir(project: ProjectConfig, session_path: Path) -> Path:
-    """This session's worktree if it exists, else the project main repo."""
     worktree = project.worktrees / session_path.name
     return worktree if worktree.is_dir() else project.main_repo
 

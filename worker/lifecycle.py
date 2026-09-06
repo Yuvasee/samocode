@@ -29,15 +29,10 @@ REQUIRED_FINAL_POLISH_TRANSITIONS = (
     ("testing", "pr-readiness"),
 )
 
-# The prerequisite subsequence (implementation -> testing -> quality -> testing) that
-# must precede pr-readiness. Named once so the transition-time gate
-# (has_final_polish_prerequisites) and the pr-readiness provenance rule below both
-# derive their check from this single source and cannot drift apart.
+# Transition admission and phase provenance must share the same prerequisites.
 FINAL_POLISH_PREREQUISITE_TRANSITIONS = REQUIRED_FINAL_POLISH_TRANSITIONS[:3]
 
-# Closed testing-run vocabulary. The evidence gate matches `2nd (post-quality)` exactly
-# and the testing report template offers `1st`/`2nd`, so derive_testing_run must emit
-# these tokens verbatim — an agent copies the injected label straight into `Run:`.
+# Agents copy these labels verbatim into reports checked by the evidence gate.
 TESTING_RUN_FIRST = "1st (post-implementation)"
 TESTING_RUN_SECOND = "2nd (post-quality)"
 
@@ -104,16 +99,11 @@ class EpochPhaseRunCount:
 
 @dataclass(frozen=True)
 class ProvenanceRule:
-    """One accepted provenance shape: an ordered subsequence that must be present, plus
-    the exact latest accepted transition that admits the phase under it."""
-
     required: tuple[tuple[str, str], ...]
     latest: tuple[str, str]
 
 
-# A phase passes provenance if ANY of its rules matches; a phase absent here has no
-# requirement. QUALITY's two rules share the first-2 subsequence but accept either the
-# initial or the pr-readiness->quality loop as latest.
+# Returning from readiness must preserve evidence of the initial testing pass.
 PROVENANCE_RULES: dict[Phase, tuple[ProvenanceRule, ...]] = {
     Phase.TESTING: (
         ProvenanceRule(
@@ -194,16 +184,7 @@ def validate_final_polish_lifecycle(session_path: Path) -> LifecycleCheck:
 
 
 def derive_testing_run(session_path: Path) -> str:
-    """Return the testing-run label based on the latest accepted transition into testing.
-
-    - `quality -> testing` -> `2nd (post-quality)`
-    - `implementation -> testing` -> `1st (post-implementation)`
-    - No accepted transition into testing -> `1st (post-implementation)` (conservative
-      default: with no provenance the run cannot be post-quality).
-
-    Labels come from the closed gate vocabulary so the agent can copy the injected value
-    straight into the report `Run:` field without the gate rejecting it.
-    """
+    """Missing provenance cannot establish a post-quality run."""
     history, _ = scoped_history(session_path)
     transitions = accepted_transitions(history)
     latest_into_testing: tuple[str | None, str | None] | None = None
@@ -218,9 +199,6 @@ def derive_testing_run(session_path: Path) -> str:
 def has_final_polish_prerequisites(
     transitions: list[tuple[str | None, str | None]],
 ) -> bool:
-    """True when implementation->testing->quality->testing appears in order — the shared
-    precondition for admitting pr-readiness, reused by the transition-time gate and the
-    pr-readiness provenance rule (both via FINAL_POLISH_PREREQUISITE_TRANSITIONS)."""
     return _contains_ordered(transitions, FINAL_POLISH_PREREQUISITE_TRANSITIONS)
 
 

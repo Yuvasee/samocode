@@ -1,9 +1,4 @@
-"""Read-only re-run of the pr-readiness -> done final-polish gate.
-
-No lock, no lease, no writes, no Phase/Blocked precondition: this is a pure
-diagnostic that resolves the project + session and re-runs validate_final_polish,
-surfacing every gate error verbatim so an agent can self-check before the gate.
-"""
+"""Diagnostics bypass phase preconditions so failed sessions remain inspectable."""
 
 from __future__ import annotations
 
@@ -16,8 +11,6 @@ from .final_polish import validate_final_polish
 
 @dataclass(frozen=True)
 class CheckResult:
-    """Errors from resolution or the gate; empty means the gate passes."""
-
     errors: tuple[str, ...]
 
     @property
@@ -30,7 +23,6 @@ class CheckResult:
 
 
 def run_final_polish_check(config_path: Path, session_name: str) -> CheckResult:
-    """Resolve project + session, then re-run the final-polish gate read-only."""
     try:
         project = ProjectConfig.from_file(config_path)
     except ValueError as exc:

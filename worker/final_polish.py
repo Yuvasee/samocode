@@ -10,12 +10,10 @@ from .lifecycle import TESTING_RUN_SECOND, validate_final_polish_lifecycle
 _FULL_SHA = re.compile(r"^[0-9a-fA-F]{40}$")
 _DEBT_ID = re.compile(r"^(?:CL|Q)-\d+$", re.IGNORECASE)
 
-# Closed vocabularies. Membership tests and the "(got ...)" messages both read
-# from these tuples, so accepted tokens live in exactly one place.
+# Validation and diagnostics must accept the same vocabulary.
 _CLARITY_RESULTS: tuple[str, ...] = ("clean", "findings")
 _DEBT_DECISIONS: tuple[str, ...] = ("fix now", "defer", "reject")
-# A `fix now` row must carry one of these explicit closed statuses; any other value
-# (including empty, `open`, `in progress`, `not fixed`) means the finding is unresolved.
+# Unknown statuses must fail closed, including phrases such as "not fixed".
 _DEBT_FIXED_STATUSES: tuple[str, ...] = ("fixed", "closed", "resolved", "verified")
 _EMPHASIS_CHARS = "*_`"
 
@@ -260,13 +258,12 @@ def _validate_review_debt(session_path: Path, errors: list[str]) -> None:
 
 
 def _strip_emphasis(value: str) -> str:
-    # Case-preserving so row IDs render as authored; `**Q-006**` -> `Q-006`.
+    # Preserve case so diagnostics retain authored row IDs.
     return value.strip().strip(_EMPHASIS_CHARS).strip()
 
 
 def _normalize_token(value: str) -> str:
-    # Strips surrounding emphasis/backticks/whitespace only, never parenthetical
-    # suffixes, so `reject (not promoted)` stays outside the closed vocabulary.
+    # Parenthetical suffixes must remain outside the closed vocabulary.
     return _strip_emphasis(value).casefold()
 
 

@@ -293,18 +293,12 @@ def validate_pending_implementation_scope(phases: list[PlanPhase]) -> None:
                 raise _lifecycle_scope_error(phase, task.text)
 
 
-# === Documentation profile enforcement ===
-
-# Closed vocabulary mirroring the project's own definition of "Docs": bare nouns
-# are unambiguous on their own; the rest are exact filenames so a generic "*.md"
-# match never sweeps in skill/agent instruction files (operational contracts
-# edited at their own risk-appropriate profile, not documentation).
+# Exact artifact names avoid classifying every skill/agent Markdown file as docs.
 _DOC_ARTIFACT_WORDS = frozenset({"readme", "changelog", "docs"})
 _DOC_ARTIFACT_FILENAMES = frozenset(
     {"architecture.md", "workflow.md", "claude.md", "contributing.md"}
 )
 
-# Enumerated forms, matching this module's closed-vocabulary style; no stemming.
 _DOC_AUTHORING_VERB_FORMS = frozenset(
     {
         "document",
@@ -410,28 +404,18 @@ _AUTHORING_VERB_RE = re.compile(
 _READ_ONLY_VERB_RE = re.compile(
     rf"\b(?:{_word_alternation(_DOC_READ_ONLY_VERB_FORMS)})\b", re.IGNORECASE
 )
-# "documentation" alone is too generic to anchor on: it also names *policy about*
-# docs (e.g. a phase whose task is "add a rule that documentation-authoring work
-# is isolated"). It counts as an object only when an authoring verb governs it
-# within two words — wide enough for "create API documentation" / "edit user-facing
-# documentation" yet still short of the 3-word "add a rule that documentation" span.
+# Two modifiers allow "create API documentation" without matching "add a rule that documentation".
 _AUTHORING_VERB_GOVERNS_DOCUMENTATION_RE = re.compile(
     rf"\b(?:{_word_alternation(_DOC_AUTHORING_VERB_FORMS)})\b"
     rf"(?:\s+\S+){{0,2}}\s+documentation\b",
     re.IGNORECASE,
 )
-# A `test(s)`/`rule(s)` object followed by a doc noun ("tests for documentation",
-# "rule about the README") is testing/governance work, not doc authoring; without
-# this the authoring-verb window sweeps "Add tests for documentation" into `max`.
+# Tests and rules about docs do not themselves author documentation.
 _DOC_NOUN_ALTERNATION = (
     rf"documentation|{_word_alternation(_DOC_ARTIFACT_WORDS)}"
     rf"|{_word_alternation(_DOC_ARTIFACT_FILENAMES)}"
 )
-# The filler between the test/rule object and its doc noun must stay in one clause:
-# a comma/semicolon/colon/period or a coordinating conjunction opens a new clause,
-# so the window stops there. Otherwise "Fix tests for parser, update docs" would
-# read the *second* clause's doc noun as governed by the test object and wrongly
-# clear a genuine "update docs" authoring clause.
+# Clause boundaries prevent a test object from swallowing a later "update docs".
 _CLAUSE_FILLER_WORD = r"(?:(?!(?:and|or|but|then|plus)\b)[^\s,;:.]+\s+)"
 _TEST_OR_RULE_GOVERNS_DOC_RE = re.compile(
     r"\b(?:tests?|rules?)\s+(?:for|about|on|of|regarding|covering)\s+"
@@ -441,12 +425,7 @@ _TEST_OR_RULE_GOVERNS_DOC_RE = re.compile(
 
 
 def validate_documentation_profile_scope(phases: list[PlanPhase]) -> None:
-    """Documentation-authoring work always routes to `max`.
-
-    Mirrors validate_pending_implementation_scope: only pending phases are
-    checked and a completed task's text is not re-evaluated, so a phase already
-    executed under an earlier profile stays recoverable.
-    """
+    """Completed work stays recoverable even if its former profile is now invalid."""
     for phase in phases:
         if not phase.has_unchecked_task:
             continue
@@ -465,25 +444,8 @@ def _phase_is_documentation_authoring(phase: PlanPhase) -> bool:
 
 
 def _is_documentation_authoring_text(text: str) -> bool:
-    """True when `text` (a phase title or one task) describes writing or changing
-    documentation content, not merely reading it.
-
-    A closed-vocabulary artifact name counts on its own unless the only verb
-    present is read-only. Docstrings and source comments never match
-    (`\\bdocs\\b` excludes "docstring"; "comment" is not in the vocabulary), so
-    they need no separate exclusion.
-
-    Known residual limits (bounded heuristic, not clause-aware): the {0,2}-word
-    authoring window misses 3+ modifiers ("create clear concise API documentation"
-    reads as non-authoring), and any non-read-only verb near a bare artifact word
-    over-matches ("add caching to the docs pipeline"). Fixing either needs a
-    clause parser with real precision/recall tradeoffs.
-    """
-    # A test/rule object that names a doc ("add tests for the README") is not
-    # authoring, but the same bullet can *also* carry a real authoring clause
-    # ("write the guide, add tests for the README"). Strip only the matched
-    # test/rule span and classify the remainder, so a co-located authoring clause
-    # is not masked by an unconditional short-circuit on the test/rule match.
+    """Heuristic misses 3+ documentation modifiers and overmatches bare artifact names."""
+    # Excluding one test/rule span must not hide independent documentation authoring.
     remainder = _TEST_OR_RULE_GOVERNS_DOC_RE.sub(" ", text)
     if _AUTHORING_VERB_GOVERNS_DOCUMENTATION_RE.search(remainder):
         return True

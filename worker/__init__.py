@@ -210,7 +210,6 @@ __all__ = [
     "parse_samocode_file",
     "resolve_project_working_dir",
     "resolve_session_path",
-    # Check
     "CheckResult",
     "run_final_polish_check",
     # Global config
