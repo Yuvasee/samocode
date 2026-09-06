@@ -29,6 +29,7 @@ Creates detailed implementation plans with phases, stored within the session fol
 
    **Phase design principles:**
    - Each phase is executed as a **single samocode iteration** — keep phases bite-sized and independently completable
+   - Do not target or cap the total number of phases. Use as many as the task needs to preserve small, coherent iterations; a large plan may legitimately contain dozens.
    - 1–3 focused steps per phase (not counting lint/typecheck)
    - Split by logical boundary: one file/module/concern per phase when possible
    - Prefer more small phases over fewer large ones

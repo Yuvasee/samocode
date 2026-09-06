@@ -100,7 +100,9 @@ Created: [TIMESTAMP_LOG]
 
 ## Planning Guidelines
 
-- Break work into 3-7 phases
+- Do not target or cap the total number of phases. Use as many as the task needs;
+  a large plan may legitimately contain dozens when each remains a small,
+  independently executable iteration.
 - Each phase should be independently testable
 - Order phases by dependency (foundation first)
 - Include verification steps in each phase
