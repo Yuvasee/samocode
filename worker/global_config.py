@@ -52,11 +52,11 @@ effort = "low"
 model = "gpt-5.6-terra"
 effort = "medium"
 [providers.codex.profiles.strong]
-model = "gpt-5.6-sol"
+model = "gpt-6-astra"
 effort = "medium"
 [providers.codex.profiles.max]
-model = "gpt-5.6-sol"
-effort = "xhigh"
+model = "gpt-6-astra"
+effort = "high"
 
 [workflow_overrides]
 # investigation = "max"
@@ -74,8 +74,7 @@ class GlobalConfigError(ValueError):
 class Profile:
     """A named execution profile: a model and optional reasoning effort.
 
-    `effort` is a free-form string when set; the semantic `max` profile uses
-    `xhigh`, while `"max"` itself remains a legal custom effort value.
+    `effort` is a free-form provider setting, independent of the semantic profile name.
     """
 
     name: str

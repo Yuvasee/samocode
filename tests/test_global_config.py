@@ -90,10 +90,16 @@ class TestDefaultConfig:
         config = default_config()
         light = config.profile("codex", "light")
         standard = config.profile("codex", "standard")
+        strong = config.profile("codex", "strong")
         maximum = config.profile("codex", "max")
         assert light is not None and light.effort == "low"
+        assert light.model == "gpt-5.6-luna"
         assert standard is not None and standard.model == "gpt-5.6-terra"
-        assert maximum is not None and maximum.effort == "xhigh"
+        assert standard.effort == "medium"
+        assert strong is not None and strong.model == "gpt-6-astra"
+        assert strong.effort == "medium"
+        assert maximum is not None and maximum.model == "gpt-6-astra"
+        assert maximum.effort == "high"
 
     def test_workflow_overrides_empty_by_default(self) -> None:
         # The canonical file only carries a commented example line.
