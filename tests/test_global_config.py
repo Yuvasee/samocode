@@ -83,8 +83,11 @@ class TestDefaultConfig:
         assert light is not None and light.model == "claude-haiku-4-5-20251001"
         assert light.effort is None
         assert standard is not None and standard.effort == "high"
+        assert standard.model == "claude-sonnet-4-6"
         assert strong is not None and strong.model == "claude-opus-4-8"
+        assert strong.effort == "high"
         assert maximum is not None and maximum.effort == "xhigh"
+        assert maximum.model == "claude-opus-4-8"
 
     def test_codex_profile_models_and_effort(self) -> None:
         config = default_config()
@@ -96,10 +99,10 @@ class TestDefaultConfig:
         assert light.model == "gpt-5.6-luna"
         assert standard is not None and standard.model == "gpt-5.6-terra"
         assert standard.effort == "medium"
-        assert strong is not None and strong.model == "gpt-6-astra"
+        assert strong is not None and strong.model == "gpt-5.6-sol"
         assert strong.effort == "medium"
-        assert maximum is not None and maximum.model == "gpt-6-astra"
-        assert maximum.effort == "high"
+        assert maximum is not None and maximum.model == "gpt-5.6-sol"
+        assert maximum.effort == "xhigh"
 
     def test_workflow_overrides_empty_by_default(self) -> None:
         # The canonical file only carries a commented example line.

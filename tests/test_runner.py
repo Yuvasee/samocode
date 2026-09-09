@@ -718,7 +718,7 @@ class TestRoutedIterationResolution:
 
         assert plan.target.provider == "codex"
         assert plan.command[0] == str(config.codex_path)
-        assert plan.target.model == "gpt-5.6-sol"  # codex max
+        assert plan.target.model == "gpt-5.6-sol"
 
     def test_routing_log_line_emitted(
         self, tmp_path: Path, caplog: pytest.LogCaptureFixture
@@ -956,8 +956,6 @@ class TestEscalatedIteration:
         assert "## Escalated Testing Attempt" in plan.session_context
 
     def test_codex_escalated_effort_reaches_command(self, tmp_path: Path) -> None:
-        """The escalated effort (xhigh) is emitted in the Codex argv, proving the
-        escalated target - not the strong base - built the command."""
         workflow = self._workflow(tmp_path)
         agents = workflow.parent / "agents"
         agents.mkdir()

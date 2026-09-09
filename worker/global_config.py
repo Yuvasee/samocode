@@ -52,11 +52,11 @@ effort = "low"
 model = "gpt-5.6-terra"
 effort = "medium"
 [providers.codex.profiles.strong]
-model = "gpt-6-astra"
+model = "gpt-5.6-sol"
 effort = "medium"
 [providers.codex.profiles.max]
-model = "gpt-6-astra"
-effort = "high"
+model = "gpt-5.6-sol"
+effort = "xhigh"
 
 [workflow_overrides]
 # investigation = "max"

@@ -58,17 +58,13 @@ commands remain protected; copied Claude phase-agent files are backed up as
 | claude | max | `claude-opus-4-8` | xhigh |
 | codex | light | `gpt-5.6-luna` | low |
 | codex | standard | `gpt-5.6-terra` | medium |
-| codex | strong | `gpt-6-astra` | medium |
-| codex | max | `gpt-6-astra` | high |
+| codex | strong | `gpt-5.6-sol` | medium |
+| codex | max | `gpt-5.6-sol` | xhigh |
 
-The semantic `max` profile maps to Claude `xhigh` or Codex `high`, not necessarily
+The semantic `max` profile maps to `xhigh` for both Claude and Codex, not necessarily
 the provider's highest effort. Literal effort `"max"` remains a legal custom value.
 
-Astra medium/high are the initial choices for strong/max work; Luna and Terra retain
-the lower-cost tiers. Evaluate lower Astra effort against completed-task quality,
-latency, and total usage before reducing it. See the
-[Astra migration guide](https://developers.openai.com/api/docs/guides/latest-model).
-Updating built-in defaults does not migrate an existing user config; edit its Codex
+Updating built-in defaults does not migrate an existing user config; edit its provider
 strong/max entries explicitly. Running processes retain the configuration loaded at startup.
 
 ## Config syntax
@@ -92,7 +88,7 @@ effort = "max"
 [providers.codex]
 executable = "codex"
 [providers.codex.profiles.strong]
-model = "gpt-6-astra"
+model = "gpt-5.6-sol"
 effort = "medium"
 
 # Optional: retarget a workflow phase to a different profile
