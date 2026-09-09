@@ -161,7 +161,8 @@ Do NOT assume samocode should run just because a session exists.
    **Do NOT wrap with bash `timeout`** - The orchestrator manages its own timeouts via `--timeout`.
    External timeouts can kill iterations mid-work and corrupt session state.
 
-   Run this in background using `run_in_background: true`
+   Run this using the host's background execution facility (`run_in_background: true`
+   where available, or a short-yield process handle). Retain the handle for supervision.
 
    **Avoid reading background task output directly.** The samocode worker output includes full
    Agent CLI logs which are large (100KB+ per iteration). Monitor progress via `_overview.md`
@@ -181,11 +182,12 @@ Do NOT assume samocode should run just because a session exists.
    ```
    Returns task_id (e.g., "b155903")
 
-   6.2. Wait for result - **DO NOT SKIP, do immediately after 6.1:**
-   ```bash
-   TaskOutput(task_id="b155903", block=true, timeout=600000)
-   ```
-   Note: 600000ms (10 min) is the max allowed timeout.
+   6.2. Between checks, do independent work already authorized by the user. When
+   running with `companion`, use its bounded-work monitoring loop and session HTML
+   guidance; do not block immediately on the delayed check. Read its result when
+   ready, and check the worker handle for unexpected exit. If there is no useful
+   independent work, use the host's wait mechanism without busy polling. Do not let
+   companion work postpone checks indefinitely or mutate the worker's code/lifecycle.
 
    6.3. Extract from result: Phase, Iteration, Total Iterations, Blocked, Last Action, Next, last 3 Flow Log entries
 
@@ -210,7 +212,9 @@ Do NOT assume samocode should run just because a session exists.
    ```
 
    6.6. Check stop condition:
-   - `Phase: done` → report final summary, STOP
+   - `Phase: done` → if the session has a companion HTML server, follow the sibling
+     `companion/SKILL.md` "Required server cleanup" procedure before reporting closure;
+     preserve the local HTML and report the external URL as offline. Report final summary, STOP
    - `Blocked:` contains `workflow_error`, `yes`, or `waiting` → handle accordingly, STOP
    - Otherwise → goto step 6.1
 

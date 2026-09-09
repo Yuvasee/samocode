@@ -268,6 +268,16 @@ Archive a session (full) or archive work within a session (partial).
 
 #### Full Archive Process
 
+Before moving the session or removing its worktree, stop its companion HTML server.
+Read the sibling `companion/SKILL.md` section "Required server cleanup" and follow it
+even if companion is not active in this conversation. Identify ownership using the
+exact absolute `--directory [SESSION_PATH]/companion` process argument and listener,
+not just a remembered port/PID. No matching server means there is nothing to stop.
+If ownership or shutdown cannot be verified, report the blocker before archiving.
+Preserve `companion/index.html` in the archived session and report the external URL
+as offline. Apply the same cleanup when explicitly closing a session without moving it;
+partial work-file archive alone does not close the session.
+
 1. **Get session info:**
    - Read `[SESSION_PATH]/_overview.md`
    - Extract Working Dir line
