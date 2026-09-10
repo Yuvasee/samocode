@@ -451,14 +451,19 @@ After both agents complete:
 
 3. **Complete common steps** for session files
 
-4. Record the selected approach and rationale, then proceed within the authorized task.
-   Ask only when the choice requires new authority or materially changes the agreed scope.
+4. Present comparison and ask:
+   ```
+   Which approach?
+   1. Minimal footprint
+   2. Clean foundation
+   3. Hybrid
+   4. Neither (rethink)
+   ```
 
-#### After Auto-Selection
+#### After User Confirms
 
 1. **Implement chosen solution**
 2. **Update plan progress** (mark items `- [x]`, add completion note)
 3. **Complete common steps** (lint, commit code, update session, commit session)
 
-Resolve routine implementation choices using the task context; ask when missing
-information would materially change the result.
+IMPORTANT! If unsure about something, ask first.
