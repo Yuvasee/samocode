@@ -75,9 +75,14 @@ Do not commit shared session files while the worker is writing them.
 
 Use [assets/page.html](assets/page.html) as the starting point. Its interactive class
 graph and orientation header are mandatory on every page explaining code changes;
-other sections are adaptable.
+other sections are optional, not a checklist to fill. Decide what helps this particular
+reader understand this particular change. Merge, shorten or omit blocks that add no
+distinct value; remove their navigation links too. Do not publish empty sections,
+irrelevant rows or explanations of why a section was omitted. The orientation header
+and class graph remain required for code-change pages.
 Replace its example content before publishing. Match
-the user's language; keep code identifiers exact. Build three reading depths:
+the user's language; keep code identifiers exact. Organize the selected material into
+reading depths, not mandatory separate sections:
 
 - First screen: purpose, behavioral change, current caveat/decision, base/head and
   update time. A reader should understand the change without opening every detail.
@@ -86,6 +91,31 @@ the user's language; keep code identifiers exact. Build three reading depths:
   Mark changed/reused/unchanged pieces. Distinguish static call paths from runtime traces.
 - Expandable evidence: domain/file/symbol inventory, a few non-obvious code excerpts,
   commit-pinned source links, actual checks, findings and unverified areas.
+
+Consider these comprehension aids; choose and size them for the change:
+
+- Reading route: typically 3–5 commit-pinned code/test locations in a useful reading
+  order, each with one sentence explaining what it reveals. Start with the central
+  decision or a behavior-defining test, then callers, effect boundaries and edge cases
+  as relevant. This is a curated entry path, not a file inventory or exhaustive review.
+- Concrete before/after: follow the same input or user action through both versions;
+  identify the changed result, side effects or resource use and what stays unchanged.
+  For a pure refactor, state that behavior is intended to remain unchanged and explain
+  the moved responsibilities/dependencies. Do not imply preservation was verified
+  without evidence. Add a sequence diagram only when ordering helps explain the change.
+- Boundaries and guarantees: a small table of the significant state/effect owners,
+  retry/timeout responsibility or invariants, with the enforcement location and supporting
+  code/test evidence (or an explicit unknown). Include only applicable contracts; do not
+  invent retries, state or architectural guarantees to populate a template.
+
+The HTML explains the code and its consequences, not how Samocode produced it. Omit
+orchestrator phases/transitions, iteration counts, agent/model activity, review rounds,
+gate ledgers and work logs by default, including in the header and folded sections.
+Mention process details only when essential to interpreting the change or evidence;
+state the consequence briefly, not the chronology (for example, a relevant integration
+check could not run, so compatibility remains unverified). Keep code findings, actual
+verification evidence and meaningful limitations; omit the review procedure itself.
+Operational supervision and session records remain unchanged and outside the HTML.
 
 Use diagrams, tables and bullets where they shorten reasoning, not as decoration.
 For alternatives, compare the same requirements and evidence, separating product
@@ -112,16 +142,16 @@ Every page must identify the work in both its browser `<title>` and visible top 
 links to the actual issue and pull request; do not bury them in the footer or graph.
 For several issues/PRs, identify the primary one and list the related items nearby.
 
-Directly below, show repository, branch → target branch, session name, current workflow
-phase and blocked/waiting state, reviewed base/head, and update time with timezone.
-For a PR stack, include its position and parent PR when known. Distinguish the latest
-observed session status from the code revision actually explained by the page.
+Directly below, show repository, branch → target branch, explained base/head, and update
+time with timezone. Session identity belongs in session artifacts, not the default HTML.
+For a PR stack, include its position and parent PR when known and useful for understanding
+dependencies. Do not use workflow phase or a passed review gate as a code-readiness claim.
 
 Resolve identifiers from session artifacts and repository/PR metadata, not guesses.
 If absent or unverified, explicitly say `Linear: not linked`, `PR: not created` or
 `unknown` as appropriate; never invent IDs, links, stack positions or status. Do not
 create issues or PRs merely to fill the header. Update this header when a PR is created,
-the branch/phase changes, or the explanation is refreshed. Use the user's language.
+the branch changes, or the explanation is refreshed. Use the user's language.
 
 ## Required interactive class graph
 

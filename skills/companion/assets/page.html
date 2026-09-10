@@ -9,19 +9,41 @@ table{min-width:520px}
 #class-graph [hidden]{display:none!important}#class-graph .muted{font-size:13px;color:#59677a}#class-graph code{font:13px/1.6 ui-monospace,monospace}
 </style>
 <main>
-<nav aria-label="Sections"><a href="#model">Mental model</a><a href="#class-graph">Class graph</a><a href="#changes">Changes</a><a href="#evidence">Evidence</a></nav>
+<nav aria-label="Sections"><a href="#reading-route">Start here</a><a href="#scenario">Before / after</a><a href="#model">Mental model</a><a href="#boundaries">Guarantees</a><a href="#class-graph">Class graph</a><a href="#changes">Changes</a><a href="#evidence">Evidence</a></nav>
 <header>
-<p class="meta">EXAMPLE ONLY · no session inspected · base/head not set</p>
+<p class="meta">EXAMPLE ONLY · base/head not set</p>
 <p><strong>Linear: not linked · PR: not created</strong></p>
 <h1>Example: make failed handoffs visible to callers</h1>
-<p class="meta">Repository: unknown · Branch → target: unknown · Session: not selected<br>Phase / blocked state: unknown · Stack position: unknown<br>Reviewed base/head: not set · Updated: not recorded</p>
+<p class="meta">Repository: unknown · Branch → target: unknown<br>Explained base/head: not set · Updated: not recorded</p>
 <ul><li>Before: an accepted request could hide a failed handoff.</li><li>After: report a retryable failure; reuse the existing job identity.</li></ul>
-<p class="notice">Illustrative content, not an implementation or verification claim. Replace with the current session's purpose, revision, update time and caveat.</p>
+<p class="notice">Illustrative content, not an implementation or verification claim. Replace the examples with one coherent change. Keep only useful sections and their navigation links; the orientation header and class graph are required.</p>
 </header>
+<section id="reading-route"><h2>Start here: a route through the code</h2>
+<p>Replace these illustrative locations with commit-pinned links and real symbols. Choose the order that explains the change; omit this block if direct explanation is simpler.</p>
+<ol>
+<li><strong>Behavior-defining test</strong> — see the expected response when a handoff fails.</li>
+<li><strong>API handoff policy</strong> — understand the central change from hidden failure to a retryable response.</li>
+<li><strong>Caller retry path</strong> — check how the caller reacts and preserves the job identity.</li>
+<li><strong>Duplicate-request test</strong> — inspect the evidence for retry safety rather than assuming it.</li>
+</ol></section>
+<section id="scenario"><h2>Same request, before and after</h2>
+<p>Illustrative input: submit job A while the downstream handoff is unavailable. Intended behavior below is not verified.</p>
+<div class="scroll"><table><thead><tr><th>Observation</th><th>Before</th><th>After</th></tr></thead><tbody>
+<tr><td>Caller-visible result</td><td>Acceptance can hide a failed handoff.</td><td>A retryable failure is visible to the caller.</td></tr>
+<tr><td>Next action</td><td>The caller has no failure signal to act on.</td><td>The caller can retry using the same job identity.</td></tr>
+<tr><td>Unchanged boundary</td><td colspan="2">The worker owns asynchronous processing; HTTP success does not mean processing has finished.</td></tr>
+</tbody></table></div></section>
 <section id="model"><h2>One request, three responsibilities</h2>
 <p>Static intended flow, not a recorded runtime trace.</p>
 <ol class="flow"><li><strong>Caller</strong><br>Submits a request; retries a visible transient failure.</li><li><strong>API — changed</strong><br>Owns the response and handoff failure policy.</li><li><strong>Worker — reused</strong><br>Owns asynchronous processing, not the HTTP response.</li></ol>
 <p>An HTTP success confirms handoff, not completion of downstream work.</p></section>
+<section id="boundaries"><h2>Boundaries and guarantees</h2>
+<p>Illustrative contracts only. Keep applicable rows and replace the evidence with actual source/test links or an explicit unknown.</p>
+<div class="scroll"><table><thead><tr><th>Contract</th><th>Owner / enforcement</th><th>Evidence or uncertainty</th></tr></thead><tbody>
+<tr><td>A failed required handoff must not appear successful.</td><td>API response policy</td><td>Not checked: link the error mapping and failure-response test.</td></tr>
+<tr><td>Retry must not create duplicate work.</td><td>Caller preserves identity; downstream deduplication must enforce uniqueness.</td><td>Unknown: identity reuse alone does not prove deduplication.</td></tr>
+<tr><td>Acceptance and completion are distinct.</td><td>API owns handoff response; worker owns processing.</td><td>Not checked: link the response contract and worker entry point.</td></tr>
+</tbody></table></div></section>
 <section id="class-graph">
 <h2>Class graph</h2>
 <p>Start with one question. Each story shows a small set of classes and only the connections needed to follow it. Select a class to explore its immediate callers or dependencies.</p>
@@ -144,6 +166,6 @@ restorePreferences();draw();fit();
 <details><summary>Changed files and key logic</summary><p>Group actual changed files by responsibility. Explain only non-obvious logic; put the exhaustive inventory here.</p></details></section>
 <section id="evidence"><h2>What is known</h2>
 <ul><li>Implemented: not assessed in this example.</li><li>Verified: no checks run.</li><li>Unknown: actual runtime behavior and compatibility.</li></ul>
-<details><summary>Checks, findings and decisions</summary><p>Record real commands/results and their revision. Separate confirmed defects from hypotheses and accepted limitations.</p></details></section>
+<details><summary>Verification and limitations</summary><p>Link relevant tests/results at the explained revision. Separate confirmed defects from hypotheses and accepted limitations. Omit agent activity, workflow phases and review history; mention a process constraint only when essential to understanding an evidence gap.</p></details></section>
 </main>
 </html>
