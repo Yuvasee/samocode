@@ -80,8 +80,8 @@ reader understand this particular change. Merge, shorten or omit blocks that add
 distinct value; remove their navigation links too. Do not publish empty sections,
 irrelevant rows or explanations of why a section was omitted. The orientation header
 and class graph remain required for code-change pages.
-Replace its example content before publishing. Match
-the user's language; keep code identifiers exact. Organize the selected material into
+Replace its example content before publishing. Follow the HTML language rule below;
+keep code identifiers exact. Organize the selected material into
 reading depths, not mandatory separate sections:
 
 - First screen: purpose, behavioral change, current caveat/decision, base/head and
@@ -135,6 +135,18 @@ Verify with an available browser: desktop and narrow viewport, readable diagrams
 working anchors and folded sections, no page-wide horizontal overflow. If unavailable,
 report that visual verification was not performed.
 
+## HTML language — English by default
+
+Always write generated HTML documents in English unless the user explicitly requests
+another language for the document. A Russian conversation or task description is NOT
+a request for Russian HTML. This applies to every code-change page, including independent
+parent work: browser title, headings, prose, tables, diagrams, graph stories, controls,
+tooltips and accessibility labels. Use `<html lang="en">` for English pages. Preserve
+code identifiers, paths and verbatim source excerpts; translate explanatory text and
+the short task title rather than copying a non-English issue title into the header.
+Before publishing, check all authored text, including folded content and graph details,
+for accidental language mixing. Chat replies may still follow the user's language.
+
 ## Required orientation header
 
 Every page must identify the work in both its browser `<title>` and visible top header:
@@ -151,7 +163,7 @@ Resolve identifiers from session artifacts and repository/PR metadata, not guess
 If absent or unverified, explicitly say `Linear: not linked`, `PR: not created` or
 `unknown` as appropriate; never invent IDs, links, stack positions or status. Do not
 create issues or PRs merely to fill the header. Update this header when a PR is created,
-the branch changes, or the explanation is refreshed. Use the user's language.
+the branch changes, or the explanation is refreshed.
 
 ## Required interactive class graph
 
