@@ -56,6 +56,30 @@ When serializing source data into an inline script, escape `<` as `\u003c` so so
 strings cannot close the script element. Keep HTML escaping in the renderer. Do not
 load executable content or diagram services from the reference server.
 
+## File structure data
+
+Keep the adjacent `section#file-tree` with the graph; its renderer shares the graph's
+`data` and `locate()` function, not a second copy of the symbol model. Supply `data.files`:
+
+```json
+{"files":[{"path":"src/readers.py","status":"Changed","symbols":[
+  {"name":"Reader","kind":"class","graphId":"Reader","status":"Changed","children":[
+    {"name":"read()","kind":"method","status":"New"}
+  ]}
+]}]}
+```
+
+Paths are repository-relative; folders are derived from path segments. `symbols` and
+recursive `children` describe actual lexical nesting, including functions or nested
+classes. Use stable, unambiguous graph node IDs for `graphId`, not ambiguous short names.
+Every current class in the tree must have a matching graph node so its name is clickable.
+Removed symbols without a current graph node remain plain text, never link to a different
+class. Use New / Changed / Unchanged / Deleted / Moved only when verified; `previousPath`
+on a moved file records its old location. Omit unknown status instead of guessing it.
+The fallback derives a clearly labelled subset from graph paths/methods; it is example
+data, not an analyzer. Replace it with the actual file inventory when authoring a page.
+Text is rendered with DOM textContent; inline JSON still requires `<` escaping.
+
 ## Check the adapted graph
 
 In a browser, exercise every story, selecting a card and a neighbor, Back to story,

@@ -74,12 +74,12 @@ checkboxes or review ledgers to advertise the page or change workflow state.
 Do not commit shared session files while the worker is writing them.
 
 Use [assets/page.html](assets/page.html) as the starting point. Its interactive class
-graph and orientation header are mandatory on every page explaining code changes;
+graph, file structure tree and orientation header are mandatory on every page explaining code changes;
 other sections are optional, not a checklist to fill. Decide what helps this particular
 reader understand this particular change. Merge, shorten or omit blocks that add no
 distinct value; remove their navigation links too. Do not publish empty sections,
 irrelevant rows or explanations of why a section was omitted. The orientation header
-and class graph remain required for code-change pages.
+and class graph with its file structure tree remain required for code-change pages.
 Replace its example content before publishing. Follow the HTML language rule below;
 keep code identifiers exact. Organize the selected material into
 reading depths, not mandatory separate sections:
@@ -175,6 +175,22 @@ diagram or a newly designed approximation. Read
 This requirement also applies to code-change pages produced during independent parent
 work, not only the main session index. For comparisons, include each implementation's
 graph or links to its walkthrough with the same widget.
+
+## Required file structure tree
+
+Place `#file-tree` immediately below `#class-graph`, using the template's reusable tree.
+Show real repository folders → files → classes → methods, including top-level functions
+where present. Initially expand folders so file names are visible; collapse files and
+classes so symbols/methods are hidden. Use separate accessible arrow buttons (at least
+44×44 px) for expansion. Clicking a class name selects and focuses that exact class in
+the graph; it must not toggle the tree branch. Preserve keyboard activation and focus.
+
+Populate `data.files` as described in `references/class-graph.md`; cover changed/added
+files, relevant deletions/moves and selected unchanged neighbors. Do not mistake the
+template's graph-derived example subset for a complete file inventory. Classify files
+and symbols independently against base/head; never propagate a file's status to all
+its methods. Keep actual names and nesting, not invented domain folders. Verify initial
+collapse, branch toggles and class-to-graph navigation at desktop and narrow widths.
 
 ## Required external publication
 

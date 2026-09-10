@@ -9,14 +9,14 @@ table{min-width:520px}
 #class-graph [hidden]{display:none!important}#class-graph .muted{font-size:13px;color:#59677a}#class-graph code{font:13px/1.6 ui-monospace,monospace}
 </style>
 <main>
-<nav aria-label="Sections"><a href="#reading-route">Start here</a><a href="#scenario">Before / after</a><a href="#model">Mental model</a><a href="#boundaries">Guarantees</a><a href="#class-graph">Class graph</a><a href="#changes">Changes</a><a href="#evidence">Evidence</a></nav>
+<nav aria-label="Sections"><a href="#reading-route">Start here</a><a href="#scenario">Before / after</a><a href="#model">Mental model</a><a href="#boundaries">Guarantees</a><a href="#class-graph">Class graph</a><a href="#file-tree">File structure</a><a href="#changes">Changes</a><a href="#evidence">Evidence</a></nav>
 <header>
 <p class="meta">EXAMPLE ONLY · base/head not set</p>
 <p><strong>Linear: not linked · PR: not created</strong></p>
 <h1>Example: make failed handoffs visible to callers</h1>
 <p class="meta">Repository: unknown · Branch → target: unknown<br>Explained base/head: not set · Updated: not recorded</p>
 <ul><li>Before: an accepted request could hide a failed handoff.</li><li>After: report a retryable failure; reuse the existing job identity.</li></ul>
-<p class="notice">Illustrative content, not an implementation or verification claim. Replace the examples with one coherent change. Keep only useful sections and their navigation links; the orientation header and class graph are required.</p>
+<p class="notice">Illustrative content, not an implementation or verification claim. Replace the examples with one coherent change. Keep only useful sections and their navigation links; the orientation header, class graph and file structure are required.</p>
 </header>
 <section id="reading-route"><h2>Start here: a route through the code</h2>
 <p>Replace these illustrative locations with commit-pinned links and real symbols. Choose the order that explains the change; omit this block if direct explanation is simpler.</p>
@@ -153,6 +153,45 @@ function drawDetail(){
  for(const b of detail.querySelectorAll('[data-select]'))b.onclick=()=>locate(b.dataset.select);
 }
 function locate(id){if(stories[view.value])lastStory=view.value;selected=id;lastSelected=id;finder.value=id;view.value='focus';draw();fit()}
+function renderFileTree(){
+ const root=document.getElementById('ft-root'),folders={name:'',kind:'folder',children:[]};
+ const files=data.files||[...new Set(nodes.filter(n=>n.path&&!n.context).map(n=>n.path))].map(path=>({path,symbols:nodes.filter(n=>n.path===path&&!n.context).map(n=>({name:n.id,graphId:n.id,kind:n.kind||'class',status:changeGroup(n),children:n.methods.filter(m=>!m.inherited).map(m=>({name:m.name+'()',kind:'method',status:m.status}))}))}));
+ document.getElementById('ft-scope').textContent=data.files?'Changed files and selected unchanged context. Status applies to each item independently.':'Example subset from graph symbols, not a complete changed-file inventory. File and method status have not been assessed.';
+ for(const file of files){
+  const parts=file.path.split('/');let parent=folders;
+  for(const name of parts.slice(0,-1)){
+   let folder=parent.children.find(n=>n.kind==='folder'&&n.name===name);
+   if(!folder){folder={name,kind:'folder',children:[]};parent.children.push(folder)}parent=folder;
+  }
+  parent.children.push({name:parts.at(-1),kind:'file',path:file.path,status:file.status,previousPath:file.previousPath,children:file.symbols||[]});
+ }
+ let serial=0;
+ function appendItems(parent,items){
+  for(const item of [...items].sort((a,b)=>(a.kind==='folder'?0:1)-(b.kind==='folder'?0:1)||a.name.localeCompare(b.name))){
+   const li=document.createElement('li'),row=document.createElement('div');row.className='ft-row';li.dataset.kind=item.kind;li.append(row);
+   const children=item.children||[],list=document.createElement('ul');list.id='ft-branch-'+serial++;list.hidden=item.kind!=='folder';
+   if(children.length){
+    const toggle=document.createElement('button');toggle.type='button';toggle.className='ft-toggle';toggle.setAttribute('aria-controls',list.id);
+    const update=()=>{toggle.textContent=list.hidden?'▸':'▾';toggle.setAttribute('aria-expanded',String(!list.hidden));toggle.setAttribute('aria-label',(list.hidden?'Expand ':'Collapse ')+item.name)};
+    toggle.onclick=()=>{list.hidden=!list.hidden;update()};update();row.append(toggle);
+   }else{const spacer=document.createElement('span');spacer.className='ft-spacer';row.append(spacer)}
+   const label=document.createElement(item.graphId&&byId.has(item.graphId)?'button':'span');label.textContent=item.name;label.className='ft-name';label.title=item.path||item.name;
+   if(label.tagName==='BUTTON'){
+    label.type='button';label.setAttribute('aria-label','Explore '+item.name+' in class graph');label.onclick=()=>{
+     locate(item.graphId);document.getElementById('class-graph').scrollIntoView({block:'start'});
+     [...layer.children].find(card=>card.dataset.id===item.graphId)?.focus({preventScroll:true});
+    };
+   }
+   row.append(label);
+   const kind=document.createElement('small');kind.textContent=item.kind;row.append(kind);
+   if(item.status){const badge=document.createElement('small');badge.className='ft-status';badge.textContent=item.status;row.append(badge)}
+   if(item.previousPath){const previous=document.createElement('small');previous.textContent='from '+item.previousPath;row.append(previous)}
+   if(children.length){appendItems(list,children);li.append(list)}parent.append(li);
+  }
+ }
+ appendItems(root,folders.children);
+}
+document.addEventListener('DOMContentLoaded',renderFileTree,{once:true});
 view.onchange=()=>{if(view.value==='focus'){if(!selected)selected=lastSelected||'ConversationExportPageService';lastSelected=selected;finder.value=selected}else {selected='';finder.value='';if(stories[view.value])lastStory=view.value}draw();fit()};
 finder.onchange=()=>{if(finder.value)locate(finder.value)};relation.onchange=()=>{draw();fit()};$('cg-every-edge').onchange=()=>{draw();fit()};$('cg-back').onclick=()=>{selected='';finder.value='';view.value=lastStory;draw();fit()};
 $('cg-plus').onclick=()=>{zoom=Math.min(1.6,zoom*1.2);updateZoom()};$('cg-minus').onclick=()=>{zoom=Math.max(.18,zoom/1.2);updateZoom()};$('cg-fit').onclick=fit;$('cg-actual').onclick=()=>{zoom=1;updateZoom()};$('cg-full').onclick=()=>document.fullscreenElement?document.exitFullscreen():$('cg-widget').requestFullscreen();
@@ -160,6 +199,15 @@ let drag=null;viewport.onpointerdown=e=>{if(e.target.closest('.cg-node'))return;
 restorePreferences();draw();fit();
 })();
 </script>
+</section>
+<section id="file-tree"><h2>File structure</h2>
+<p>Use the arrow buttons to expand or collapse a branch. Select a class name to explore it in the class graph. Folders start expanded; files and classes start collapsed.</p>
+<p id="ft-scope" class="meta"></p>
+<ul id="ft-root" aria-label="Repository file structure"></ul>
+<noscript>Enable JavaScript to explore the file structure and class graph.</noscript>
+<style>
+#file-tree ul{list-style:none;padding-left:16px;margin:0;border-left:1px solid #dce2ea}#file-tree #ft-root{padding-left:0;border:0}#file-tree [hidden]{display:none!important}.ft-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-height:44px}.ft-toggle,.ft-spacer{width:44px;min-width:44px;height:44px}.ft-toggle{border:1px solid #cdd6df;border-radius:5px;background:#f6f8fa;color:#243247;font-size:22px;cursor:pointer}.ft-name{font:14px/1.5 ui-monospace,monospace;overflow-wrap:anywhere;min-width:0;max-width:100%}button.ft-name{min-height:44px;padding:4px 0;text-align:left;border:0;background:none;color:#175da5;text-decoration:underline;cursor:pointer}.ft-status{border:1px solid #dce2ea;border-radius:4px;padding:0 5px}.ft-row button:focus-visible{outline:3px solid #175da5;outline-offset:2px}
+</style>
 </section>
 <section id="changes"><h2>Where to look</h2>
 <div class="scroll"><table><thead><tr><th>Boundary</th><th>Behavioral delta</th><th>Evidence</th></tr></thead><tbody><tr><td>API → worker</td><td>Required handoff failure becomes visible.</td><td>Replace with commit-pinned source link.</td></tr></tbody></table></div>
