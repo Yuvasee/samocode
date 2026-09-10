@@ -74,8 +74,7 @@ class GlobalConfigError(ValueError):
 class Profile:
     """A named execution profile: a model and optional reasoning effort.
 
-    `effort` is a free-form string when set; the semantic `max` profile uses
-    `xhigh`, while `"max"` itself remains a legal custom effort value.
+    `effort` is a free-form provider setting, independent of the semantic profile name.
     """
 
     name: str

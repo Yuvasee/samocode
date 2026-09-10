@@ -61,7 +61,11 @@ commands remain protected; copied Claude phase-agent files are backed up as
 | codex | strong | `gpt-5.6-sol` | medium |
 | codex | max | `gpt-5.6-sol` | xhigh |
 
-`max` maps to `xhigh` effort. Literal effort `"max"` remains a legal custom value.
+The semantic `max` profile maps to `xhigh` for both Claude and Codex, not necessarily
+the provider's highest effort. Literal effort `"max"` remains a legal custom value.
+
+Updating built-in defaults does not migrate an existing user config; edit its provider
+strong/max entries explicitly. Running processes retain the configuration loaded at startup.
 
 ## Config syntax
 
