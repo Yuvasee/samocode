@@ -38,6 +38,14 @@ at step 5 (`clarity-review`); every other entry starts at step 1. On that re-ent
 set `Blocked: no` while recording the step result. Do not repeat ordinary cleanup
 and multi-review merely because older PR-readiness agents omitted `Quality Step`.
 
+Before dispatching `verify` or `clarity-verify`, read `_review_debt.md` and any
+new human decisions. If required findings are still undecided or approved
+`fix now` work has not been applied, set `Quality Step: triage` (or
+`clarity-triage` for clarity findings), signal continue, and exit. Do not review
+the unchanged diff again. Preserve both iteration counters and any exhausted
+iteration-limit block. A decision is not evidence that a fix was implemented.
+This handoff does not replace verification of the resulting fix commits.
+
 ### Step 1 — Cleanup (no `Quality Step` field yet)
 
 1. **MUST use `quality` skill (cleanup action)** via Skill tool to analyze changed code. Use the "quality" skill cleanup action now!
@@ -88,19 +96,24 @@ and multi-review merely because older PR-readiness agents omitted `Quality Step`
 1. Re-run the `quality` skill (multi-review action) via Skill tool, scoped to
    the fix commits (review the diff of the fixes, not the whole branch again).
 2. Keep the review report and `_review_debt.md` on the closed-vocabulary templates
-   (bare decision tokens; a `fix now` row carries an explicit closed status — one of
-   `fixed`, `closed`, `resolved`, or `verified`, never `done`/`complete`/`open`). Do NOT
+   (bare decision tokens; only an implemented `fix now` row may carry a closed
+   status: `fixed`, `closed`, `resolved`, or `verified`, with code/test evidence.
+   Unimplemented fixes stay pending and cannot pass the completion gate). Do NOT
    run `samocode check final-polish` here: it is the pr-readiness/done gate and
    structurally cannot pass mid-quality (the 2nd regression run, Comment Hygiene, and
    Code Clarity artifacts do not exist yet), so a non-zero result is expected, not
    vocabulary drift.
-3. **If clean** (no blocking issues, no undecided important issues): set
+3. **If clean** (no blocking issues and every required finding is actually
+   fixed, deferred, or rejected, with no pending `fix now` work): set
    `Quality Step: clarity-review` and signal
    `{"status": "continue", "phase": "quality"}`.
 4. **If blocking issues remain:** increment `Quality Iteration` in Status.
    - **If Quality Iteration > 3:** signal `blocked` with "Quality issues remain after 3 iterations"
    - **Else:** set `Quality Step: triage` and signal `{"status": "continue", "phase": "quality"}`
-5. **If important issues remain undecided:** signal `blocked` with "Quality decisions required"
+5. **If important issues remain undecided:** set `Quality Step: triage`, then
+   signal `blocked` with "Quality decisions required".
+6. **If important issues are approved `fix now` but not yet applied:** set
+   `Quality Step: triage` and signal continue. Do not start final polish.
 
 ### Step 5 — Clarity review (`Quality Step: clarity-review`)
 
@@ -160,8 +173,9 @@ and multi-review merely because older PR-readiness agents omitted `Quality Step`
    Do NOT run `samocode check final-polish` here — it is the pr-readiness/done gate
    and cannot pass mid-quality; a non-zero result is expected, not vocabulary drift.
 4. Route on the result:
-   - **High/medium-impact findings are undecided:** keep `Disposition: pending` and
-     signal blocked with "Code Clarity decisions required".
+   - **High/medium-impact findings are undecided:** keep `Disposition: pending`,
+     set `Quality Step: clarity-triage`, and signal blocked with
+     "Code Clarity decisions required".
    - **No new or open high/medium-impact findings:** mark the report
      `Disposition: settled`, set `Quality Step: hygiene`, and signal continue.
    - **Previously selected `fix now` findings remain open:** keep

@@ -70,6 +70,33 @@ def test_quality_pipeline_runs_clarity_before_final_comment_hygiene() -> None:
     assert readiness_signal not in agent
 
 
+def test_quality_resume_routes_pending_work_before_review() -> None:
+    agent = (ROOT / "agents" / "quality-agent.md").read_text()
+    dispatch = " ".join(agent.split("### Step 1")[0].split())
+
+    assert "Before dispatching `verify` or `clarity-verify`" in dispatch
+    assert "read `_review_debt.md` and any new human decisions" in dispatch
+    assert "still undecided or approved `fix now` work has not been applied" in dispatch
+    assert "set `Quality Step: triage`" in dispatch
+    assert "`clarity-triage` for clarity findings" in dispatch
+    assert "signal continue, and exit" in dispatch
+    assert "Do not review the unchanged diff again" in dispatch
+    assert "Preserve both iteration counters and any exhausted iteration-limit block" in dispatch
+    assert "does not replace verification of the resulting fix commits" in dispatch
+
+
+def test_quality_verification_requires_applied_fixes_and_persists_triage() -> None:
+    agent = (ROOT / "agents" / "quality-agent.md").read_text()
+    verify = " ".join(agent.split("### Step 4")[1].split("### Step 5")[0].split())
+
+    assert "only an implemented `fix now` row may carry a closed status" in verify
+    assert "with code/test evidence" in verify
+    assert "every required finding is actually fixed, deferred, or rejected" in verify
+    assert "with no pending `fix now` work" in verify
+    assert 'set `Quality Step: triage`, then signal `blocked`' in verify
+    assert "Quality Iteration > 3" in verify
+
+
 def test_post_quality_pipeline_preserves_final_hygiene_boundary() -> None:
     testing_agent = (ROOT / "agents" / "testing-agent.md").read_text()
     testing_skill = (ROOT / "skills" / "testing" / "SKILL.md").read_text()
