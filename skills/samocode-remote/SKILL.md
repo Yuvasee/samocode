@@ -22,7 +22,7 @@ Everything in `samocode-run` "DO NOT MANUALLY ORCHESTRATE" applies. Additionally
 | Name | Meaning | Example |
 |------|---------|---------|
 | `HOST` | SSH alias of the remote host | `pod2-ssm` |
-| `REMOTE_CONFIG` | Path of `.samocode` **on the host** | `~/avon-ai/.samocode` |
+| `REMOTE_CONFIG` | Path of `.samocode` **on the host** | `~/project/.samocode` |
 | `SESSION` | Session name (not path) | `eng-1720-kafka` |
 
 Resolve `HOST` from the user's words. If a host-specific connectivity skill exists
@@ -155,8 +155,8 @@ Confirm with `samocode status` that `worker_running` is `false` before starting 
 
 ```
 User: "run samocode on pod2 for eng-1720-kafka"
-→ load `pod` skill → HOST=pod2-ssm, REMOTE_CONFIG=~/avon-ai/.samocode
-→ R 'samocode status --config ~/avon-ai/.samocode --session eng-1720-kafka --json'
-→ R 'tmux new-session -d -s sc-eng-1720-kafka "bash -lc \"samocode run --config ~/avon-ai/.samocode --session eng-1720-kafka 2>&1\""; tmux set-option -t sc-eng-1720-kafka remain-on-exit on'
+→ load `pod` skill → HOST=pod2-ssm, REMOTE_CONFIG=~/project/.samocode
+→ R 'samocode status --config ~/project/.samocode --session eng-1720-kafka --json'
+→ R 'tmux new-session -d -s sc-eng-1720-kafka "bash -lc \"samocode run --config ~/project/.samocode --session eng-1720-kafka 2>&1\""; tmux set-option -t sc-eng-1720-kafka remain-on-exit on'
 → monitor every 120s with samocode status, relay gates, report
 ```
