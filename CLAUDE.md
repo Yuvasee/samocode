@@ -9,7 +9,8 @@ main.py              # Checkout entry point (shim) -> worker/cli.py
 workflow.md          # Master prompt template for provider iterations
 ARCHITECTURE.md      # Runtime/configuration/routing design
 worker/              # Core package
-  cli.py             # CLI: orchestrator loop, install/approve/recover/check commands
+  cli.py             # CLI: orchestrator loop, install/approve/recover/check/status commands
+  status.py          # Read-only `samocode status` (overview, signal, lease, flow log)
   config.py          # Project paths + legacy/runtime env settings
   global_config.py   # User-global TOML, defaults, validation, bootstrap
   startup.py         # Load-once composition + process-wide provider selection
@@ -145,6 +146,7 @@ See `docs/model-routing.md` for the schema and canonical profile table.
 ## Key Files
 
 - `worker/cli.py` - argparse CLI, orchestrator loop, bootstrap quarantine, lifecycle preflight
+- `worker/status.py` - read-only session status (`samocode status`), text or `--json`, never writes
 - `worker/global_config.py` - TOML schema, canonical defaults, bootstrap/load
 - `worker/startup.py` - startup composition and provider precedence
 - `worker/phases.py` - Phase enum, PhaseConfig/profile registry, transition validation

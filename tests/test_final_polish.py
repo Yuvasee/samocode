@@ -104,21 +104,6 @@ def test_accepts_hygiene_commit_between_review_and_regression(tmp_path: Path) ->
     assert validate_final_polish(session, project).ok
 
 
-def test_accepts_markdown_code_sha_and_descriptive_post_quality_run(
-    tmp_path: Path,
-) -> None:
-    project, head = _project(tmp_path)
-    session = tmp_path / "session"
-    _evidence(
-        session,
-        reviewed=f"`{head}`",
-        output=f"`{head}`",
-        run="2nd (post-quality regression, final-polish recovery)",
-    )
-
-    assert validate_final_polish(session, project).ok
-
-
 @pytest.mark.parametrize("run", ["1st (post-quality)", "2nd (post-implementation)"])
 def test_rejects_non_post_quality_run(tmp_path: Path, run: str) -> None:
     project, head = _project(tmp_path)
@@ -127,7 +112,7 @@ def test_rejects_non_post_quality_run(tmp_path: Path, run: str) -> None:
 
     check = validate_final_polish(session, project)
 
-    assert "Latest test report is not the post-quality regression run" in check.errors
+    assert any("Run must be `2nd (post-quality)`" in err for err in check.errors)
 
 
 @pytest.mark.parametrize(

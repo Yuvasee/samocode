@@ -156,6 +156,7 @@ valid in both legacy and routed modes, while newly authored phases require it.
 | Late-phase provenance, shared final-polish prerequisite predicate, testing-run derivation, recovery anchors | `worker/lifecycle.py` |
 | Final-polish gate (evidence + lifecycle) | `worker/final_polish.py` |
 | Read-only `samocode check final-polish` gate re-run | `worker/check.py` |
+| Read-only `samocode status` snapshot (overview, signal, lease probe, flow log) | `worker/status.py` |
 | Session process lease | `worker/process_lease.py` |
 | Audited `samocode recover final-polish` service | `worker/recovery.py` |
 | Autonomous child contract | `workflow.md` |

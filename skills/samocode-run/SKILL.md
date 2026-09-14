@@ -178,8 +178,9 @@ Do NOT assume samocode should run just because a session exists.
 
    6.1. Start background check (sleep duration by phase: investigation/planning 60s, implementation 120-180s, quality 120s, testing 60s):
    ```bash
-   Bash(command="sleep 60 && cat [SESSION]/_overview.md", run_in_background=true)
+   Bash(command="sleep 60 && samocode status --config [PATH_TO_.SAMOCODE] --session [SESSION_NAME]", run_in_background=true)
    ```
+   `samocode status` is read-only and prints Phase/Iteration/Blocked/Worker/Signal/Last/Next plus the last Flow Log entries (`--flow N`, `--json` for machine parsing). Fall back to `cat [SESSION]/_overview.md` only if the CLI is unavailable.
    Returns task_id (e.g., "b155903")
 
    6.2. Between checks, do independent work already authorized by the user. When
@@ -243,6 +244,18 @@ When samocode signals `waiting`:
 3. Otherwise: Wait for user to provide/confirm answers
 4. Update `_qa.md` with answers
 5. Then restart samocode
+
+## Read-Only Status
+
+```bash
+samocode status --config [PATH_TO_.SAMOCODE] --session [SESSION_NAME] [--json] [--flow N]
+```
+- Prints Session/Path/Working Dir, Phase with iteration counters, Blocked, Worker
+  (`running` when the orchestrator lease is held, `stopped` otherwise), Signal with
+  `for`/`needs`/reason, Q&A pending path, Last/Next, and the trailing Flow Log entries
+- `--json` emits the same fields as one JSON object (lists for `flow_log`/`errors`)
+- Exit 1 with reasons on stderr only when the config or session cannot be resolved
+- Never writes: the lease is probed, the signal file is not cleared
 
 ## Read-Only Gate Check
 

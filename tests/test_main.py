@@ -644,6 +644,19 @@ class TestCliParsing:
         args = main.parse_args(["run", "--config", "x", "--session", "y", "--once"])
         assert args.once is True
 
+    def test_parse_args_status_defaults(self) -> None:
+        args = main.parse_args(["status", "--config", "x", "--session", "y"])
+        assert args.command == "status"
+        assert args.json is False
+        assert args.flow == 3
+
+    def test_parse_args_status_json_and_flow(self) -> None:
+        args = main.parse_args(
+            ["status", "--config", "x", "--session", "y", "--json", "--flow", "5"]
+        )
+        assert args.json is True
+        assert args.flow == 5
+
 
 def _check_project(
     tmp_path: Path, *, main_repo_is_git: bool = True

@@ -78,6 +78,12 @@ from . import (
 )
 from .installer import resolve_asset_source_dir
 from .recovery import inspect_phase_limit_recovery, recover_phase_limit
+from .status import (
+    DEFAULT_FLOW_LOG_ENTRIES,
+    collect_status,
+    render_status_json,
+    render_status_text,
+)
 
 
 _WORKTREE_READONLY_REJECTION = (
@@ -468,7 +474,7 @@ def enforce_lifecycle_preflight(session_path: Path) -> str | None:
 
 # === CLI ===
 
-SUBCOMMANDS = ("run", "install", "uninstall", "approve", "recover", "check")
+SUBCOMMANDS = ("run", "install", "uninstall", "approve", "recover", "check", "status")
 
 
 def add_run_arguments(parser: argparse.ArgumentParser) -> None:
@@ -524,6 +530,9 @@ Examples:
 
   # With an initial dive topic
   samocode run --config ~/project/.samocode --session explore-api --dive "auth endpoints"
+
+  # Read-only session status (for local or remote monitoring)
+  samocode status --config ~/project/.samocode --session my-task --json
 
   # Install assets and create/preserve the global model config
   samocode install
@@ -648,6 +657,39 @@ Examples:
         "--session",
         required=True,
         help="Session name, not path",
+    )
+
+    status_parser = subparsers.add_parser(
+        "status",
+        help="Print read-only session status (phase, signal, worker, flow log)",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "Exit codes:\n"
+            "  0  status printed\n"
+            "  1  config/session resolution failure (reasons on stderr)\n"
+            "  (2 is reserved by argparse for CLI usage errors)"
+        ),
+    )
+    status_parser.add_argument(
+        "--config",
+        required=True,
+        help="Path to .samocode config file",
+    )
+    status_parser.add_argument(
+        "--session",
+        required=True,
+        help="Session name, not path",
+    )
+    status_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit JSON instead of the text block",
+    )
+    status_parser.add_argument(
+        "--flow",
+        type=int,
+        default=DEFAULT_FLOW_LOG_ENTRIES,
+        help=f"Number of trailing Flow Log entries (default: {DEFAULT_FLOW_LOG_ENTRIES})",
     )
 
     return parser
@@ -1132,6 +1174,16 @@ def cmd_check(args: argparse.Namespace) -> None:
     sys.exit(result.exit_code)
 
 
+def cmd_status(args: argparse.Namespace) -> None:
+    config_path = Path(args.config).expanduser().resolve()
+    status = collect_status(config_path, args.session, flow_entries=args.flow)
+    if not status.ok:
+        for error in status.errors:
+            print(error, file=sys.stderr)
+        sys.exit(status.exit_code)
+    print(render_status_json(status) if args.json else render_status_text(status))
+
+
 def cmd_uninstall(_args: argparse.Namespace) -> None:
     """Remove samocode-owned assets from provider directories."""
     uninstall()
@@ -1148,6 +1200,7 @@ def main() -> None:
         "approve": cmd_approve,
         "recover": cmd_recover,
         "check": cmd_check,
+        "status": cmd_status,
     }
     # parse_args() guarantees a command (defaults to "run"); the get() guard
     # keeps the dispatcher total and future-proof.
