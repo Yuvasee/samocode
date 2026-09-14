@@ -95,7 +95,7 @@ After a `pip install`, run `samocode install` once to make the skills, agents, a
 
 ## Use samocode skills standalone
 
-samocode's skills (`investigation`, `planning`, `implementation`, `quality`, `testing`, and more) are plain [Agent Skills](https://github.com/vercel-labs/skills) — a `SKILL.md` per directory — so any compatible agent can use them without the orchestrator. Install them cross-agent in one line:
+samocode's skills (`investigation`, `planning`, `implementation`, `quality`, `testing`, `samocode-remote` for driving a worker on another host over SSH, and more) are plain [Agent Skills](https://github.com/vercel-labs/skills) — a `SKILL.md` per directory — so any compatible agent can use them without the orchestrator. Install them cross-agent in one line:
 
 ```bash
 npx skills add Yuvasee/samocode

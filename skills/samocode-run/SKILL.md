@@ -21,6 +21,9 @@ The Python worker (`main.py`) handles ALL of this. Your job is to START the work
 
 ## Trigger Phrases
 
+If the user names a remote host ("on pod2", "on the server"), use the `samocode-remote`
+skill instead: same rules, worker runs over SSH.
+
 Use this skill when user says:
 - "run samocode"
 - "start samocode"
