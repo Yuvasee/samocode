@@ -61,6 +61,18 @@ uv run samocode --help         # Run orchestrator CLI
 - Section comments (`# ===`) for large module organization
 - Short, context-independent comments
 
+## Skill instruction writing
+
+When creating or editing procedural instructions in `skills/`, use ASD-STE100-inspired
+wording: direct commands, one action per sentence, conditions before actions, explicit
+actors and targets, and consistent terminology.
+
+Preserve requirements, permissions, exceptions and exact technical identifiers.
+Do not enforce full STE vocabulary or word-count limits.
+This guidance is self-contained; consulting the standard is not required.
+Apply it when authoring skills, not as an extra instruction in every skill or as a
+constraint on user-facing explanations.
+
 ## Architecture
 
 **Three layers**: Parent CLI -> Worker (Python) -> Child provider instances
