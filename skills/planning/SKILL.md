@@ -28,11 +28,12 @@ Creates detailed implementation plans with phases, stored within the session fol
    - Location: `[SESSION_PATH]/[TIMESTAMP_FILE]-plan-[plan-slug].md`
 
    **Phase design principles:**
-   - Each phase is executed as a **single samocode iteration** — keep phases bite-sized and independently completable
-   - Do not target or cap the total number of phases. Use as many as the task needs to preserve small, coherent iterations; a large plan may legitimately contain dozens.
-   - 1–3 focused steps per phase (not counting lint/typecheck)
-   - Split by logical boundary: one file/module/concern per phase when possible
-   - Prefer more small phases over fewer large ones
+   - Each phase is executed as a **single samocode iteration** by a highly capable agent. Size a phase as an outcome-level milestone that such an agent finishes in one iteration: a whole subsystem or vertical slice with its tests, not a single file, function or test.
+   - Use the fewest phases that keep dependencies and risk boundaries clean. Most tasks need 1–6 phases. More than about 8 means the plan is too granular, or the task should be split into separate sessions.
+   - Split only at real boundaries: work that a later phase builds on (for example, a schema before its consumers), a clearly different risk profile, or independently reviewable subsystems. Do not split by file, function or test.
+   - Write each phase as 2–5 outcome and acceptance bullets, not step-by-step instructions. Leave design choices inside a phase to the implementing agent unless the requirements fix them.
+   - Plan the simplest design that meets the requirements. Reuse existing code. Do not plan speculative abstractions, extra subsystems, or hardening that no requirement or acceptance check needs.
+   - Tests belong in the same phase as the code they verify.
    - Include explicit edge-case acceptance checks when the feature touches validators, queues, DB writes, background fan-out, uploads, auth/API-key users, or shared package boundaries
    - `## Implementation Phases` contains implementation and test-authoring work only. The outer `testing -> quality -> testing -> pr-readiness -> done` lifecycle is owned by the orchestrator and must never appear as plan phases.
    - Put final browser/API/E2E and regression criteria in a separate `## Verification Plan`. The testing agent consumes those criteria after implementation; the implementation agent does not execute that section.
@@ -47,7 +48,7 @@ Creates detailed implementation plans with phases, stored within the session fol
    | `light` | Mechanical, local, deterministic work with no meaningful design choice or state risk: narrow renames, boilerplate, or similarly contained edits. |
    | `standard` | Ordinary, well-defined implementation using established patterns, with contained impact and straightforward verification. This is the normal workhorse. |
    | `strong` | Architecture, persistence/schema/data changes, concurrency, retries/idempotency, security/auth, public contracts, failure recovery, or other cross-cutting multi-component work. |
-   | `max` | Rare phases where high uncertainty, large blast radius, and difficult or costly recovery are all present. If only one or two apply, use `strong`; split an oversized phase before escalating it to `max`. |
+   | `max` | Rare phases where high uncertainty, large blast radius, and difficult or costly recovery are all present. If only one or two apply, use `strong`; do not escalate a phase to `max` only because it is large. |
 
    **Documentation authoring is `max`-only.** Any phase that authors or substantively
    rewrites documentation content — README, ARCHITECTURE.md, CHANGELOG, workflow.md,
@@ -90,17 +91,16 @@ Creates detailed implementation plans with phases, stored within the session fol
 
    ## Implementation Phases
 
-   ### Phase 1: [Name]
+   ### Phase 1: [Outcome-level milestone]
    **Profile:** `strong`
-   - [ ] [Step]
-   - [ ] [Step]
-   - [ ] Run pyright/ruff or tsc - fix errors
+   - [ ] [Outcome the phase delivers]
+   - [ ] [Acceptance check, including the tests that prove it]
+   - [ ] Type checks and linters pass for the changed code
 
-   ### Phase 2: [Name]
+   ### Phase 2: [Outcome-level milestone]
    **Profile:** `standard`
-   - [ ] [Step]
-   - [ ] [Step]
-   - [ ] Run pyright/ruff or tsc - fix errors
+   - [ ] [Outcome the phase delivers]
+   - [ ] [Acceptance check, including the tests that prove it]
 
    ## Verification Plan
 

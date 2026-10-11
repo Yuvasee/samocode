@@ -190,7 +190,7 @@ Planning assigns the canonical profiles only from the work and risk of the phase
 | `light` | Mechanical, local, deterministic work without meaningful design choice or state risk. |
 | `standard` | Ordinary, well-defined implementation using established patterns, with contained impact and straightforward verification. |
 | `strong` | Architecture, persistence/schema/data changes, concurrency, retries/idempotency, security/auth, public contracts, recovery, or other cross-cutting work. |
-| `max` | Rare work where high uncertainty, large blast radius, and difficult or costly recovery all coincide. If only one or two apply, use `strong`; split an oversized phase first. |
+| `max` | Rare work where high uncertainty, large blast radius, and difficult or costly recovery all coincide. If only one or two apply, use `strong`; do not escalate a phase only because it is large. |
 
 **Documentation authoring is `max`-only.** A phase that authors or substantively
 rewrites documentation content — README, `ARCHITECTURE.md`, `workflow.md`, `CLAUDE.md`,
