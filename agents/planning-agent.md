@@ -53,6 +53,8 @@ Session context is provided via --append-system-prompt by the orchestrator:
      - `chrome-devtools` - Browser testing and UI inspection
      - `context7` - Library documentation lookup
      - `serena` - Code intelligence (go-to-definition, find-references)
+   - Never commit `.mcp.json`. If git does not already ignore it (`git check-ignore .mcp.json`),
+     add `.mcp.json` to `.git/info/exclude`.
    - If MCP was added, signal `continue` to restart the agent process for MCP pickup
 
 4. **Create plan document** at `[SESSION_PATH]/[TIMESTAMP_FILE]-plan-[slug].md`
@@ -100,13 +102,19 @@ Created: [TIMESTAMP_LOG]
 
 ## Planning Guidelines
 
-- Do not target or cap the total number of phases. Use as many as the task needs;
-  a large plan may legitimately contain dozens when each remains a small,
-  independently executable iteration.
-- Each phase should be independently testable
-- Order phases by dependency (foundation first)
-- Include verification steps in each phase
-- Consider both "clean" and "minimal" approaches
+- Implementation agents are highly capable. Size each phase as an outcome-level
+  milestone (a subsystem or vertical slice with its tests) that one iteration can
+  finish. Use the fewest phases that keep dependencies and risk boundaries clean:
+  most tasks need 1–6; more than about 8 means the plan is too granular or the
+  task should be split into separate sessions.
+- Split only at real boundaries (dependency, risk profile, independently reviewable
+  subsystem), never by file, function or test.
+- Write phases as outcomes and acceptance criteria, not step-by-step instructions;
+  leave design choices inside a phase to the implementing agent.
+- Plan the simplest design that meets the requirements; reuse existing code; do not
+  plan speculative abstractions, subsystems or hardening.
+- Order phases by dependency (foundation first); tests go in the same phase as the
+  code they verify.
 - Flag any areas requiring human decision
 - Keep outer lifecycle work out of `## Implementation Phases`. Testing, Quality,
   Code Clarity, Comment Hygiene, regression testing, PR Readiness, Done, summary
@@ -129,7 +137,7 @@ Choose the profile only from the character and risk of that phase:
 | `light` | Mechanical, local, deterministic work with no meaningful design choice or state risk. |
 | `standard` | Ordinary, well-defined implementation using established patterns, with contained impact and straightforward verification. This is the normal workhorse. |
 | `strong` | Architecture, persistence/schema/data changes, concurrency, retries/idempotency, security/auth, public contracts, failure recovery, or other cross-cutting multi-component work. |
-| `max` | Rare phases where high uncertainty, large blast radius, and difficult or costly recovery are all present. If only one or two apply, use `strong`; split an oversized phase before escalating it to `max`. |
+| `max` | Rare phases where high uncertainty, large blast radius, and difficult or costly recovery are all present. If only one or two apply, use `strong`; do not escalate a phase to `max` only because it is large. |
 
 **Documentation authoring is `max`-only.** Any phase that authors or substantively
 rewrites documentation content — README, ARCHITECTURE.md, CHANGELOG, workflow.md,
@@ -166,12 +174,8 @@ After human reviews, they run `samocode approve --config ... --session ...` whic
 
 ## Commits
 
-**Commit before signaling (both may apply):**
+**Commit session files before signaling** (never commit `.mcp.json` in the working dir):
 ```bash
-# If .mcp.json was created/modified:
-cd [WORKING_DIR] && git add -A && git commit -m "planning: Add MCP config"
-
-# Session files:
 cd [SESSION_PATH] && git add -A && git commit -m "planning: Create implementation plan"
 ```
 
