@@ -12,7 +12,9 @@ This module tests:
 
 import logging
 import subprocess
+from dataclasses import replace
 from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -28,6 +30,7 @@ from worker.routing import (
     resolve_execution_target,
 )
 from worker.runner import (
+    run_ai_with_retry,
     EscalationContext,
     ExecutionResult,
     ExecutionStatus,
@@ -954,6 +957,40 @@ class TestEscalatedIteration:
         )
         assert plan.command == expected
         assert "## Escalated Testing Attempt" in plan.session_context
+
+    def test_claude_settings_reach_escalated_command_and_every_retry(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        workflow = self._workflow(tmp_path)
+        base = make_routed_config(tmp_path)
+        settings = tmp_path / "policy.json"
+        config = replace(
+            base,
+            runtime=replace(
+                base.runtime, claude_settings=settings, max_retries=3, retry_delay=0
+            ),
+        )
+        session = write_testing_session(tmp_path)
+        escalation = make_escalation(session, config)
+        commands: list[list[str]] = []
+
+        def fail_process(**kwargs: Any) -> ExecutionResult:
+            commands.append(kwargs["cli_args"])
+            return ExecutionResult(
+                status=ExecutionStatus.FAILURE,
+                stdout="",
+                stderr="",
+                returncode=1,
+                attempt=kwargs["attempt"],
+                log_file=None,
+            )
+
+        monkeypatch.setattr("worker.runner._execute_process", fail_process)
+        run_ai_with_retry(workflow, session, config, escalation=escalation)
+
+        assert len(commands) == 3
+        for command in commands:
+            assert command[command.index("--settings") + 1] == str(settings)
 
     def test_codex_escalated_effort_reaches_command(self, tmp_path: Path) -> None:
         workflow = self._workflow(tmp_path)

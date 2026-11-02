@@ -81,7 +81,10 @@ def test_quality_resume_routes_pending_work_before_review() -> None:
     assert "`clarity-triage` for clarity findings" in dispatch
     assert "signal continue, and exit" in dispatch
     assert "Do not review the unchanged diff again" in dispatch
-    assert "Preserve both iteration counters and any exhausted iteration-limit block" in dispatch
+    assert (
+        "Preserve both iteration counters and any exhausted iteration-limit block"
+        in dispatch
+    )
     assert "does not replace verification of the resulting fix commits" in dispatch
 
 
@@ -93,7 +96,7 @@ def test_quality_verification_requires_applied_fixes_and_persists_triage() -> No
     assert "with code/test evidence" in verify
     assert "every required finding is actually fixed, deferred, or rejected" in verify
     assert "with no pending `fix now` work" in verify
-    assert 'set `Quality Step: triage`, then signal `blocked`' in verify
+    assert "set `Quality Step: triage`, then signal `blocked`" in verify
     assert "Quality Iteration > 3" in verify
 
 

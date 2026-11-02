@@ -35,6 +35,7 @@ class AdapterInputs:
     session_context: str  # both providers (built by runner.build_session_context)
     agents_dir: Path  # Codex only: dir holding <agent_name>.md
     max_turns: int  # Claude only: --max-turns
+    claude_settings: Path | None = None  # Claude only: --settings
 
 
 # === Adapter protocol ===
@@ -97,6 +98,8 @@ class ClaudeAdapter:
             "--model",
             target.model,
         ]
+        if inputs.claude_settings is not None:
+            args += ["--settings", str(inputs.claude_settings)]
         if target.effort is not None:
             args += ["--effort", target.effort]
         args += [

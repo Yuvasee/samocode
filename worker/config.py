@@ -80,6 +80,7 @@ class RuntimeConfig:
     claude_model: str = "claude-opus-4-8"
     claude_max_turns: int = 300
     claude_timeout: int = 1800
+    claude_settings: Path | None = None
     codex_path: Path = Path("codex")
     codex_model: str = ""
     codex_timeout: int = 1800
@@ -193,6 +194,10 @@ class SamocodeConfig:
     @property
     def claude_timeout(self) -> int:
         return self.runtime.claude_timeout
+
+    @property
+    def claude_settings(self) -> Path | None:
+        return self.runtime.claude_settings
 
     @property
     def codex_path(self) -> Path:

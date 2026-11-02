@@ -208,6 +208,7 @@ def resolve_iteration_plan(
         session_context=session_context,
         agents_dir=workflow_prompt_path.parent / "agents",
         max_turns=config.claude_max_turns,
+        claude_settings=config.claude_settings,
     )
     command = get_adapter(target.provider).build_command(target, inputs)
 
@@ -842,6 +843,7 @@ def _build_cli_args(
         session_context=session_context,
         agents_dir=workflow_prompt_path.parent / "agents",
         max_turns=config.claude_max_turns,
+        claude_settings=config.claude_settings,
     )
     return get_adapter(config.ai_provider).build_command(target, inputs)
 

@@ -508,6 +508,10 @@ def add_run_arguments(parser: argparse.ArgumentParser) -> None:
         help="AI CLI provider to run orchestrator iterations with",
     )
     parser.add_argument(
+        "--claude-settings",
+        help="Settings file passed to every Claude invocation (claude --settings)",
+    )
+    parser.add_argument(
         "--once",
         action="store_true",
         help="Run exactly one orchestrator iteration, then stop even on continue.",
@@ -850,6 +854,11 @@ def run_orchestrator(args: argparse.Namespace) -> None:
         cli_provider=args.provider,
         cli_timeout=args.timeout,
         env_provider=os.environ.get("SAMOCODE_PROVIDER"),
+        cli_claude_settings=(
+            Path(args.claude_settings).expanduser().resolve()
+            if args.claude_settings
+            else None
+        ),
     )
     if composition.errors:
         print("Configuration errors:")

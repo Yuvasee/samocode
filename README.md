@@ -204,6 +204,10 @@ The config is loaded once at process startup; restart Samocode after editing it.
 Provider precedence is `--provider` → `SAMOCODE_PROVIDER` → config default → legacy
 Claude. Requires **Python 3.11+**.
 
+`samocode run --claude-settings FILE` passes `claude --settings FILE` to every Claude
+invocation, retries and escalations included. A missing file or a non-Claude provider
+refuses the start.
+
 → Full concepts, default table, profile syntax, overrides, and migration: [docs/model-routing.md](docs/model-routing.md)
 
 ## Phase reference

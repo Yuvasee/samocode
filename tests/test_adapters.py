@@ -1,6 +1,7 @@
 """Tests for provider adapters and the adapter registry."""
 
 import os
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -113,6 +114,15 @@ class TestClaudeArgv:
     def test_native_agent_loading(self, agents_dir: Path) -> None:
         args = ClaudeAdapter().build_command(make_target(), make_inputs(agents_dir))
         assert args[args.index("--agent") + 1] == "init-agent"
+
+    def test_settings_absent_by_default(self, agents_dir: Path) -> None:
+        args = ClaudeAdapter().build_command(make_target(), make_inputs(agents_dir))
+        assert "--settings" not in args
+
+    def test_settings_from_inputs(self, agents_dir: Path) -> None:
+        inputs = replace(make_inputs(agents_dir), claude_settings=Path("/x/s.json"))
+        args = ClaudeAdapter().build_command(make_target(), inputs)
+        assert args[args.index("--settings") + 1] == "/x/s.json"
 
     def test_max_turns_from_inputs(self, agents_dir: Path) -> None:
         args = ClaudeAdapter().build_command(
