@@ -95,6 +95,7 @@ def compose_startup(
     cli_provider: str | None,
     cli_timeout: int | None,
     env_provider: str | None,
+    cli_claude_settings: Path | None = None,
 ) -> StartupComposition:
     """Load global config once, select+validate the provider, compose SamocodeConfig.
 
@@ -123,6 +124,15 @@ def compose_startup(
         runtime = replace(
             runtime, claude_timeout=cli_timeout, codex_timeout=cli_timeout
         )
+    if cli_claude_settings is not None:
+        runtime = replace(runtime, claude_settings=cli_claude_settings)
+        # A policy file that silently does not apply is worse than no start.
+        if provider != "claude":
+            errors.append(
+                f"--claude-settings applies only to provider claude, not {provider!r}."
+            )
+        if not cli_claude_settings.is_file():
+            errors.append(f"Claude settings file not found: {cli_claude_settings}")
     errors.extend(runtime.validate())
     errors.extend(_validate_provider(provider, global_config))
 

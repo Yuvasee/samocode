@@ -997,6 +997,7 @@ class TestWorktreeGuardOrchestrator:
                 dive=None,
                 task=None,
                 once=False,
+                claude_settings=None,
             )
         )
 
@@ -1174,6 +1175,7 @@ class TestEscalationOrchestrator:
                     dive=None,
                     task=None,
                     once=once,
+                    claude_settings=None,
                 )
             )
         except SystemExit:

@@ -97,6 +97,7 @@ class _Project:
         cli_provider: str | None = None,
         cli_timeout: int | None = None,
         env_provider: str | None = None,
+        cli_claude_settings: Path | None = None,
     ) -> StartupComposition:
         return compose_startup(
             config_path=config_path if config_path is not None else self.samocode,
@@ -104,6 +105,7 @@ class _Project:
             cli_provider=cli_provider,
             cli_timeout=cli_timeout,
             env_provider=env_provider,
+            cli_claude_settings=cli_claude_settings,
         )
 
 
@@ -161,6 +163,36 @@ class TestLoadGlobalConfig:
 
 
 class TestComposePrecedence:
+    def test_claude_settings_reach_config(
+        self, project: _Project, tmp_path: Path
+    ) -> None:
+        project.write_config()
+        settings = tmp_path / "policy.json"
+        settings.write_text("{}")
+        result = project.compose(cli_provider="claude", cli_claude_settings=settings)
+        assert result.config is not None
+        assert result.config.claude_settings == settings
+
+    def test_missing_claude_settings_refuses_start(
+        self, project: _Project, tmp_path: Path
+    ) -> None:
+        project.write_config()
+        result = project.compose(
+            cli_provider="claude", cli_claude_settings=tmp_path / "absent.json"
+        )
+        assert result.config is None
+        assert any("settings file not found" in e for e in result.errors)
+
+    def test_claude_settings_refused_for_codex(
+        self, project: _Project, tmp_path: Path
+    ) -> None:
+        project.write_config()
+        settings = tmp_path / "policy.json"
+        settings.write_text("{}")
+        result = project.compose(cli_provider="codex", cli_claude_settings=settings)
+        assert result.config is None
+        assert any("applies only to provider claude" in e for e in result.errors)
+
     def test_cli_provider_wins(self, project: _Project) -> None:
         project.write_config()  # default_provider=claude
         result = project.compose(cli_provider="codex", env_provider="claude")
