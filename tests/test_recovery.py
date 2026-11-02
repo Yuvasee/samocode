@@ -421,6 +421,7 @@ def test_run_preflight_blocks_before_signal_clear_or_provider_call(
             dive=None,
             task=None,
             once=False,
+            claude_settings=None,
         )
     )
 
