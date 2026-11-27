@@ -15,6 +15,9 @@ so you can hand off multi-hour engineering work and walk away.
 
 </div>
 
+> [!NOTE]
+> **Working with newer models?** Samocode was built for and used with models up to Claude Opus 4.8 / Sonnet 4.6 and GPT-5.6. With newer models we moved to **[Guild](https://github.com/Yuvasee/guild)**: a team of lead agents that coordinate through a shared dashboard.
+
 ---
 
 ## What this is
